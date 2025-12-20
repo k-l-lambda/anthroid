@@ -138,6 +138,13 @@ public final class TerminalSession extends TerminalOutput {
                     while (true) {
                         int read = termIn.read(buffer);
                         if (read == -1) return;
+                        // Log terminal output for debugging
+                        String output = new String(buffer, 0, read, StandardCharsets.UTF_8);
+                        for (String line : output.split("\n")) {
+                            if (!line.isEmpty()) {
+                                android.util.Log.i("TerminalOutput", line);
+                            }
+                        }
                         if (!mProcessToTerminalIOQueue.write(buffer, 0, read)) return;
                         mMainThreadHandler.sendEmptyMessage(MSG_NEW_INPUT);
                     }
