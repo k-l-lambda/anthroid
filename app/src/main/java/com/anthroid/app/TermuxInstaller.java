@@ -189,11 +189,37 @@ final class TermuxInstaller {
                                 }
 
                                 if (!isDirectory) {
-                                    try (FileOutputStream outStream = new FileOutputStream(targetFile)) {
-                                        int readBytes;
-                                        while ((readBytes = zipInput.read(buffer)) != -1)
-                                            outStream.write(buffer, 0, readBytes);
+                                    // Read file content to check if it's a script that needs path patching
+                                    java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+                                    int readBytes;
+                                    while ((readBytes = zipInput.read(buffer)) != -1) {
+                                        baos.write(buffer, 0, readBytes);
                                     }
+                                    byte[] fileBytes = baos.toByteArray();
+
+                                    // Check if this is a text/script file by looking for shebang or text content
+                                    // Scripts need com.termux paths replaced with com.anthroid
+                                    boolean isTextFile = false;
+                                    if (fileBytes.length > 2 && fileBytes[0] == '#' && fileBytes[1] == '!') {
+                                        isTextFile = true; // Shebang script
+                                    } else if (zipEntryName.startsWith("etc/") ||
+                                               (zipEntryName.startsWith("bin/") && fileBytes.length < 65536 && !isElfBinary(fileBytes))) {
+                                        isTextFile = true; // Config files or small non-ELF bin files
+                                    }
+
+                                    if (isTextFile) {
+                                        // Replace com.termux paths with com.anthroid in text files
+                                        String content = new String(fileBytes, "UTF-8");
+                                        if (content.contains("com.termux")) {
+                                            content = content.replace("com.termux", "com.anthroid");
+                                            fileBytes = content.getBytes("UTF-8");
+                                        }
+                                    }
+
+                                    try (FileOutputStream outStream = new FileOutputStream(targetFile)) {
+                                        outStream.write(fileBytes);
+                                    }
+
                                     if (zipEntryName.startsWith("bin/") || zipEntryName.startsWith("libexec") ||
                                         zipEntryName.startsWith("lib/apt/apt-helper") || zipEntryName.startsWith("lib/apt/methods")) {
                                         //noinspection OctalInteger
@@ -217,6 +243,25 @@ final class TermuxInstaller {
                     }
 
                     Logger.logInfo(LOG_TAG, "Bootstrap packages installed successfully.");
+
+                    // Create compatibility symlink for ELF binaries that have hardcoded com.termux paths
+                    // /data/data/com.anthroid/files/data/data/com.termux -> /data/data/com.anthroid
+                    // This allows binaries with embedded /data/data/com.termux/files/usr paths to work
+                    try {
+                        String termuxFilesDir = TermuxConstants.TERMUX_FILES_DIR_PATH;  // /data/data/com.anthroid/files
+                        File compatDir = new File(termuxFilesDir, "data/data");
+                        if (!compatDir.exists()) {
+                            compatDir.mkdirs();
+                        }
+                        File termuxSymlink = new File(compatDir, "com.termux");
+                        if (!termuxSymlink.exists()) {
+                            // Symlink: /data/data/com.anthroid/files/data/data/com.termux -> /data/data/com.anthroid
+                            Os.symlink("/data/data/com.anthroid", termuxSymlink.getAbsolutePath());
+                            Logger.logInfo(LOG_TAG, "Created compatibility symlink for com.termux paths: " + termuxSymlink.getAbsolutePath());
+                        }
+                    } catch (Exception e) {
+                        Logger.logWarn(LOG_TAG, "Failed to create compatibility symlink: " + e.getMessage());
+                    }
 
                     // Recreate env file since termux prefix was wiped earlier
                     TermuxShellEnvironment.writeEnvironmentToFile(activity);
@@ -382,5 +427,16 @@ final class TermuxInstaller {
     }
 
     public static native byte[] getZip();
+
+    /**
+     * Check if byte array starts with ELF magic bytes (0x7f 'E' 'L' 'F')
+     */
+    private static boolean isElfBinary(byte[] data) {
+        return data.length >= 4 &&
+               data[0] == 0x7f &&
+               data[1] == 'E' &&
+               data[2] == 'L' &&
+               data[3] == 'F';
+    }
 
 }

@@ -29,3 +29,5 @@ app/src/main/cpp/bootstrap-*.zip
 # OS generated
 Thumbs.db
 .DS_Store
+
+screenshot*.png
