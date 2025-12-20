@@ -1,0 +1,31 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Android Studio
+.idea/
+*.iml
+local.properties
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+
+# APKs
+*.apk
+*.aab
+
+# Bootstrap zips (downloaded during build)
+app/src/main/cpp/bootstrap-*.zip
+
+# Keystore (keep testkey, ignore real release keys)
+*.jks
+!app/testkey_untrusted.jks
+
+# Logs
+*.log
+
+# OS generated
+Thumbs.db
+.DS_Store
