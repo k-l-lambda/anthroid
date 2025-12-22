@@ -1,3 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Claude Chat Colors -->
+    <color name="colorPrimary">#6366F1</color>
+    <color name="colorPrimaryDark">#4F46E5</color>
+    <color name="colorAccent">#8B5CF6</color>
+
+    <color name="background_color">#FFFFFF</color>
+    <color name="background_dark">#F3F4F6</color>
+
+    <!-- Message colors -->
+    <color name="user_message_bg">#6366F1</color>
+    <color name="user_message_text">#FFFFFF</color>
+    <color name="assistant_message_bg">#F3F4F6</color>
+    <color name="assistant_message_text">#1F2937</color>
+
+    <!-- Text colors -->
+    <color name="text_primary">#1F2937</color>
+    <color name="text_secondary">#6B7280</color>
+    <color name="text_hint">#9CA3AF</color>
+
+    <!-- Status colors -->
+    <color name="status_warning_bg">#FEF3C7</color>
+    <color name="status_warning_text">#92400E</color>
 </resources>

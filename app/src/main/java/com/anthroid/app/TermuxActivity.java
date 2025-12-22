@@ -41,6 +41,7 @@ import com.anthroid.shared.termux.TermuxConstants;
 import com.anthroid.shared.termux.TermuxConstants.TERMUX_APP.TERMUX_ACTIVITY;
 import com.anthroid.app.activities.HelpActivity;
 import com.anthroid.app.activities.SettingsActivity;
+import com.anthroid.claude.ClaudeActivity;
 import com.anthroid.shared.termux.crash.TermuxCrashUtils;
 import com.anthroid.shared.termux.settings.preferences.TermuxAppSharedPreferences;
 import com.anthroid.app.terminal.TermuxSessionsListViewController;
@@ -246,6 +247,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         setTerminalToolbarView(savedInstanceState);
 
         setSettingsButtonView();
+
+        setClaudeButtonView();
 
         setNewSessionButtonView();
 
@@ -567,6 +570,14 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         ImageButton settingsButton = findViewById(R.id.settings_button);
         settingsButton.setOnClickListener(v -> {
             ActivityUtils.startActivity(this, new Intent(this, SettingsActivity.class));
+        });
+    }
+
+    private void setClaudeButtonView() {
+        ImageButton claudeButton = findViewById(R.id.claude_button);
+        claudeButton.setOnClickListener(v -> {
+            ActivityUtils.startActivity(this, new Intent(this, ClaudeActivity.class));
+            getDrawer().closeDrawers();
         });
     }
 

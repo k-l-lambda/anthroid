@@ -118,6 +118,18 @@
             tools:targetApi="n">
         </activity>
 
+        <activity
+            android:name=".claude.ClaudeActivity"
+            android:exported="true"
+            android:label="Claude Chat"
+            android:theme="@style/Theme.TermuxApp.DayNight.DarkActionBar"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
         <activity-alias
             android:name=".app.api.file.FileShareReceiverActivity"
             android:exported="true"
