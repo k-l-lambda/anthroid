@@ -27,87 +27,62 @@ Fork Termux and rebrand as Anthroid.
 
 ---
 
-### Phase 2: Claude CLI Integration (Next)
+### Phase 2: Claude CLI Integration (Complete)
 
 Integrate Claude CLI into the terminal environment.
 
-#### 2.1 Manual CLI Testing
+#### 2.1 Custom Bootstrap Build (Done)
+Built custom packages with com.anthroid paths on server 10.121.196.2:
+- apt, dpkg, bash, nodejs compiled with correct paths
+- Libraries extracted from Docker and installed on device
+
+#### 2.2 Claude CLI Installation (Done)
 ```bash
-# In Anthroid terminal:
-pkg install nodejs
-npm install -g @anthropic-ai/claude-code
-claude --version
+# Installed via npm
+node /data/data/com.anthroid/files/usr/lib/node_modules/npm/bin/npm-cli.js install -g @anthropic-ai/claude-code
+# Version: 2.0.76
 ```
 
-#### 2.2 ClaudeCliClient.kt
-Kotlin wrapper for Claude CLI process communication.
+#### 2.3 Wrapper Script (Done)
+Created `/data/data/com.anthroid/files/usr/bin/claude` wrapper:
+```bash
+#!/data/data/com.anthroid/files/usr/bin/bash
+export HOME=/data/data/com.anthroid/files/home
+export PATH=/data/data/com.anthroid/files/usr/bin
+export PREFIX=/data/data/com.anthroid/files/usr
+export LD_LIBRARY_PATH=/data/data/com.anthroid/files/usr/lib
+export ANTHROPIC_BASE_URL="https://api.ppinfra.com/anthropic/"
+export ANTHROPIC_AUTH_TOKEN="sk_xxx..."
+export ANTHROPIC_MODEL="pa/claude-sonnet-4-5-20250929"
+exec node /data/data/com.anthroid/files/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js "$@"
+```
+
+#### 2.4 ClaudeCliClient.kt (Next)
+Kotlin wrapper for Claude CLI pipe mode communication.
 
 ```kotlin
 class ClaudeCliClient(private val context: Context) {
-    private var process: Process? = null
-
-    fun startSession(): Flow<ClaudeEvent>
-    fun sendMessage(message: String)
-    fun cancelCurrentRequest()
-    fun close()
+    fun sendMessage(message: String): Flow<String>  // Streams response via --print mode
+    fun isCliAvailable(): Boolean
 }
-
-sealed class ClaudeEvent {
-    data class Text(val content: String) : ClaudeEvent()
-    data class ToolUse(val name: String, val input: String) : ClaudeEvent()
-    data class Error(val message: String) : ClaudeEvent()
-    object Done : ClaudeEvent()
-}
-```
-
-#### 2.3 ClaudeViewModel.kt
-State management for Claude chat UI.
-
-```kotlin
-class ClaudeViewModel : ViewModel() {
-    val messages: StateFlow<List<Message>>
-    val isProcessing: StateFlow<Boolean>
-
-    fun sendMessage(content: String)
-    fun cancelRequest()
-}
-```
-
-#### 2.4 Bootstrap Script
-Auto-install Claude CLI on first launch.
-
-```bash
-#!/data/data/com.anthroid/files/usr/bin/bash
-# bootstrap-claude.sh
-
-if ! command -v node &> /dev/null; then
-    pkg install -y nodejs
-fi
-
-if ! command -v claude &> /dev/null; then
-    npm install -g @anthropic-ai/claude-code
-fi
-
-echo "Claude CLI ready"
 ```
 
 ---
 
-### Phase 3: Chat UI
+### Phase 3: Chat UI (In Progress)
 
 Native Android chat interface for Claude.
 
-#### Components
+#### Components (Done)
 - `ClaudeActivity.kt` - Main chat screen
+- `ClaudeApiClient.kt` - HTTP API streaming client
+- `ClaudeViewModel.kt` - State management with dual-mode support
 - `MessageAdapter.kt` - RecyclerView adapter for messages
-- `MessageView.kt` - Custom view for message bubbles
-- `CodeBlockView.kt` - Syntax-highlighted code blocks
 
-#### Features
-- Markdown rendering
-- Code syntax highlighting
-- Copy/share messages
-- Message history persistence
+#### Remaining Tasks
+- [ ] Integrate ClaudeCliClient for pipe mode
+- [ ] Add mode switching (HTTP API vs CLI pipe)
+- [ ] QR code scanner for API configuration
 
 ---
 
@@ -133,29 +108,23 @@ User Message → Claude → Tool Request → Terminal Execution → Result → C
 
 ---
 
-### Phase 5: Custom Bootstrap (Optional)
+### Phase 5: Custom Bootstrap (Done)
 
 Build bootstrap packages with com.anthroid paths for full compatibility.
 
-#### Requirements
-- Linux build environment (Docker or native)
-- Clone termux-packages repository
-- Set `TERMUX_APP__PACKAGE_NAME="com.anthroid"`
+| Package | Version | Status |
+|---------|---------|--------|
+| apt | 2.8.1-2 | Built |
+| dpkg | 1.22.6-5 | Built |
+| bash | 5.3.8 | Built |
+| nodejs | 25.2.1 | Built |
 
-#### Build Steps
-```bash
-# In termux-packages directory
-./scripts/run-docker.sh ./build-package.sh bash
-./scripts/generate-bootstraps.sh
-```
-
-#### Files to Update
-- `app/build.gradle` - Update bootstrap URLs/checksums
-- Remove LD_LIBRARY_PATH workaround
+Build environment: Docker on 10.121.196.2
+Output: `/tmp/anthroid-packages/output/*.deb`
 
 ---
 
-## File Structure (Target)
+## File Structure (Current)
 
 ```
 app/src/main/java/com/anthroid/
@@ -164,13 +133,12 @@ app/src/main/java/com/anthroid/
 │   ├── TermuxService.java       # Background service (existing)
 │   └── TermuxInstaller.java     # Bootstrap installer (modified)
 ├── claude/
-│   ├── ClaudeActivity.kt        # Chat UI (new)
-│   ├── ClaudeViewModel.kt       # State management (new)
-│   ├── ClaudeCliClient.kt       # CLI wrapper (new)
+│   ├── ClaudeActivity.kt        # Chat UI (done)
+│   ├── ClaudeViewModel.kt       # State management (done)
+│   ├── ClaudeApiClient.kt       # HTTP API client (done)
+│   ├── ClaudeCliClient.kt       # CLI wrapper (todo)
 │   └── ui/
-│       ├── MessageAdapter.kt    # Message list (new)
-│       ├── MessageView.kt       # Message bubble (new)
-│       └── CodeBlockView.kt     # Code display (new)
+│       └── MessageAdapter.kt    # Message list (done)
 └── shared/
     └── ... (existing)
 ```
@@ -180,13 +148,30 @@ app/src/main/java/com/anthroid/
 ## API Keys & Authentication
 
 #### Options
-1. **User-provided**: User enters their Anthropic API key
-2. **OAuth**: Anthropic account login (if available)
-3. **Bundled**: Ship with limited trial key (not recommended)
+1. **User-provided**: User enters their Anthropic API key manually
+2. **QR Code Scan**: Scan QR code containing API configuration (recommended for quick setup)
+3. **OAuth**: Anthropic account login (if available)
+
+#### QR Code Configuration Format
+JSON-encoded configuration for quick setup via QR code scan:
+```json
+{
+  "base_url": "https://api.ppinfra.com/anthropic/",
+  "auth_token": "sk_xxx...",
+  "model": "pa/claude-sonnet-4-5-20250929"
+}
+```
+
+#### QR Scanner Implementation
+- Use ML Kit Barcode Scanning or ZXing library
+- Parse JSON and validate required fields
+- Store credentials in SharedPreferences
+- Update CLI wrapper script with new credentials
+- Regenerate wrapper script when credentials change
 
 #### Storage
-- Android Keystore for secure key storage
-- Encrypted SharedPreferences as fallback
+- SharedPreferences for API configuration
+- CLI wrapper script updated dynamically
 
 ---
 
@@ -212,9 +197,10 @@ app/src/main/java/com/anthroid/
 | Milestone | Target | Description |
 |-----------|--------|-------------|
 | M1 | Done | Terminal fork working |
-| M2 | - | Claude CLI runs in terminal |
-| M3 | - | ClaudeCliClient wrapper complete |
-| M4 | - | Basic chat UI functional |
+| M2 | Done | Claude CLI runs in terminal |
+| M2.5 | Done | CLI wrapper script working |
+| M3 | Next | ClaudeCliClient pipe mode integration |
+| M4 | - | QR code configuration scanner |
 | M5 | - | Tool execution working |
 | M6 | - | Production-ready release |
 
@@ -225,4 +211,4 @@ app/src/main/java/com/anthroid/
 - [Termux App](https://github.com/termux/termux-app)
 - [Termux Packages](https://github.com/termux/termux-packages)
 - [Claude CLI Documentation](https://docs.anthropic.com/claude-code)
-- [Android Terminal Emulator](https://github.com/nickoala/nicko-terminal)
+- [ML Kit Barcode Scanning](https://developers.google.com/ml-kit/vision/barcode-scanning)
