@@ -1,6 +1,5 @@
 package com.anthroid.claude
 
-import android.content.Context
 import android.os.Bundle
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -12,11 +11,11 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import android.widget.EditText
 import android.widget.ImageButton
-import android.widget.ProgressBar
 import android.widget.TextView
 import com.anthroid.BuildConfig
 import com.anthroid.R
 import com.anthroid.claude.ui.MessageAdapter
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -30,9 +29,7 @@ class ClaudeActivity : AppCompatActivity() {
     private lateinit var recyclerView: RecyclerView
     private lateinit var inputField: EditText
     private lateinit var sendButton: ImageButton
-    private lateinit var progressBar: ProgressBar
     private lateinit var statusText: TextView
-    private lateinit var streamingText: TextView
 
     private lateinit var messageAdapter: MessageAdapter
 
@@ -64,9 +61,7 @@ class ClaudeActivity : AppCompatActivity() {
         recyclerView = findViewById(R.id.messages_recycler_view)
         inputField = findViewById(R.id.input_field)
         sendButton = findViewById(R.id.send_button)
-        progressBar = findViewById(R.id.progress_bar)
         statusText = findViewById(R.id.status_text)
-        streamingText = findViewById(R.id.streaming_text)
 
         sendButton.setOnClickListener {
             sendMessage()
@@ -94,8 +89,8 @@ class ClaudeActivity : AppCompatActivity() {
 
     private fun observeViewModel() {
         lifecycleScope.launch {
-            viewModel.messages.collectLatest { messages ->
-                messageAdapter.submitList(messages)
+            viewModel.messages.collect { messages ->
+                messageAdapter.submitList(messages.toList())
                 if (messages.isNotEmpty()) {
                     recyclerView.scrollToPosition(messages.size - 1)
                 }
@@ -103,19 +98,7 @@ class ClaudeActivity : AppCompatActivity() {
         }
 
         lifecycleScope.launch {
-            viewModel.currentResponse.collectLatest { response ->
-                if (response.isNotEmpty()) {
-                    streamingText.visibility = View.VISIBLE
-                    streamingText.text = response
-                } else {
-                    streamingText.visibility = View.GONE
-                }
-            }
-        }
-
-        lifecycleScope.launch {
             viewModel.isProcessing.collectLatest { isProcessing ->
-                progressBar.visibility = if (isProcessing) View.VISIBLE else View.GONE
                 sendButton.isEnabled = !isProcessing
                 inputField.isEnabled = !isProcessing
             }

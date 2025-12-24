@@ -3,6 +3,7 @@ package com.anthroid.claude.ui
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
@@ -47,11 +48,19 @@ class MessageAdapter : ListAdapter<Message, MessageAdapter.MessageViewHolder>(Me
     class MessageViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val contentText: TextView = itemView.findViewById(R.id.message_content)
         private val timestampText: TextView = itemView.findViewById(R.id.message_timestamp)
+        private val streamingIndicator: ProgressBar? = itemView.findViewById(R.id.streaming_indicator)
 
         private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
 
         fun bind(message: Message) {
-            contentText.text = message.content
+            if (message.isStreaming && message.content.isEmpty()) {
+                // Show "thinking" state when streaming but no content yet
+                contentText.text = "..."
+                streamingIndicator?.visibility = View.VISIBLE
+            } else {
+                contentText.text = message.content
+                streamingIndicator?.visibility = if (message.isStreaming) View.VISIBLE else View.GONE
+            }
             timestampText.text = timeFormat.format(Date(message.timestamp))
         }
     }

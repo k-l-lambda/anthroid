@@ -48,6 +48,9 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
     // Current session job
     private var sessionJob: Job? = null
 
+    // Current streaming message ID
+    private var streamingMessageId: String? = null
+
     init {
         checkClaudeInstallation()
     }
@@ -84,7 +87,16 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             role = MessageRole.USER,
             content = content
         )
-        _messages.value = _messages.value + userMessage
+
+        // Add streaming assistant message placeholder
+        val assistantMessage = Message(
+            role = MessageRole.ASSISTANT,
+            content = "",
+            isStreaming = true
+        )
+        streamingMessageId = assistantMessage.id
+
+        _messages.value = _messages.value + userMessage + assistantMessage
 
         // Start processing
         _isProcessing.value = true
@@ -95,14 +107,11 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         sessionJob = viewModelScope.launch {
             try {
                 if (useCliMode) {
-                    // Use CLI client
-                    cliClient.startSession()
+                    // Use CLI client with streaming mode (--output-format stream-json)
+                    cliClient.chatStreaming(content)
                         .collect { event ->
                             handleEvent(event)
                         }
-                    // Send the message after session starts
-                    kotlinx.coroutines.delay(100)
-                    cliClient.sendMessage(content)
                 } else {
                     // Use HTTP API client
                     apiClient.chat(content)
@@ -129,10 +138,13 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
 
             is ClaudeEvent.Text -> {
                 _currentResponse.value = event.content
+                updateStreamingMessage(event.content)
             }
 
             is ClaudeEvent.TextDelta -> {
+                Log.d(TAG, "TextDelta received: ${event.content.take(50)}")
                 _currentResponse.value += event.content
+                updateStreamingMessage(_currentResponse.value)
             }
 
             is ClaudeEvent.ToolUse -> {
@@ -141,21 +153,16 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             }
 
             is ClaudeEvent.MessageEnd -> {
-                // Finalize the assistant message
-                if (_currentResponse.value.isNotEmpty()) {
-                    val assistantMessage = Message(
-                        role = MessageRole.ASSISTANT,
-                        content = _currentResponse.value
-                    )
-                    _messages.value = _messages.value + assistantMessage
-                    _currentResponse.value = ""
-                }
+                // Finalize the streaming message
+                finalizeStreamingMessage()
                 _isProcessing.value = false
             }
 
             is ClaudeEvent.Error -> {
                 Log.e(TAG, "Claude error: ${event.message}")
                 _error.value = event.message
+                // Remove empty streaming message on error
+                removeStreamingMessage()
             }
 
             is ClaudeEvent.SessionEnded -> {
@@ -163,6 +170,46 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 _isProcessing.value = false
             }
         }
+    }
+
+    /**
+     * Update the streaming message content.
+     */
+    private fun updateStreamingMessage(content: String) {
+        val msgId = streamingMessageId ?: return
+        _messages.value = _messages.value.map { msg ->
+            if (msg.id == msgId) {
+                msg.copy(content = content)
+            } else {
+                msg
+            }
+        }
+    }
+
+    /**
+     * Finalize the streaming message (mark as not streaming).
+     */
+    private fun finalizeStreamingMessage() {
+        val msgId = streamingMessageId ?: return
+        _messages.value = _messages.value.map { msg ->
+            if (msg.id == msgId) {
+                msg.copy(isStreaming = false)
+            } else {
+                msg
+            }
+        }
+        streamingMessageId = null
+        _currentResponse.value = ""
+    }
+
+    /**
+     * Remove the streaming message (on error).
+     */
+    private fun removeStreamingMessage() {
+        val msgId = streamingMessageId ?: return
+        _messages.value = _messages.value.filter { it.id != msgId }
+        streamingMessageId = null
+        _currentResponse.value = ""
     }
 
     /**
@@ -262,6 +309,7 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         _messages.value = emptyList()
         _currentResponse.value = ""
         apiClient.clearHistory()
+        cliClient.clearConversation()
     }
 
     override fun onCleared() {
@@ -277,7 +325,8 @@ data class Message(
     val id: String = java.util.UUID.randomUUID().toString(),
     val role: MessageRole,
     val content: String,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val isStreaming: Boolean = false
 )
 
 /**

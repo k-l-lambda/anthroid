@@ -24,6 +24,13 @@ class ClaudeCliClient(private val context: Context) {
     private var outputWriter: BufferedWriter? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
+    // Persistent session state
+    private var persistentProcess: Process? = null
+    private var persistentWriter: BufferedWriter? = null
+    private var persistentReader: InputStreamReader? = null
+    private var sessionActive = false
+    private var conversationId: String? = null
+
     /**
      * Check if Claude CLI is installed in the Termux environment.
      */
@@ -37,6 +44,289 @@ class ClaudeCliClient(private val context: Context) {
      */
     fun getClaudePath(): String {
         return "$PREFIX_PATH/bin/$CLAUDE_CMD"
+    }
+
+    /**
+     * Send a message using pipe mode (--print) and stream the response.
+     * This is simpler than interactive mode - just stdin/stdout.
+     *
+     * @param message The message to send to Claude
+     * @return Flow of ClaudeEvent objects with streaming response
+     */
+    fun chatPipe(message: String): Flow<ClaudeEvent> = channelFlow {
+        val env = buildEnvironment()
+        val claudePath = getClaudePath()
+
+        Log.i(TAG, "Starting Claude pipe mode for message: " + message.take(50) + "...")
+
+        try {
+            val processBuilder = ProcessBuilder(claudePath, "--print")
+                .directory(File("$PREFIX_PATH/.."))
+                .redirectErrorStream(false)
+
+            processBuilder.environment().putAll(env)
+
+            val proc = processBuilder.start()
+            process = proc
+
+            // Send message to stdin
+            val writer = BufferedWriter(OutputStreamWriter(proc.outputStream))
+            writer.write(message)
+            writer.close()
+
+            send(ClaudeEvent.MessageStart("pipe-" + System.currentTimeMillis()))
+
+            // Read stderr in background (for warnings)
+            val stderrJob = launch {
+                val reader = BufferedReader(InputStreamReader(proc.errorStream))
+                try {
+                    var line: String?
+                    while (reader.readLine().also { line = it } != null) {
+                        // Skip linker warnings
+                        if (line!!.contains("unused DT entry")) continue
+                        Log.w(TAG, "Claude stderr: $line")
+                    }
+                } catch (e: IOException) {
+                    if (isActive) {
+                        Log.e(TAG, "Error reading stderr", e)
+                    }
+                } finally {
+                    reader.close()
+                }
+            }
+
+            // Read stdout character by character for true streaming
+            val stdoutReader = BufferedReader(InputStreamReader(proc.inputStream))
+            val buffer = CharArray(64)
+            var charsRead: Int
+
+            try {
+                while (stdoutReader.read(buffer).also { charsRead = it } != -1) {
+                    val chunk = String(buffer, 0, charsRead)
+                    send(ClaudeEvent.TextDelta(chunk))
+                }
+            } catch (e: IOException) {
+                if (isActive) {
+                    Log.e(TAG, "Error reading stdout", e)
+                }
+            } finally {
+                stdoutReader.close()
+            }
+
+            // Wait for process to exit
+            val exitCode = proc.waitFor()
+            Log.i(TAG, "Claude pipe process exited with code: $exitCode")
+
+            stderrJob.cancelAndJoin()
+
+            send(ClaudeEvent.MessageEnd)
+            send(ClaudeEvent.SessionEnded(exitCode))
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to run Claude pipe mode", e)
+            send(ClaudeEvent.Error("Failed to run Claude: " + e.message))
+        } finally {
+            process = null
+        }
+
+        awaitClose { }
+    }.flowOn(Dispatchers.IO)
+
+    /**
+     * Send a message using streaming JSON mode for real-time response.
+     * Uses --output-format stream-json for true streaming.
+     *
+     * @param message The message to send to Claude
+     * @return Flow of ClaudeEvent objects with real-time streaming
+     */
+    fun chatStreaming(message: String): Flow<ClaudeEvent> = channelFlow {
+        val env = buildEnvironment()
+        val claudePath = getClaudePath()
+
+        Log.i(TAG, "Starting Claude streaming mode for message: " + message.take(50) + "...")
+
+        try {
+            val cmdArgs = mutableListOf(
+                claudePath,
+                "--output-format", "stream-json",
+                "--verbose",
+                "--include-partial-messages",
+                "--print"
+            )
+            // Add conversation flag to resume previous session (reduces latency)
+            conversationId?.let {
+                cmdArgs.add("--conversation")
+                cmdArgs.add(it)
+            }
+            cmdArgs.add(message)
+
+            val processBuilder = ProcessBuilder(cmdArgs)
+                .directory(File("$PREFIX_PATH/.."))
+                .redirectErrorStream(false)
+
+            processBuilder.environment().putAll(env)
+
+            val proc = processBuilder.start()
+            process = proc
+
+            // Close stdin immediately since message is passed as argument
+            proc.outputStream.close()
+
+            // Read stderr in background (for warnings)
+            val stderrJob = launch {
+                val reader = BufferedReader(InputStreamReader(proc.errorStream))
+                try {
+                    var line: String?
+                    while (reader.readLine().also { line = it } != null) {
+                        if (line!!.contains("unused DT entry")) continue
+                        Log.w(TAG, "Claude stderr: $line")
+                    }
+                } catch (e: IOException) {
+                    if (isActive) {
+                        Log.e(TAG, "Error reading stderr", e)
+                    }
+                } finally {
+                    reader.close()
+                }
+            }
+
+            // Read stdout character by character (unbuffered for real-time streaming)
+            val stdoutReader = InputStreamReader(proc.inputStream)
+            try {
+                val lineBuilder = StringBuilder()
+                var charCode: Int
+                while (stdoutReader.read().also { charCode = it } != -1) {
+                    if (charCode == '\n'.code) {
+                        val line = lineBuilder.toString()
+                        lineBuilder.clear()
+                        if (line.isNotBlank()) {
+                            Log.d(TAG, "Stream event: " + line.take(100))
+                            parseStreamEvent(line)?.let { event ->
+                                // Capture conversation ID from system event for session persistence
+                                if (event is ClaudeEvent.MessageStart && event.messageId != "unknown") {
+                                    // Parse session_id from system event for future reuse
+                                    try {
+                                        val json = JSONObject(line)
+                                        if (json.optString("type") == "system") {
+                                            val sessionId = json.optString("session_id", "")
+                                            if (sessionId.isNotEmpty()) {
+                                                conversationId = sessionId
+                                                Log.i(TAG, "Captured session ID: $sessionId")
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        // Ignore parsing errors
+                                    }
+                                }
+                                send(event)
+                            }
+                        }
+                    } else {
+                        lineBuilder.append(charCode.toChar())
+                    }
+                }
+                // Handle any remaining content
+                if (lineBuilder.isNotEmpty()) {
+                    val line = lineBuilder.toString()
+                    if (line.isNotBlank()) {
+                        parseStreamEvent(line)?.let { event ->
+                            send(event)
+                        }
+                    }
+                }
+            } catch (e: IOException) {
+                if (isActive) {
+                    Log.e(TAG, "Error reading stdout", e)
+                }
+            } finally {
+                stdoutReader.close()
+            }
+
+            val exitCode = proc.waitFor()
+            Log.i(TAG, "Claude streaming process exited with code: $exitCode")
+
+            stderrJob.cancelAndJoin()
+
+            send(ClaudeEvent.MessageEnd)
+            send(ClaudeEvent.SessionEnded(exitCode))
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to run Claude streaming mode", e)
+            send(ClaudeEvent.Error("Failed to run Claude: " + e.message))
+        } finally {
+            process = null
+        }
+
+        awaitClose { }
+    }.flowOn(Dispatchers.IO)
+
+    /**
+     * Parse streaming JSON event from Claude CLI.
+     */
+    private fun parseStreamEvent(line: String): ClaudeEvent? {
+        return try {
+            val json = JSONObject(line)
+            val type = json.optString("type", "")
+
+            when (type) {
+                "system" -> {
+                    // Init event with session info
+                    val sessionId = json.optString("session_id", "unknown")
+                    ClaudeEvent.MessageStart(sessionId)
+                }
+                "stream_event" -> {
+                    // Real-time streaming event with nested event object
+                    val event = json.optJSONObject("event") ?: return null
+                    val eventType = event.optString("type", "")
+                    Log.d(TAG, "stream_event type: $eventType")
+                    when (eventType) {
+                        "content_block_delta" -> {
+                            val delta = event.optJSONObject("delta")
+                            val deltaType = delta?.optString("type", "")
+                            Log.d(TAG, "delta type: $deltaType")
+                            if (deltaType == "text_delta") {
+                                val text = delta.optString("text", "")
+                                Log.d(TAG, "text_delta text: '$text'")
+                                if (text.isNotEmpty()) {
+                                    ClaudeEvent.TextDelta(text)
+                                } else null
+                            } else null
+                        }
+                        "message_start" -> {
+                            val msgObj = event.optJSONObject("message")
+                            ClaudeEvent.MessageStart(msgObj?.optString("id", "unknown") ?: "unknown")
+                        }
+                        "message_stop" -> ClaudeEvent.MessageEnd
+                        else -> null
+                    }
+                }
+                "assistant" -> {
+                    // Complete message (skip if we're getting deltas)
+                    null
+                }
+                "result" -> {
+                    // Final result
+                    val isError = json.optBoolean("is_error", false)
+                    if (isError) {
+                        val result = json.optString("result", "Unknown error")
+                        ClaudeEvent.Error(result)
+                    } else {
+                        null
+                    }
+                }
+                "error" -> {
+                    val error = json.optJSONObject("error")
+                    ClaudeEvent.Error(error?.optString("message", "Unknown error") ?: "Unknown error")
+                }
+                else -> {
+                    Log.d(TAG, "Unknown stream event type: $type")
+                    null
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to parse stream event: $line", e)
+            null
+        }
     }
 
     /**
@@ -179,13 +469,24 @@ class ClaudeCliClient(private val context: Context) {
         try {
             outputWriter?.close()
             process?.destroy()
+            persistentProcess?.destroy()
         } catch (e: Exception) {
             Log.e(TAG, "Error closing Claude client", e)
         } finally {
             outputWriter = null
             process = null
+            persistentProcess = null
+            sessionActive = false
         }
         scope.cancel()
+    }
+
+    /**
+     * Clear conversation history for a fresh start.
+     */
+    fun clearConversation() {
+        conversationId = null
+        Log.i(TAG, "Conversation cleared")
     }
 
     /**
