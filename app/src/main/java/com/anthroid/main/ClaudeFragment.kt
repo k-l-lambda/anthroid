@@ -24,7 +24,7 @@ import kotlinx.coroutines.launch
 
 /**
  * Fragment for Claude AI chat interface.
- * Extracted from ClaudeActivity for use in ViewPager2.
+ * Default screen when app opens.
  */
 class ClaudeFragment : Fragment() {
 
@@ -48,8 +48,8 @@ class ClaudeFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // Initialize ViewModel
-        viewModel = ViewModelProvider(this)[ClaudeViewModel::class.java]
+        // Initialize ViewModel - scoped to Activity to survive fragment recreation
+        viewModel = ViewModelProvider(requireActivity())[ClaudeViewModel::class.java]
 
         // Configure API from shared preferences
         configureApiFromPrefs()

@@ -20,4 +20,7 @@
 
     <color name="blue_link_light">#0969DA</color>
     <color name="blue_link_dark">#58A6FF</color>
+
+    <color name="gem_blue_400">#4169E1</color>
+    <color name="gem_blue_800">#0F52BA</color>
 </resources>
