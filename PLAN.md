@@ -65,30 +65,55 @@ Native Android chat interface for Claude with swipe navigation.
 
 ---
 
+
 ## In Progress / Planned Phases
 
-### Phase 4: QR Code Configuration (Next)
+### Phase 4: QR Code Configuration (Complete)
 
 Quick setup via QR code scan for API configuration.
 
-#### QR Code Format
-```json
-{
-  "base_url": "https://api.ppinfra.com/anthropic/",
-  "auth_token": "sk_xxx...",
-  "model": "pa/claude-sonnet-4-5-20250929"
-}
-```
+#### Implementation (Done - Dec 2025)
+- [x] Web-based QR generator (tools/qr-generator.html)
+- [x] set_wrapper script for easy CLI configuration
+- [x] QR scanner button in terminal drawer
+- [x] ML Kit Barcode Scanning integration
+- [x] CameraX for camera preview
+- [x] Scanned text inserted to terminal via paste() (safe, no auto-execute)
 
-#### Implementation
-- [ ] Integrate ML Kit Barcode Scanning or ZXing library
-- [ ] Parse JSON and validate required fields
-- [ ] Store credentials in SharedPreferences
-- [ ] Update CLI wrapper script with new credentials
+#### Usage
+```bash
+set_wrapper https://api.ppinfra.com/v3/openai/ sk_xxx claude-sonnet-4-5-20250929
+```
 
 ---
 
-### Phase 5: Tool Integration
+### Phase 5: Camera Input for Chat (Next)
+
+Take photos to add visual context to chat messages.
+
+#### Features
+- Camera button in chat input area
+- Photo preview before sending
+- Multiple photos per message support
+- Photos sent as base64 encoded images with next message
+
+#### Implementation Tasks
+- [ ] Add camera button to ClaudeFragment input bar
+- [ ] CameraX integration for photo capture
+- [ ] Photo preview/thumbnail display above input
+- [ ] Remove photo option (X button on preview)
+- [ ] Encode photos as base64 for Claude API
+- [ ] Update ClaudeCliClient to support image content
+- [ ] Gallery picker as alternative to camera
+
+#### Technical Notes
+- Claude CLI --print mode supports multimodal input
+- Images need to be base64 encoded in JSON format
+- Max image size considerations for API limits
+
+---
+
+### Phase 6: Tool Integration
 
 Enable Claude to execute terminal commands.
 
@@ -104,7 +129,7 @@ Enable Claude to execute terminal commands.
 
 ---
 
-### Phase 6: Voice I/O
+### Phase 7: Voice I/O
 
 Voice input and output for hands-free interaction.
 
@@ -132,7 +157,7 @@ Voice input and output for hands-free interaction.
 
 ---
 
-### Phase 7: Production Release
+### Phase 8: Production Release
 
 Final polish and release preparation.
 
@@ -151,13 +176,13 @@ app/src/main/java/com/anthroid/
 ├── app/
 │   ├── TermuxActivity.java      # Terminal UI
 │   ├── TermuxService.java       # Background service
-│   └── TermuxInstaller.java     # Bootstrap installer
+│   ├── TermuxInstaller.java     # Bootstrap installer
+│   └── QRScannerActivity.kt     # QR code scanner
 ├── main/
 │   ├── MainPagerActivity.kt     # Main launcher with ViewPager2
 │   ├── ClaudeFragment.kt        # Chat UI fragment
 │   └── TerminalFragment.kt      # Terminal launcher fragment
 ├── claude/
-│   ├── ClaudeActivity.kt        # Standalone chat (backup)
 │   ├── ClaudeViewModel.kt       # State management
 │   ├── ClaudeApiClient.kt       # HTTP API client
 │   ├── ClaudeCliClient.kt       # CLI wrapper
@@ -176,10 +201,11 @@ app/src/main/java/com/anthroid/
 | M1 | ✅ Done | Terminal fork working |
 | M2 | ✅ Done | Claude CLI runs in terminal |
 | M3 | ✅ Done | Chat UI with ViewPager2 navigation |
-| M4 | 🔄 Next | QR code configuration scanner |
-| M5 | ⏳ | Tool execution working |
-| M6 | ⏳ | Voice I/O (STT + TTS) |
-| M7 | ⏳ | Production-ready release |
+| M4 | ✅ Done | QR code configuration scanner |
+| M5 | 🔄 Next | Camera input for chat |
+| M6 | ⏳ | Tool execution working |
+| M7 | ⏳ | Voice I/O (STT + TTS) |
+| M8 | ⏳ | Production-ready release |
 
 ---
 
