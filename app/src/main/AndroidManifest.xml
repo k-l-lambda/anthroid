@@ -36,6 +36,10 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
     <application
         android:name=".app.TermuxApplication"
@@ -127,6 +131,12 @@
         </activity>
 
         <!-- ClaudeActivity removed - now using ClaudeFragment in MainPagerActivity -->
+
+        <activity
+            android:name=".app.QRScannerActivity"
+            android:exported="false"
+            android:label="Scan QR Code"
+            android:theme="@style/Theme.TermuxApp.DayNight.DarkActionBar" />
 
         <activity-alias
             android:name=".app.api.file.FileShareReceiverActivity"

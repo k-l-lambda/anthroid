@@ -155,7 +155,7 @@ class ClaudeCliClient(private val context: Context) {
             )
             // Add conversation flag to resume previous session (reduces latency)
             conversationId?.let {
-                cmdArgs.add("--conversation")
+                cmdArgs.add("--resume")
                 cmdArgs.add(it)
             }
             cmdArgs.add(message)
@@ -342,7 +342,7 @@ class ClaudeCliClient(private val context: Context) {
             "--output-format", "stream-json"
         )
         conversationId?.let {
-            cmdArgs.add("--conversation")
+            cmdArgs.add("--resume")
             cmdArgs.add(it)
         }
 

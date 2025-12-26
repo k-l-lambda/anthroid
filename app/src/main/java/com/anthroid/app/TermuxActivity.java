@@ -194,6 +194,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private static final String ARG_ACTIVITY_RECREATED = "activity_recreated";
 
     private static final String LOG_TAG = "TermuxActivity";
+    private static final int REQUEST_CODE_QR_SCAN = 1001;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -249,6 +250,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         setSettingsButtonView();
 
         setClaudeButtonView();
+
+        setQRScanButtonView();
 
         setNewSessionButtonView();
 
@@ -391,6 +394,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         Logger.logDebug(LOG_TAG, "onServiceConnected");
 
         mTermuxService = ((TermuxService.LocalBinder) service).service;
+
+        // Ensure set_wrapper script exists (for users updating from older versions)
+        TermuxInstaller.ensureSetWrapperScript(this);
 
         setTermuxSessionsListView();
 
@@ -577,6 +583,15 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         ImageButton claudeButton = findViewById(R.id.claude_button);
         claudeButton.setOnClickListener(v -> {
             ActivityUtils.startActivity(this, new Intent(this, MainPagerActivity.class));
+            getDrawer().closeDrawers();
+        });
+    }
+
+    private void setQRScanButtonView() {
+        ImageButton qrButton = findViewById(R.id.qr_scan_button);
+        qrButton.setOnClickListener(v -> {
+            Intent intent = new Intent(this, QRScannerActivity.class);
+            startActivityForResult(intent, REQUEST_CODE_QR_SCAN);
             getDrawer().closeDrawers();
         });
     }
@@ -806,6 +821,16 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         Logger.logVerbose(LOG_TAG, "onActivityResult: requestCode: " + requestCode + ", resultCode: "  + resultCode + ", data: "  + IntentUtils.getIntentString(data));
         if (requestCode == PermissionUtils.REQUEST_GRANT_STORAGE_PERMISSION) {
             requestStoragePermission(true);
+        } else if (requestCode == REQUEST_CODE_QR_SCAN && resultCode == RESULT_OK && data != null) {
+            String qrText = data.getStringExtra(QRScannerActivity.EXTRA_QR_TEXT);
+            if (qrText != null && !qrText.isEmpty()) {
+                // Insert scanned text into terminal using paste() for safe insertion
+                TerminalSession session = getCurrentSession();
+                if (session != null && session.isRunning()) {
+                    session.getEmulator().paste(qrText);
+                    Logger.showToast(this, "QR code inserted to terminal", false);
+                }
+            }
         }
     }
 

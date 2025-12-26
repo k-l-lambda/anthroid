@@ -266,6 +266,9 @@ final class TermuxInstaller {
                     // Recreate env file since termux prefix was wiped earlier
                     TermuxShellEnvironment.writeEnvironmentToFile(activity);
 
+                    // Create set_wrapper utility script for easy Claude CLI configuration
+                    ensureSetWrapperScript(activity);
+
                     activity.runOnUiThread(whenDone);
 
                 } catch (final Exception e) {
@@ -418,6 +421,34 @@ final class TermuxInstaller {
 
     private static Error ensureDirectoryExists(File directory) {
         return FileUtils.createDirectoryFile(directory.getAbsolutePath());
+    }
+
+
+    /**
+     * Creates the set_wrapper utility script in $PREFIX/bin/ for easy Claude CLI configuration.
+     * Usage: set_wrapper <base_url> <auth_token> <model>
+     */
+    public static void ensureSetWrapperScript(Context context) {
+        try {
+            File binDir = new File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH);
+            File setWrapperFile = new File(binDir, "set_wrapper");
+
+            // Read script content from assets
+            java.io.InputStream is = context.getAssets().open("set_wrapper.sh");
+            byte[] buffer = new byte[is.available()];
+            is.read(buffer);
+            is.close();
+
+            // Write to bin directory
+            FileOutputStream fos = new FileOutputStream(setWrapperFile);
+            fos.write(buffer);
+            fos.close();
+
+            Os.chmod(setWrapperFile.getAbsolutePath(), 0700);
+            Logger.logInfo(LOG_TAG, "Created set_wrapper script at " + setWrapperFile.getAbsolutePath());
+        } catch (Exception e) {
+            Logger.logWarn(LOG_TAG, "Failed to create set_wrapper script: " + e.getMessage());
+        }
     }
 
     public static byte[] loadZipBytes() {
