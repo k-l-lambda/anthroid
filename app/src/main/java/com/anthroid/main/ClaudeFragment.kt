@@ -1,6 +1,7 @@
 package com.anthroid.main
 
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -27,6 +28,11 @@ import kotlinx.coroutines.launch
  * Default screen when app opens.
  */
 class ClaudeFragment : Fragment() {
+
+    companion object {
+        private const val TAG = "ClaudeFragment"
+        fun newInstance(): ClaudeFragment = ClaudeFragment()
+    }
 
     private lateinit var viewModel: ClaudeViewModel
 
@@ -103,6 +109,10 @@ class ClaudeFragment : Fragment() {
     private fun observeViewModel() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.messages.collect { messages ->
+                Log.d(TAG, "messages.collect: size=${messages.size}")
+                messages.forEachIndexed { i, m ->
+                    Log.d(TAG, "  [$i] id=${m.id.take(8)}, contentLen=${m.content.length}, streaming=${m.isStreaming}")
+                }
                 messageAdapter.submitList(messages.toList())
                 if (messages.isNotEmpty()) {
                     recyclerView.scrollToPosition(messages.size - 1)
@@ -148,7 +158,4 @@ class ClaudeFragment : Fragment() {
         }
     }
 
-    companion object {
-        fun newInstance(): ClaudeFragment = ClaudeFragment()
-    }
 }

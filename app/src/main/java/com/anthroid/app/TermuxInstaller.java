@@ -426,12 +426,19 @@ final class TermuxInstaller {
 
     /**
      * Creates the set_wrapper utility script in $PREFIX/bin/ for easy Claude CLI configuration.
+     * Only creates if it doesn't already exist to preserve user configuration.
      * Usage: set_wrapper <base_url> <auth_token> <model>
      */
     public static void ensureSetWrapperScript(Context context) {
         try {
             File binDir = new File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH);
             File setWrapperFile = new File(binDir, "set_wrapper");
+
+            // Skip if file already exists to preserve user configuration
+            if (setWrapperFile.exists()) {
+                Logger.logInfo(LOG_TAG, "set_wrapper script already exists, skipping");
+                return;
+            }
 
             // Read script content from assets
             java.io.InputStream is = context.getAssets().open("set_wrapper.sh");

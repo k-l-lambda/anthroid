@@ -143,6 +143,18 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
 
             is ClaudeEvent.TextDelta -> {
                 Log.d(TAG, "TextDelta received: ${event.content.take(50)}")
+                // If streamingMessageId is null (e.g., after tool use), create new streaming message
+                if (streamingMessageId == null) {
+                    Log.d(TAG, "Creating new streaming message for post-tool response")
+                    val assistantMessage = Message(
+                        role = MessageRole.ASSISTANT,
+                        content = "",
+                        isStreaming = true
+                    )
+                    streamingMessageId = assistantMessage.id
+                    _messages.value = _messages.value + assistantMessage
+                    _currentResponse.value = ""
+                }
                 _currentResponse.value += event.content
                 updateStreamingMessage(_currentResponse.value)
             }
@@ -153,9 +165,19 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             }
 
             is ClaudeEvent.MessageEnd -> {
-                // Finalize the streaming message
-                finalizeStreamingMessage()
-                _isProcessing.value = false
+                // Check if current streaming message has content
+                val msgId = streamingMessageId
+                val currentMsg = if (msgId != null) _messages.value.find { it.id == msgId } else null
+                if (currentMsg != null && currentMsg.content.isEmpty()) {
+                    // Remove empty streaming message (happens during tool use)
+                    Log.d(TAG, "MessageEnd: removing empty streaming message")
+                    removeStreamingMessage()
+                } else {
+                    // Finalize the streaming message with content
+                    Log.d(TAG, "MessageEnd: finalizing message with content")
+                    finalizeStreamingMessage()
+                    _isProcessing.value = false
+                }
             }
 
             is ClaudeEvent.Error -> {
@@ -176,14 +198,23 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
      * Update the streaming message content.
      */
     private fun updateStreamingMessage(content: String) {
-        val msgId = streamingMessageId ?: return
-        _messages.value = _messages.value.map { msg ->
+        val msgId = streamingMessageId
+        if (msgId == null) {
+            Log.w(TAG, "updateStreamingMessage: streamingMessageId is null!")
+            return
+        }
+        Log.d(TAG, "updateStreamingMessage: msgId=${msgId.take(8)}, contentLen=${content.length}")
+        val oldList = _messages.value
+        val newList = oldList.map { msg ->
             if (msg.id == msgId) {
+                Log.d(TAG, "updateStreamingMessage: found msg, updating")
                 msg.copy(content = content)
             } else {
                 msg
             }
         }
+        _messages.value = newList
+        Log.d(TAG, "updateStreamingMessage: done, listSize=${newList.size}")
     }
 
     /**
@@ -217,7 +248,8 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
      */
     private fun handleToolUse(event: ClaudeEvent.ToolUse) {
         viewModelScope.launch {
-            val result = when (event.name) {
+            val result = when (event.name.lowercase()) {
+                "run_termux" -> executeRunTermuxTool(event.input)
                 "bash" -> executeBashTool(event.input)
                 "read" -> executeReadTool(event.input)
                 "write" -> executeWriteTool(event.input)
@@ -229,22 +261,58 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
 
     /**
      * Execute bash command tool.
+     * Uses Termux shell with proper environment.
      */
     private fun executeBashTool(input: String): String {
         return try {
             val command = org.json.JSONObject(input).optString("command", "")
             Log.i(TAG, "Executing bash: $command")
 
-            val process = ProcessBuilder("sh", "-c", command)
-                .directory(java.io.File("/data/data/com.anthroid/files/home"))
-                .redirectErrorStream(true)
-                .start()
+            // Try Termux terminal bridge first
+            if (TerminalCommandBridge.isAvailable()) {
+                Log.i(TAG, "Using Termux terminal for bash command")
+                // Note: This runs synchronously in the coroutine context
+                kotlinx.coroutines.runBlocking {
+                    val result = TerminalCommandBridge.executeCommand(
+                        command = command,
+                        timeout = 60000
+                    )
+                    result.toToolResult()
+                }
+            } else {
+                // Fallback to direct execution with Termux shell
+                Log.i(TAG, "Termux terminal not available, using direct execution")
+                val termuxBin = "/data/data/com.anthroid/files/usr/bin"
+                val termuxHome = "/data/data/com.anthroid/files/home"
+                val termuxLib = "/data/data/com.anthroid/files/usr/lib"
 
-            val output = process.inputStream.bufferedReader().readText()
-            val exitCode = process.waitFor()
+                val env = arrayOf(
+                    "HOME=$termuxHome",
+                    "PREFIX=/data/data/com.anthroid/files/usr",
+                    "PATH=$termuxBin",
+                    "LD_LIBRARY_PATH=$termuxLib",
+                    "LANG=en_US.UTF-8",
+                    "TERM=xterm-256color"
+                )
 
-            if (exitCode == 0) output else "Exit code: $exitCode\n$output"
+                val process = Runtime.getRuntime().exec(
+                    arrayOf("$termuxBin/bash", "-c", command),
+                    env,
+                    java.io.File(termuxHome)
+                )
+
+                val output = process.inputStream.bufferedReader().readText()
+                val errorOutput = process.errorStream.bufferedReader().readText()
+                val exitCode = process.waitFor()
+
+                if (exitCode == 0) {
+                    output.ifEmpty { "(no output)" }
+                } else {
+                    "Exit code: $exitCode\n$output$errorOutput"
+                }
+            }
         } catch (e: Exception) {
+            Log.e(TAG, "Bash execution failed", e)
             "Error: ${e.message}"
         }
     }
@@ -279,6 +347,41 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             file.writeText(content)
             "File written successfully: $path"
         } catch (e: Exception) {
+            "Error: ${e.message}"
+        }
+    }
+
+
+    /**
+     * Execute command in Termux terminal.
+     * Shows command in terminal and captures output.
+     */
+    private suspend fun executeRunTermuxTool(input: String): String {
+        return try {
+            val json = org.json.JSONObject(input)
+            val command = json.optString("command", "")
+            val sessionId = if (json.has("session_id")) json.optString("session_id") else null
+            val timeout = json.optLong("timeout", 30000)
+
+            if (command.isEmpty()) {
+                return "Error: command is required"
+            }
+
+            if (!TerminalCommandBridge.isAvailable()) {
+                return "Error: Terminal not available. Please open Termux terminal first."
+            }
+
+            Log.i(TAG, "run_termux: $command (session: ${sessionId ?: "current"})")
+
+            val result = TerminalCommandBridge.executeCommand(
+                command = command,
+                sessionId = sessionId,
+                timeout = timeout
+            )
+
+            result.toToolResult()
+        } catch (e: Exception) {
+            Log.e(TAG, "run_termux failed", e)
             "Error: ${e.message}"
         }
     }

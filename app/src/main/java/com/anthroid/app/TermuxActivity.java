@@ -42,6 +42,7 @@ import com.anthroid.shared.termux.TermuxConstants.TERMUX_APP.TERMUX_ACTIVITY;
 import com.anthroid.app.activities.HelpActivity;
 import com.anthroid.app.activities.SettingsActivity;
 import com.anthroid.main.MainPagerActivity;
+import com.anthroid.claude.TerminalCommandBridge;
 import com.anthroid.shared.termux.crash.TermuxCrashUtils;
 import com.anthroid.shared.termux.settings.preferences.TermuxAppSharedPreferences;
 import com.anthroid.app.terminal.TermuxSessionsListViewController;
@@ -395,6 +396,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         mTermuxService = ((TermuxService.LocalBinder) service).service;
 
+        // Register terminal command bridge for Claude tool support
+        TerminalCommandBridge.INSTANCE.register(mTermuxService, this::getCurrentSession);
+
         // Ensure set_wrapper script exists (for users updating from older versions)
         TermuxInstaller.ensureSetWrapperScript(this);
 
@@ -441,6 +445,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     @Override
     public void onServiceDisconnected(ComponentName name) {
         Logger.logDebug(LOG_TAG, "onServiceDisconnected");
+
+        // Unregister terminal command bridge
+        TerminalCommandBridge.INSTANCE.unregister();
 
         // Respect being stopped from the {@link TermuxService} notification action.
         finishActivityIfNotFinishing();

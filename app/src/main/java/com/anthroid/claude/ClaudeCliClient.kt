@@ -31,6 +31,11 @@ class ClaudeCliClient(private val context: Context) {
     private var sessionActive = false
     private var conversationId: String? = null
 
+    // Tool input accumulator for streaming tool_use events
+    private var pendingToolId: String? = null
+    private var pendingToolName: String? = null
+    private val pendingToolInput = StringBuilder()
+
     /**
      * Check if Claude CLI is installed in the Termux environment.
      */
@@ -284,19 +289,56 @@ class ClaudeCliClient(private val context: Context) {
                             val delta = event.optJSONObject("delta")
                             val deltaType = delta?.optString("type", "")
                             Log.d(TAG, "delta type: $deltaType")
-                            if (deltaType == "text_delta") {
-                                val text = delta.optString("text", "")
-                                Log.d(TAG, "text_delta text: '$text'")
-                                if (text.isNotEmpty()) {
-                                    ClaudeEvent.TextDelta(text)
-                                } else null
-                            } else null
+                            when (deltaType) {
+                                "text_delta" -> {
+                                    val text = delta?.optString("text", "") ?: ""
+                                    Log.d(TAG, "text_delta text: '$text'")
+                                    if (text.isNotEmpty()) ClaudeEvent.TextDelta(text) else null
+                                }
+                                "input_json_delta" -> {
+                                    // Accumulate tool input JSON chunks
+                                    val partialJson = delta?.optString("partial_json", "") ?: ""
+                                    if (partialJson.isNotEmpty()) {
+                                        pendingToolInput.append(partialJson)
+                                        Log.d(TAG, "Accumulated tool input: ${pendingToolInput.length} chars")
+                                    }
+                                    null  // Don't emit event yet, wait for content_block_stop
+                                }
+                                else -> null
+                            }
                         }
                         "message_start" -> {
                             val msgObj = event.optJSONObject("message")
                             ClaudeEvent.MessageStart(msgObj?.optString("id", "unknown") ?: "unknown")
                         }
                         "message_stop" -> ClaudeEvent.MessageEnd
+                        "content_block_start" -> {
+                            val contentBlock = event.optJSONObject("content_block")
+                            val blockType = contentBlock?.optString("type", "")
+                            if (blockType == "tool_use") {
+                                // Save tool info, input will come in input_json_delta events
+                                pendingToolId = contentBlock.optString("id", "")
+                                pendingToolName = contentBlock.optString("name", "")
+                                pendingToolInput.clear()
+                                Log.i(TAG, "Tool use started: $pendingToolName (id: $pendingToolId)")
+                                null  // Don't emit yet, wait for input and content_block_stop
+                            } else if (blockType == "text") {
+                                null  // Text blocks are handled via text_delta
+                            } else null
+                        }
+                        "content_block_stop" -> {
+                            // Emit tool use event now that we have complete input
+                            if (pendingToolId != null && pendingToolName != null) {
+                                val toolId = pendingToolId!!
+                                val toolName = pendingToolName!!
+                                val toolInput = if (pendingToolInput.isNotEmpty()) pendingToolInput.toString() else "{}"
+                                Log.i(TAG, "Tool use complete: $toolName with input: ${toolInput.take(100)}")
+                                pendingToolId = null
+                                pendingToolName = null
+                                pendingToolInput.clear()
+                                ClaudeEvent.ToolUse(toolId, toolName, toolInput)
+                            } else null
+                        }
                         else -> null
                     }
                 }
