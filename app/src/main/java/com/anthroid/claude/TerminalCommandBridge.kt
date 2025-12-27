@@ -86,19 +86,24 @@ object TerminalCommandBridge {
 
         // Generate unique marker for output detection
         val marker = "===ANTHROID_END_${UUID.randomUUID().toString().take(8)}==="
+        Log.d(TAG, "Using marker: $marker")
 
         // Get current transcript length before command
         val transcriptBefore = ShellUtils.getTerminalSessionTranscriptText(session, true, false)
         val startPos = transcriptBefore?.length ?: 0
+        Log.d(TAG, "Transcript before length: $startPos")
 
         // Execute command with end marker
         // Using paste() which handles bracketed paste mode
         val fullCommand = "$command; echo '$marker'\n"
+        Log.d(TAG, "Sending command via paste()")
+        // paste() converts newline to carriage return and handles bracketed paste mode
         session.emulator.paste(fullCommand)
 
         // Wait for marker to appear in output
         val startTime = System.currentTimeMillis()
         var output: String? = null
+        var lastLogTime = 0L
 
         while (System.currentTimeMillis() - startTime < timeout) {
             delay(100) // Check every 100ms
@@ -107,6 +112,16 @@ object TerminalCommandBridge {
             val newContent = if (transcriptNow.length > startPos) {
                 transcriptNow.substring(startPos)
             } else ""
+
+            // Log progress every 2 seconds
+            val now = System.currentTimeMillis()
+            if (now - lastLogTime > 2000) {
+                Log.d(TAG, "Waiting... newContent len=${newContent.length}, hasMarker=${newContent.contains(marker)}")
+                if (newContent.isNotEmpty() && newContent.length < 500) {
+                    Log.d(TAG, "Content: $newContent")
+                }
+                lastLogTime = now
+            }
 
             if (newContent.contains(marker)) {
                 // Extract output before marker
