@@ -461,10 +461,6 @@ final class TermuxInstaller {
         }
     }
 
-    /**
-     * Creates a first-boot script that installs default packages (openssh, etc.).
-     * The script runs once on first terminal session and then deletes itself.
-     */
     private static void createFirstBootScript() {
         try {
             File homeDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH);
@@ -475,6 +471,10 @@ final class TermuxInstaller {
             sb.append("#!/data/data/com.anthroid/files/usr/bin/bash\n");
             sb.append("# First-boot script - installs default packages\n");
             sb.append("# This script runs once and deletes itself\n");
+            sb.append("\n");
+            sb.append("export PREFIX=/data/data/com.anthroid/files/usr\n");
+            sb.append("export PATH=$PREFIX/bin:$PATH\n");
+            sb.append("export HOME=/data/data/com.anthroid/files/home\n");
             sb.append("\n");
             sb.append("echo 'Installing default packages...'\n");
             sb.append("yes | pkg update\n");
