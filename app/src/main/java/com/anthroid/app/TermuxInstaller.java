@@ -470,14 +470,15 @@ final class TermuxInstaller {
             File homeDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH);
             File firstBootScript = new File(homeDir, ".first_boot.sh");
 
-            // Create the first-boot script
+            // Create the first-boot script using pkg (handles keyring automatically)
             StringBuilder sb = new StringBuilder();
             sb.append("#!/data/data/com.anthroid/files/usr/bin/bash\n");
             sb.append("# First-boot script - installs default packages\n");
             sb.append("# This script runs once and deletes itself\n");
             sb.append("\n");
             sb.append("echo 'Installing default packages...'\n");
-            sb.append("apt update && apt install -y openssh\n");
+            sb.append("yes | pkg update\n");
+            sb.append("pkg install -y openssh\n");
             sb.append("\n");
             sb.append("# Remove this script after execution\n");
             sb.append("rm -f ~/.first_boot.sh\n");
@@ -509,7 +510,7 @@ final class TermuxInstaller {
         }
     }
 
-    public static byte[] loadZipBytes() {
+public static byte[] loadZipBytes() {
         // Only load the shared library when necessary to save memory usage.
         System.loadLibrary("termux-bootstrap");
         return getZip();
