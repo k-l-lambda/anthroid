@@ -546,7 +546,8 @@ class ClaudeCliClient(private val context: Context) {
             "LD_LIBRARY_PATH" to "$PREFIX_PATH/lib",
             "TMPDIR" to "$PREFIX_PATH/tmp",
             "LANG" to "en_US.UTF-8",
-            "TERM" to "xterm-256color"
+            "TERM" to "xterm-256color",
+            "OPENSSL_CONF" to "$PREFIX_PATH/etc/tls/openssl.cnf"
         )
     }
 
