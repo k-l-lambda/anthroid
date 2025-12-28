@@ -4,9 +4,10 @@ import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
+import android.widget.EditText
+import androidx.appcompat.app.AlertDialog
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
-import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
@@ -156,6 +157,35 @@ class ClaudeFragment : Fragment() {
             viewModel.sendMessage(message)
             inputField.text.clear()
         }
+    }
+
+
+
+    /**
+     * Show dialog to configure API key for Android tools support.
+     */
+    fun showApiConfigDialog() {
+        val prefs = requireActivity().getSharedPreferences("claude_config", android.content.Context.MODE_PRIVATE)
+        val currentKey = prefs.getString("api_key", "") ?: ""
+        
+        val input = EditText(requireContext()).apply {
+            hint = "sk-ant-api03-..."
+            setText(currentKey)
+            setPadding(48, 32, 48, 32)
+        }
+        
+        AlertDialog.Builder(requireContext())
+            .setTitle("Configure Claude API")
+            .setMessage("Enter your Anthropic API key to enable Android tools (notification, location, calendar, etc.)")
+            .setView(input)
+            .setPositiveButton("Save") { _, _ ->
+                val key = input.text.toString().trim()
+                prefs.edit().putString("api_key", key).apply()
+                configureApiFromPrefs()
+                viewModel.checkClaudeInstallation()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
 }

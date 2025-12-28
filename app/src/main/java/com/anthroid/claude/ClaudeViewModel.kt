@@ -21,6 +21,7 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
 
     private val cliClient = ClaudeCliClient(application)
     private val apiClient = ClaudeApiClient(application)
+    private val androidTools = AndroidTools(application)
 
     // Chat messages
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
@@ -254,6 +255,15 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 "bash", "run_termux" -> json.optString("command", event.input)
                 "read" -> json.optString("file_path", event.input)
                 "write" -> json.optString("file_path", event.input)
+                "open_url" -> json.optString("url", event.input)
+                "launch_app", "get_app_info" -> json.optString("package", event.input)
+                "show_notification" -> json.optString("title", "") + ": " + json.optString("message", event.input)
+                "geocode" -> json.optString("address", event.input)
+                "reverse_geocode" -> "${json.optDouble("latitude")}, ${json.optDouble("longitude")}"
+                "get_location" -> json.optString("provider", "network")
+                "query_calendar" -> "next ${json.optInt("days_ahead", 7)} days"
+                "add_calendar_event" -> json.optString("title", event.input)
+                "query_media" -> json.optString("type", "images")
                 else -> event.input
             }
         } catch (e: Exception) {
@@ -270,11 +280,12 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         _messages.value = _messages.value + toolMessage
 
         viewModelScope.launch {
-            val result = when (event.name.lowercase()) {
-                "run_termux" -> executeRunTermuxTool(event.input)
-                "bash" -> executeBashTool(event.input)
-                "read" -> executeReadTool(event.input)
-                "write" -> executeWriteTool(event.input)
+            val result = when {
+                event.name.lowercase() == "run_termux" -> executeRunTermuxTool(event.input)
+                event.name.lowercase() == "bash" -> executeBashTool(event.input)
+                event.name.lowercase() == "read" -> executeReadTool(event.input)
+                event.name.lowercase() == "write" -> executeWriteTool(event.input)
+                androidTools.isAndroidTool(event.name) -> androidTools.executeTool(event.name, event.input)
                 else -> "Tool '${event.name}' not supported"
             }
 

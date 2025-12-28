@@ -27,6 +27,10 @@ class ClaudeApiClient(private val context: Context) {
     private var model: String = BuildConfig.CLAUDE_API_MODEL
     private val conversationHistory = mutableListOf<JSONObject>()
 
+    private var pendingToolId: String? = null
+    private var pendingToolName: String? = null
+    private val pendingToolInput = StringBuilder()
+
     /**
      * Configure the API client.
      */
@@ -120,6 +124,18 @@ class ClaudeApiClient(private val context: Context) {
                                         send(ClaudeEvent.TextDelta(text))
                                     }
                                 }
+                                "content_block_stop" -> {
+                                    if (pendingToolId != null && pendingToolName != null) {
+                                        val toolId = pendingToolId!!
+                                        val toolName = pendingToolName!!
+                                        val toolInput = if (pendingToolInput.isNotEmpty()) pendingToolInput.toString() else "{}"
+                                        Log.i(TAG, "Tool use complete: ")
+                                        pendingToolId = null
+                                        pendingToolName = null
+                                        pendingToolInput.clear()
+                                        send(ClaudeEvent.ToolUse(toolId, toolName, toolInput))
+                                    }
+                                }
                                 "message_stop" -> {
                                     // Add assistant response to history
                                     conversationHistory.add(JSONObject().apply {
@@ -154,5 +170,45 @@ class ClaudeApiClient(private val context: Context) {
      */
     fun clearHistory() {
         conversationHistory.clear()
+    }
+    private fun getToolDefinitions(): JSONArray {
+        val tools = JSONArray()
+        tools.put(createTool("show_notification", "Show a notification on the Android device", mapOf("title" to "string:Notification title", "message" to "string:Notification message content"), listOf("message")))
+        tools.put(createTool("open_url", "Open a URL in the browser", mapOf("url" to "string:URL to open"), listOf("url")))
+        tools.put(createTool("launch_app", "Launch an Android app by package name", mapOf("package" to "string:Package name of the app"), listOf("package")))
+        tools.put(createTool("list_apps", "List installed apps on the device", mapOf("filter" to "string:Filter apps: user, system, or all", "limit" to "integer:Maximum apps to return")))
+        tools.put(createTool("get_app_info", "Get detailed information about an installed app", mapOf("package" to "string:Package name of the app"), listOf("package")))
+        tools.put(createTool("geocode", "Convert an address to geographic coordinates", mapOf("address" to "string:Address to geocode"), listOf("address")))
+        tools.put(createTool("reverse_geocode", "Convert coordinates to an address", mapOf("latitude" to "number:Latitude", "longitude" to "number:Longitude"), listOf("latitude", "longitude")))
+        tools.put(createTool("get_location", "Get the device current location", mapOf("provider" to "string:Location provider: network or gps")))
+        tools.put(createTool("query_calendar", "Query calendar events", mapOf("days_ahead" to "integer:Days ahead to query", "limit" to "integer:Max events to return")))
+        tools.put(createTool("add_calendar_event", "Add a calendar event", mapOf("title" to "string:Event title", "start_time" to "integer:Start time in ms", "end_time" to "integer:End time in ms"), listOf("title", "start_time", "end_time")))
+        tools.put(createTool("query_media", "Query media files on the device", mapOf("type" to "string:Media type: images, videos, audio", "limit" to "integer:Max items to return")))
+        tools.put(createTool("send_intent", "Send a generic Android intent", mapOf("action" to "string:Intent action", "data" to "string:Intent data URI", "type" to "string:MIME type"), listOf("action")))
+        tools.put(createTool("bash", "Execute a shell command in Termux", mapOf("command" to "string:Shell command to execute"), listOf("command")))
+        tools.put(createTool("run_termux", "Execute a command in the visible Termux terminal", mapOf("command" to "string:Command to execute", "session_id" to "string:Terminal session ID", "timeout" to "integer:Timeout in ms"), listOf("command")))
+        return tools
+    }
+
+    private fun createTool(name: String, description: String, properties: Map<String, String>, required: List<String> = emptyList()): JSONObject {
+        return JSONObject().apply {
+            put("name", name)
+            put("description", description)
+            put("input_schema", JSONObject().apply {
+                put("type", "object")
+                put("properties", JSONObject().apply {
+                    properties.forEach { (propName, typeDesc) ->
+                        val parts = typeDesc.split(":", limit = 2)
+                        put(propName, JSONObject().apply {
+                            put("type", parts[0])
+                            if (parts.size > 1) put("description", parts[1])
+                        })
+                    }
+                })
+                if (required.isNotEmpty()) {
+                    put("required", JSONArray().apply { required.forEach { put(it) } })
+                }
+            })
+        }
     }
 }

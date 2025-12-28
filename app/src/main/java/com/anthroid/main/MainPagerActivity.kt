@@ -4,7 +4,12 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import android.os.IBinder
 import android.util.Log
 import android.view.Menu
@@ -30,6 +35,57 @@ class MainPagerActivity : AppCompatActivity() {
 
     private var termuxService: TermuxService? = null
     private var serviceBound = false
+
+    // Permission request launcher
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        permissions.entries.forEach { (permission, granted) ->
+            Log.d(TAG, "Permission $permission: ${if (granted) "granted" else "denied"}")
+        }
+    }
+
+    // Required permissions for Android tools
+    private fun getRequiredPermissions(): Array<String> {
+        val permissions = mutableListOf<String>()
+
+        // Notification permission (Android 13+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+
+        // Location permissions
+        permissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
+        permissions.add(Manifest.permission.ACCESS_COARSE_LOCATION)
+
+        // Calendar permissions
+        permissions.add(Manifest.permission.READ_CALENDAR)
+        permissions.add(Manifest.permission.WRITE_CALENDAR)
+
+        // Media permissions (Android 13+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.READ_MEDIA_IMAGES)
+            permissions.add(Manifest.permission.READ_MEDIA_VIDEO)
+            permissions.add(Manifest.permission.READ_MEDIA_AUDIO)
+        } else {
+            permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+
+        return permissions.toTypedArray()
+    }
+
+    private fun checkAndRequestPermissions() {
+        val permissionsToRequest = getRequiredPermissions().filter { permission ->
+            ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED
+        }.toTypedArray()
+
+        if (permissionsToRequest.isNotEmpty()) {
+            Log.d(TAG, "Requesting permissions: ${permissionsToRequest.joinToString()}")
+            permissionLauncher.launch(permissionsToRequest)
+        } else {
+            Log.d(TAG, "All permissions already granted")
+        }
+    }
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -74,6 +130,9 @@ class MainPagerActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main_pager)
+        
+        // Check and request required permissions for Android tools
+        checkAndRequestPermissions()
         
         // Bind to TermuxService early and keep it bound
         bindTermuxService()

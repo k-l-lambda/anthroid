@@ -156,13 +156,17 @@ class ClaudeCliClient(private val context: Context) {
                 "--output-format", "stream-json",
                 "--verbose",
                 "--include-partial-messages",
-                "--print"
+                "--print",
+                "--dangerously-skip-permissions"
             )
             // Add conversation flag to resume previous session (reduces latency)
             conversationId?.let {
                 cmdArgs.add("--resume")
                 cmdArgs.add(it)
             }
+            // Add system prompt with Android tool descriptions
+            cmdArgs.add("--append-system-prompt")
+            cmdArgs.add(getAndroidToolsPrompt())
             cmdArgs.add(message)
 
             val processBuilder = ProcessBuilder(cmdArgs)
@@ -173,9 +177,9 @@ class ClaudeCliClient(private val context: Context) {
 
             val proc = processBuilder.start()
             process = proc
-
-            // Close stdin immediately since message is passed as argument
+            // Close stdin so Claude starts processing (--print mode requirement)
             proc.outputStream.close()
+            Log.i(TAG, "Stdin closed, Claude processing")
 
             // Read stderr in background (for warnings)
             val stderrJob = launch {
@@ -576,6 +580,31 @@ class ClaudeCliClient(private val context: Context) {
             // Not JSON, treat as plain text
             ClaudeEvent.Text(line)
         }
+    }
+
+
+    /**
+     * Get system prompt describing Android tools available.
+     */
+    private fun getAndroidToolsPrompt(): String {
+        return """
+IMPORTANT: You have MCP server "android-tools" with these tools. USE THESE MCP TOOLS instead of Bash for Android operations:
+
+- show_notification: Show a notification. Input: {"title": "...", "message": "..."}
+- open_url: Open URL in browser. Input: {"url": "..."}
+- launch_app: Launch app by package. Input: {"package": "com.example.app"}
+- list_apps: List installed apps. Input: {"filter": "user|system|all", "limit": 50}
+- get_app_info: Get app details. Input: {"package": "com.example.app"}
+- geocode: Address to coordinates. Input: {"address": "..."}
+- reverse_geocode: Coordinates to address. Input: {"latitude": 0.0, "longitude": 0.0}
+- get_location: Get device location. Input: {"provider": "network|gps"}
+- query_calendar: Query calendar events. Input: {"days_ahead": 7, "limit": 20}
+- add_calendar_event: Add calendar event. Input: {"title": "...", "start_time": ms, "end_time": ms}
+- query_media: Query media files. Input: {"type": "images|videos|audio", "limit": 20}
+- send_intent: Send Android intent. Input: {"action": "...", "data": "...", "type": "..."}
+
+Use these tools by calling them with the appropriate JSON input when the user requests device actions.
+""".trimIndent()
     }
 }
 
