@@ -269,6 +269,9 @@ final class TermuxInstaller {
                     // Create set_wrapper utility script for easy Claude CLI configuration
                     ensureSetWrapperScript(activity);
 
+                    // Create first-boot script to install default packages (openssh, etc.)
+                    createFirstBootScript();
+
                     activity.runOnUiThread(whenDone);
 
                 } catch (final Exception e) {
@@ -455,6 +458,54 @@ final class TermuxInstaller {
             Logger.logInfo(LOG_TAG, "Created set_wrapper script at " + setWrapperFile.getAbsolutePath());
         } catch (Exception e) {
             Logger.logWarn(LOG_TAG, "Failed to create set_wrapper script: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Creates a first-boot script that installs default packages (openssh, etc.).
+     * The script runs once on first terminal session and then deletes itself.
+     */
+    private static void createFirstBootScript() {
+        try {
+            File homeDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH);
+            File firstBootScript = new File(homeDir, ".first_boot.sh");
+
+            // Create the first-boot script
+            StringBuilder sb = new StringBuilder();
+            sb.append("#!/data/data/com.anthroid/files/usr/bin/bash\n");
+            sb.append("# First-boot script - installs default packages\n");
+            sb.append("# This script runs once and deletes itself\n");
+            sb.append("\n");
+            sb.append("echo 'Installing default packages...'\n");
+            sb.append("apt update && apt install -y openssh\n");
+            sb.append("\n");
+            sb.append("# Remove this script after execution\n");
+            sb.append("rm -f ~/.first_boot.sh\n");
+            sb.append("sed -i '/first_boot/d' ~/.bashrc\n");
+            sb.append("echo 'Default packages installed.'\n");
+
+            try (FileOutputStream fos = new FileOutputStream(firstBootScript)) {
+                fos.write(sb.toString().getBytes("UTF-8"));
+            }
+            Os.chmod(firstBootScript.getAbsolutePath(), 0700);
+
+            // Add hook to .bashrc to run this script on first terminal session
+            File bashrc = new File(homeDir, ".bashrc");
+            String bashrcContent = "";
+            if (bashrc.exists()) {
+                bashrcContent = new String(java.nio.file.Files.readAllBytes(bashrc.toPath()), "UTF-8");
+            }
+
+            if (!bashrcContent.contains(".first_boot.sh")) {
+                String hookLine = "\n# Run first-boot script if exists\n[ -f ~/.first_boot.sh ] && ~/.first_boot.sh\n";
+                try (FileOutputStream fos = new FileOutputStream(bashrc, true)) {
+                    fos.write(hookLine.getBytes("UTF-8"));
+                }
+            }
+
+            Logger.logInfo(LOG_TAG, "Created first-boot script for default packages");
+        } catch (Exception e) {
+            Logger.logWarn(LOG_TAG, "Failed to create first-boot script: " + e.getMessage());
         }
     }
 
