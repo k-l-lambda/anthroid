@@ -18,12 +18,13 @@ import java.util.*
 /**
  * Adapter for displaying chat messages in RecyclerView.
  */
-class MessageAdapter : ListAdapter<Message, MessageAdapter.MessageViewHolder>(MessageDiffCallback()) {
+class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiffCallback()) {
 
     companion object {
         private const val TAG = "MessageAdapter"
         private const val VIEW_TYPE_USER = 0
         private const val VIEW_TYPE_ASSISTANT = 1
+        private const val VIEW_TYPE_TOOL = 2
         private const val PAYLOAD_CONTENT_CHANGED = "content_changed"
     }
 
@@ -32,28 +33,46 @@ class MessageAdapter : ListAdapter<Message, MessageAdapter.MessageViewHolder>(Me
             MessageRole.USER -> VIEW_TYPE_USER
             MessageRole.ASSISTANT -> VIEW_TYPE_ASSISTANT
             MessageRole.SYSTEM -> VIEW_TYPE_ASSISTANT
+            MessageRole.TOOL -> VIEW_TYPE_TOOL
         }
     }
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MessageViewHolder {
-        val layoutId = when (viewType) {
-            VIEW_TYPE_USER -> R.layout.item_message_user
-            else -> R.layout.item_message_assistant
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+        return when (viewType) {
+            VIEW_TYPE_USER -> {
+                val view = LayoutInflater.from(parent.context).inflate(R.layout.item_message_user, parent, false)
+                MessageViewHolder(view)
+            }
+            VIEW_TYPE_TOOL -> {
+                val view = LayoutInflater.from(parent.context).inflate(R.layout.item_message_tool, parent, false)
+                ToolViewHolder(view)
+            }
+            else -> {
+                val view = LayoutInflater.from(parent.context).inflate(R.layout.item_message_assistant, parent, false)
+                MessageViewHolder(view)
+            }
         }
-        val view = LayoutInflater.from(parent.context).inflate(layoutId, parent, false)
-        return MessageViewHolder(view)
     }
 
-    override fun onBindViewHolder(holder: MessageViewHolder, position: Int) {
-        holder.bind(getItem(position))
+    override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+        when (holder) {
+            is MessageViewHolder -> holder.bind(getItem(position))
+            is ToolViewHolder -> holder.bind(getItem(position))
+        }
     }
 
-    override fun onBindViewHolder(holder: MessageViewHolder, position: Int, payloads: MutableList<Any>) {
+    override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int, payloads: MutableList<Any>) {
         if (payloads.isEmpty()) {
-            holder.bind(getItem(position))
+            when (holder) {
+                is MessageViewHolder -> holder.bind(getItem(position))
+                is ToolViewHolder -> holder.bind(getItem(position))
+            }
         } else {
             // Partial bind - just update content
-            holder.updateContent(getItem(position))
+            when (holder) {
+                is MessageViewHolder -> holder.updateContent(getItem(position))
+                is ToolViewHolder -> holder.updateContent(getItem(position))
+            }
         }
     }
 
@@ -81,6 +100,23 @@ class MessageAdapter : ListAdapter<Message, MessageAdapter.MessageViewHolder>(Me
         }
     }
 
+    class ToolViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        private val toolName: TextView = itemView.findViewById(R.id.tool_name)
+        private val toolInput: TextView = itemView.findViewById(R.id.tool_input)
+        private val streamingIndicator: ProgressBar? = itemView.findViewById(R.id.streaming_indicator)
+
+        fun bind(message: Message) {
+            Log.d(TAG, "bind tool: id=${message.id.take(8)}, name=${message.toolName}, streaming=${message.isStreaming}")
+            updateContent(message)
+        }
+
+        fun updateContent(message: Message) {
+            toolName.text = message.toolName ?: "Tool"
+            toolInput.text = message.toolInput ?: message.content
+            streamingIndicator?.visibility = if (message.isStreaming) View.VISIBLE else View.GONE
+        }
+    }
+
     class MessageDiffCallback : DiffUtil.ItemCallback<Message>() {
         override fun areItemsTheSame(oldItem: Message, newItem: Message): Boolean {
             return oldItem.id == newItem.id
@@ -89,7 +125,9 @@ class MessageAdapter : ListAdapter<Message, MessageAdapter.MessageViewHolder>(Me
         override fun areContentsTheSame(oldItem: Message, newItem: Message): Boolean {
             return oldItem.content == newItem.content &&
                    oldItem.isStreaming == newItem.isStreaming &&
-                   oldItem.role == newItem.role
+                   oldItem.role == newItem.role &&
+                   oldItem.toolName == newItem.toolName &&
+                   oldItem.toolInput == newItem.toolInput
         }
 
         override fun getChangePayload(oldItem: Message, newItem: Message): Any? {

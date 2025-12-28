@@ -82,6 +82,15 @@ object TerminalCommandBridge {
             )
         }
 
+        val emulator = session.emulator
+        if (emulator == null) {
+            Log.e(TAG, "Terminal emulator not initialized for session '$targetSessionId'")
+            return@withContext CommandResult.error(
+                "Terminal emulator not initialized. Please open Termux first.",
+                sessionId = targetSessionId
+            )
+        }
+
         Log.i(TAG, "Executing command in session '$targetSessionId': $command")
 
         // Generate unique marker for output detection
@@ -94,11 +103,10 @@ object TerminalCommandBridge {
         Log.d(TAG, "Transcript before length: $startPos")
 
         // Execute command with end marker
-        // Using paste() which handles bracketed paste mode
+        // Use write() to send command directly to terminal
         val fullCommand = "$command; echo '$marker'\n"
-        Log.d(TAG, "Sending command via paste()")
-        // paste() converts newline to carriage return and handles bracketed paste mode
-        session.emulator.paste(fullCommand)
+        Log.d(TAG, "Sending command via write()")
+        session.write(fullCommand)
 
         // Wait for marker to appear in output
         val startTime = System.currentTimeMillis()

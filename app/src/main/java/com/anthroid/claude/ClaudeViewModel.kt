@@ -247,6 +247,28 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
      * Handle tool use requests from Claude.
      */
     private fun handleToolUse(event: ClaudeEvent.ToolUse) {
+        // Add tool message to chat UI
+        val toolInputText = try {
+            val json = org.json.JSONObject(event.input)
+            when (event.name.lowercase()) {
+                "bash", "run_termux" -> json.optString("command", event.input)
+                "read" -> json.optString("file_path", event.input)
+                "write" -> json.optString("file_path", event.input)
+                else -> event.input
+            }
+        } catch (e: Exception) {
+            event.input
+        }
+
+        val toolMessage = Message(
+            role = MessageRole.TOOL,
+            content = toolInputText,
+            toolName = event.name,
+            toolInput = toolInputText,
+            isStreaming = true
+        )
+        _messages.value = _messages.value + toolMessage
+
         viewModelScope.launch {
             val result = when (event.name.lowercase()) {
                 "run_termux" -> executeRunTermuxTool(event.input)
@@ -255,6 +277,13 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 "write" -> executeWriteTool(event.input)
                 else -> "Tool '${event.name}' not supported"
             }
+
+            // Update tool message to show completed
+            _messages.value = _messages.value.map { msg ->
+                if (msg.id == toolMessage.id) msg.copy(isStreaming = false)
+                else msg
+            }
+
             cliClient.sendToolResponse(event.id, result)
         }
     }
@@ -263,7 +292,7 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
      * Execute bash command tool.
      * Uses Termux shell with proper environment.
      */
-    private fun executeBashTool(input: String): String {
+    private suspend fun executeBashTool(input: String): String {
         return try {
             val command = org.json.JSONObject(input).optString("command", "")
             Log.i(TAG, "Executing bash: $command")
@@ -271,14 +300,11 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             // Try Termux terminal bridge first
             if (TerminalCommandBridge.isAvailable()) {
                 Log.i(TAG, "Using Termux terminal for bash command")
-                // Note: This runs synchronously in the coroutine context
-                kotlinx.coroutines.runBlocking {
-                    val result = TerminalCommandBridge.executeCommand(
-                        command = command,
-                        timeout = 60000
-                    )
-                    result.toToolResult()
-                }
+                val result = TerminalCommandBridge.executeCommand(
+                    command = command,
+                    timeout = 60000
+                )
+                result.toToolResult()
             } else {
                 // Fallback to direct execution with Termux shell
                 Log.i(TAG, "Termux terminal not available, using direct execution")
@@ -429,7 +455,9 @@ data class Message(
     val role: MessageRole,
     val content: String,
     val timestamp: Long = System.currentTimeMillis(),
-    val isStreaming: Boolean = false
+    val isStreaming: Boolean = false,
+    val toolName: String? = null,
+    val toolInput: String? = null
 )
 
 /**
@@ -438,5 +466,6 @@ data class Message(
 enum class MessageRole {
     USER,
     ASSISTANT,
-    SYSTEM
+    SYSTEM,
+    TOOL
 }

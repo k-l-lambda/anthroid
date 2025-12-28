@@ -43,9 +43,10 @@ class MainPagerActivity : AppCompatActivity() {
 
                 // Ensure at least one session exists for command execution
                 if (svc.termuxSessions.isEmpty()) {
-                    Log.d(TAG, "No terminal sessions, creating one")
-                    // Sessions will be created when user opens terminal
-                    // For now, bridge is registered but may not have active session
+                    Log.d(TAG, "No terminal sessions, creating one for Claude")
+                    // Create a default session for Claude to use
+                    svc.createTermuxSession(null, null, null, null, false, "claude-session")
+                    Log.d(TAG, "Terminal session created")
                 }
             }
         }
@@ -73,6 +74,9 @@ class MainPagerActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main_pager)
+        
+        // Bind to TermuxService early and keep it bound
+        bindTermuxService()
 
         // Load ClaudeFragment if not already present
         if (savedInstanceState == null) {
@@ -84,14 +88,16 @@ class MainPagerActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
-        // Bind to TermuxService
-        bindTermuxService()
     }
 
     override fun onStop() {
         super.onStop()
-        // Unbind from TermuxService
+    }
+    
+    override fun onDestroy() {
+        // Unbind from TermuxService only when activity is destroyed
         unbindTermuxService()
+        super.onDestroy()
     }
 
     private fun bindTermuxService() {

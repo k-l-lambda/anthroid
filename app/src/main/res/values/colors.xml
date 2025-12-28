@@ -22,4 +22,10 @@
     <!-- Status colors -->
     <color name="status_warning_bg">#FEF3C7</color>
     <color name="status_warning_text">#92400E</color>
+    <!-- Tool message colors -->
+    <color name="tool_message_bg">#F0FDF4</color>
+    <color name="tool_border_color">#86EFAC</color>
+    <color name="tool_icon_color">#22C55E</color>
+    <color name="tool_name_color">#166534</color>
+    <color name="tool_input_color">#374151</color>
 </resources>
