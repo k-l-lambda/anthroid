@@ -264,6 +264,7 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 "query_calendar" -> "next ${json.optInt("days_ahead", 7)} days"
                 "add_calendar_event" -> json.optString("title", event.input)
                 "query_media" -> json.optString("type", "images")
+                "read_terminal" -> "session: " + json.optString("session_id", "current")
                 else -> event.input
             }
         } catch (e: Exception) {
@@ -285,6 +286,7 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 event.name.lowercase() == "bash" -> executeBashTool(event.input)
                 event.name.lowercase() == "read" -> executeReadTool(event.input)
                 event.name.lowercase() == "write" -> executeWriteTool(event.input)
+                event.name.lowercase() == "read_terminal" -> executeReadTerminalTool(event.input)
                 androidTools.isAndroidTool(event.name) -> androidTools.executeTool(event.name, event.input)
                 else -> "Tool '${event.name}' not supported"
             }
@@ -387,7 +389,31 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             "Error: ${e.message}"
         }
     }
+    /**
+     * Read terminal session text.
+     */
+    private suspend fun executeReadTerminalTool(input: String): String {
+        return try {
+            val json = org.json.JSONObject(input)
+            val sessionId = if (json.has("session_id")) json.optString("session_id") else null
+            val maxLines = json.optInt("max_lines", 0)
 
+            if (!TerminalCommandBridge.isAvailable()) {
+                return "Error: Termux terminal not available. Please open Termux first."
+            }
+
+            Log.i(TAG, "read_terminal: session=${sessionId ?: "current"}, maxLines=$maxLines")
+
+            val result = TerminalCommandBridge.readTerminalSession(
+                sessionId = sessionId,
+                maxLines = maxLines
+            )
+            result.toToolResult()
+        } catch (e: Exception) {
+            Log.e(TAG, "read_terminal failed", e)
+            "Error: ${e.message}"
+        }
+    }
 
     /**
      * Execute command in Termux terminal.

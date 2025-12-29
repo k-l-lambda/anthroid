@@ -174,6 +174,71 @@ object TerminalCommandBridge {
         }
     }
 
+
+    /**
+     * Read the full terminal session transcript.
+     *
+     * @param sessionId Optional session ID (default: current session)
+     * @param maxLines Maximum number of lines to return (0 = unlimited)
+     * @return The terminal transcript text
+     */
+    suspend fun readTerminalSession(
+        sessionId: String? = null,
+        maxLines: Int = 0
+    ): CommandResult = withContext(Dispatchers.IO) {
+        val service = termuxService
+            ?: return@withContext CommandResult.error("Termux service not available")
+
+        // Get target session
+        val targetSessionId: String
+        val session: TerminalSession? = if (sessionId != null) {
+            val termuxSession = findSessionByName(service, sessionId)
+            targetSessionId = sessionId
+            termuxSession?.terminalSession
+        } else {
+            val currentSession = currentSessionGetter?.invoke()
+            targetSessionId = currentSession?.mSessionName ?: getDefaultSessionId(service)
+            currentSession
+        }
+
+        if (session == null) {
+            return@withContext CommandResult.error(
+                "No terminal session found",
+                sessionId = targetSessionId
+            )
+        }
+
+        Log.i(TAG, "Reading terminal session '$targetSessionId'")
+
+        // Get full transcript
+        val transcript = ShellUtils.getTerminalSessionTranscriptText(session, true, false)
+            ?: return@withContext CommandResult.error(
+                "Failed to read terminal transcript",
+                sessionId = targetSessionId
+            )
+
+        // Apply line limit if specified
+        val output = if (maxLines > 0) {
+            val lines = transcript.lines()
+            if (lines.size > maxLines) {
+                lines.takeLast(maxLines).joinToString("\n")
+            } else {
+                transcript
+            }
+        } else {
+            transcript
+        }
+
+        Log.i(TAG, "Read ${output.lines().size} lines from terminal")
+
+        CommandResult(
+            success = true,
+            output = output,
+            exitCode = 0,
+            sessionId = targetSessionId
+        )
+    }
+
     /**
      * List available terminal sessions.
      */
