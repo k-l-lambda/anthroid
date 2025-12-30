@@ -32,12 +32,12 @@ class DebugReceiver : BroadcastReceiver() {
         const val EXTRA_BASE_URL = "base_url"
         const val EXTRA_MODEL = "model"
 
-        // Global event flow for debug messages
-        private val _debugMessageFlow = MutableSharedFlow<String>(extraBufferCapacity = 1)
+        // Global event flow for debug messages (replay=1 ensures late collectors get the message)
+        private val _debugMessageFlow = MutableSharedFlow<String>(replay = 1, extraBufferCapacity = 1)
         val debugMessageFlow = _debugMessageFlow.asSharedFlow()
 
         // Global event flow for API config changes
-        private val _apiConfigFlow = MutableSharedFlow<ApiConfig>(extraBufferCapacity = 1)
+        private val _apiConfigFlow = MutableSharedFlow<ApiConfig>(replay = 1, extraBufferCapacity = 1)
         val apiConfigFlow = _apiConfigFlow.asSharedFlow()
 
         /**

@@ -202,20 +202,36 @@ object TerminalCommandBridge {
         }
 
         if (session == null) {
+            Log.e(TAG, "No terminal session found. Service sessions: ${service.termuxSessions.size}")
             return@withContext CommandResult.error(
                 "No terminal session found",
                 sessionId = targetSessionId
             )
         }
 
-        Log.i(TAG, "Reading terminal session '$targetSessionId'")
+        Log.i(TAG, "Reading terminal session '$targetSessionId', isRunning=${session.isRunning}")
+
+        // Check emulator state
+        val emulator = session.emulator
+        if (emulator == null) {
+            Log.e(TAG, "Terminal emulator is null for session '$targetSessionId'")
+            return@withContext CommandResult.error(
+                "Terminal emulator not initialized",
+                sessionId = targetSessionId
+            )
+        }
+
+        Log.d(TAG, "Emulator rows=${emulator.mRows}, cols=${emulator.mColumns}")
 
         // Get full transcript
         val transcript = ShellUtils.getTerminalSessionTranscriptText(session, true, false)
-            ?: return@withContext CommandResult.error(
+        if (transcript == null) {
+            Log.e(TAG, "getTerminalSessionTranscriptText returned null")
+            return@withContext CommandResult.error(
                 "Failed to read terminal transcript",
                 sessionId = targetSessionId
             )
+        }
 
         // Apply line limit if specified
         val output = if (maxLines > 0) {
