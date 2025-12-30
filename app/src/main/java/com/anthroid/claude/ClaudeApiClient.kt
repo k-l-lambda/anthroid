@@ -82,6 +82,7 @@ class ClaudeApiClient(private val context: Context) {
                     put("max_tokens", 4096)
                     put("stream", true)
                     put("messages", messagesArray)
+                    put("tools", getToolDefinitions())
                 }
 
                 Log.d(TAG, "Sending request to $url")
@@ -116,12 +117,30 @@ class ClaudeApiClient(private val context: Context) {
                             val type = event.optString("type")
 
                             when (type) {
+                                "content_block_start" -> {
+                                    val contentBlock = event.optJSONObject("content_block")
+                                    if (contentBlock?.optString("type") == "tool_use") {
+                                        pendingToolId = contentBlock.optString("id")
+                                        pendingToolName = contentBlock.optString("name")
+                                        pendingToolInput.clear()
+                                        Log.i(TAG, "Tool use started: id=$pendingToolId, name=$pendingToolName")
+                                    }
+                                }
                                 "content_block_delta" -> {
                                     val delta = event.optJSONObject("delta")
-                                    val text = delta?.optString("text", "") ?: ""
-                                    if (text.isNotEmpty()) {
-                                        responseBuilder.append(text)
-                                        send(ClaudeEvent.TextDelta(text))
+                                    val deltaType = delta?.optString("type", "") ?: ""
+
+                                    if (deltaType == "input_json_delta") {
+                                        // Tool input delta
+                                        val partialJson = delta.optString("partial_json", "")
+                                        pendingToolInput.append(partialJson)
+                                    } else {
+                                        // Text delta
+                                        val text = delta?.optString("text", "") ?: ""
+                                        if (text.isNotEmpty()) {
+                                            responseBuilder.append(text)
+                                            send(ClaudeEvent.TextDelta(text))
+                                        }
                                     }
                                 }
                                 "content_block_stop" -> {
