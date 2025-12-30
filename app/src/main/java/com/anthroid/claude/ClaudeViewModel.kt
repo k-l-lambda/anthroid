@@ -297,7 +297,16 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 else msg
             }
 
-            cliClient.sendToolResponse(event.id, result)
+            // Send tool result back to Claude
+            if (useCliMode) {
+                cliClient.sendToolResponse(event.id, result)
+            } else {
+                // Use API client for HTTP mode
+                apiClient.sendToolResult(event.id, event.name, result)
+                    .collect { responseEvent ->
+                        handleEvent(responseEvent)
+                    }
+            }
         }
     }
 

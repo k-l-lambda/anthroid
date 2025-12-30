@@ -190,6 +190,160 @@ class ClaudeApiClient(private val context: Context) {
     fun clearHistory() {
         conversationHistory.clear()
     }
+
+    /**
+     * Send tool result and get Claude's response.
+     */
+    fun sendToolResult(toolUseId: String, toolName: String, result: String): Flow<ClaudeEvent> = channelFlow {
+        if (!isConfigured()) {
+            send(ClaudeEvent.Error("API key not configured"))
+            return@channelFlow
+        }
+
+        withContext(Dispatchers.IO) {
+            try {
+                // Add assistant message with tool_use
+                conversationHistory.add(JSONObject().apply {
+                    put("role", "assistant")
+                    put("content", JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("type", "tool_use")
+                            put("id", toolUseId)
+                            put("name", toolName)
+                            put("input", JSONObject())
+                        })
+                    })
+                })
+
+                // Add tool result message
+                conversationHistory.add(JSONObject().apply {
+                    put("role", "user")
+                    put("content", JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("type", "tool_result")
+                            put("tool_use_id", toolUseId)
+                            put("content", result)
+                        })
+                    })
+                })
+
+                val url = URL("$baseUrl/v1/messages")
+                val connection = url.openConnection() as HttpURLConnection
+                connection.requestMethod = "POST"
+                connection.setRequestProperty("Content-Type", "application/json")
+                connection.setRequestProperty("x-api-key", apiKey)
+                connection.setRequestProperty("anthropic-version", "2023-06-01")
+                connection.doOutput = true
+                connection.doInput = true
+
+                val messagesArray = JSONArray()
+                for (msg in conversationHistory) {
+                    messagesArray.put(msg)
+                }
+
+                val requestBody = JSONObject().apply {
+                    put("model", model)
+                    put("max_tokens", 4096)
+                    put("stream", true)
+                    put("messages", messagesArray)
+                    put("tools", getToolDefinitions())
+                }
+
+                Log.d(TAG, "Sending tool result for $toolName")
+                connection.outputStream.write(requestBody.toString().toByteArray())
+                connection.outputStream.flush()
+
+                val responseCode = connection.responseCode
+                Log.d(TAG, "Response code: $responseCode")
+
+                if (responseCode != 200) {
+                    val errorStream = connection.errorStream ?: connection.inputStream
+                    val error = errorStream.bufferedReader().readText()
+                    Log.e(TAG, "API error: $error")
+                    send(ClaudeEvent.Error("API error ($responseCode): $error"))
+                    return@withContext
+                }
+
+                // Process SSE stream (same as chat())
+                val reader = BufferedReader(InputStreamReader(connection.inputStream))
+                val responseBuilder = StringBuilder()
+                var line: String?
+
+                send(ClaudeEvent.MessageStart(""))
+
+                while (reader.readLine().also { line = it } != null) {
+                    if (line!!.startsWith("data: ")) {
+                        val data = line!!.substring(6)
+                        if (data == "[DONE]") break
+
+                        try {
+                            val event = JSONObject(data)
+                            val type = event.optString("type")
+
+                            when (type) {
+                                "content_block_start" -> {
+                                    val contentBlock = event.optJSONObject("content_block")
+                                    if (contentBlock?.optString("type") == "tool_use") {
+                                        pendingToolId = contentBlock.optString("id")
+                                        pendingToolName = contentBlock.optString("name")
+                                        pendingToolInput.clear()
+                                        Log.i(TAG, "Tool use started: id=$pendingToolId, name=$pendingToolName")
+                                    }
+                                }
+                                "content_block_delta" -> {
+                                    val delta = event.optJSONObject("delta")
+                                    val deltaType = delta?.optString("type", "") ?: ""
+
+                                    if (deltaType == "input_json_delta") {
+                                        val partialJson = delta.optString("partial_json", "")
+                                        pendingToolInput.append(partialJson)
+                                    } else {
+                                        val text = delta?.optString("text", "") ?: ""
+                                        if (text.isNotEmpty()) {
+                                            responseBuilder.append(text)
+                                            send(ClaudeEvent.TextDelta(text))
+                                        }
+                                    }
+                                }
+                                "content_block_stop" -> {
+                                    if (pendingToolId != null && pendingToolName != null) {
+                                        val tid = pendingToolId!!
+                                        val tname = pendingToolName!!
+                                        val tinput = if (pendingToolInput.isNotEmpty()) pendingToolInput.toString() else "{}"
+                                        Log.i(TAG, "Tool use complete: ")
+                                        pendingToolId = null
+                                        pendingToolName = null
+                                        pendingToolInput.clear()
+                                        send(ClaudeEvent.ToolUse(tid, tname, tinput))
+                                    }
+                                }
+                                "message_stop" -> {
+                                    conversationHistory.add(JSONObject().apply {
+                                        put("role", "assistant")
+                                        put("content", responseBuilder.toString())
+                                    })
+                                    send(ClaudeEvent.MessageEnd)
+                                }
+                                "error" -> {
+                                    val errorMsg = event.optJSONObject("error")?.optString("message", "Unknown error")
+                                    send(ClaudeEvent.Error(errorMsg ?: "Unknown error"))
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to parse SSE event: $data", e)
+                        }
+                    }
+                }
+
+                reader.close()
+                connection.disconnect()
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Send tool result failed", e)
+                send(ClaudeEvent.Error("Request failed: ${e.message}"))
+            }
+        }
+    }.flowOn(Dispatchers.IO)
     private fun getToolDefinitions(): JSONArray {
         val tools = JSONArray()
         tools.put(createTool("show_notification", "Show a notification on the Android device", mapOf("title" to "string:Notification title", "message" to "string:Notification message content"), listOf("message")))
