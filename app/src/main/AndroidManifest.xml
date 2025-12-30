@@ -271,6 +271,16 @@
             </intent-filter>
         </receiver>
 
+        <!-- Debug Receiver for adb message sending and API config -->
+        <receiver
+            android:name="com.anthroid.claude.DebugReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.anthroid.DEBUG_SEND_MESSAGE" />
+                <action android:name="com.anthroid.DEBUG_CONFIG_API" />
+            </intent-filter>
+        </receiver>
+
     </application>
 
 </manifest>

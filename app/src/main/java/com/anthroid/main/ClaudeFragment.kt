@@ -23,6 +23,7 @@ import com.anthroid.claude.ui.MessageAdapter
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import com.anthroid.claude.DebugReceiver
 
 /**
  * Fragment for Claude AI chat interface.
@@ -134,6 +135,24 @@ class ClaudeFragment : Fragment() {
                     Toast.makeText(requireContext(), it, Toast.LENGTH_LONG).show()
                     viewModel.clearError()
                 }
+            }
+        }
+
+        // Observe debug messages from adb
+        viewLifecycleOwner.lifecycleScope.launch {
+            DebugReceiver.debugMessageFlow.collect { message ->
+                Log.i(TAG, "Debug message received: ${message.take(50)}...")
+                viewModel.sendMessage(message)
+            }
+        }
+
+        // Observe API config changes from adb
+        viewLifecycleOwner.lifecycleScope.launch {
+            DebugReceiver.apiConfigFlow.collect { config ->
+                Log.i(TAG, "API config received: key=${config.apiKey.take(10)}...")
+                configureApiFromPrefs()
+                viewModel.checkClaudeInstallation()
+                Toast.makeText(requireContext(), "API key configured via adb", Toast.LENGTH_SHORT).show()
             }
         }
 
