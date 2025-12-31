@@ -1,0 +1,64 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -4,9 +4,26 @@ include(GNUInstallDirs)
+
+ set(TERMUX_PREFIX ${CMAKE_INSTALL_PREFIX})
+
++# Get app package name from environment or use default
++if(DEFINED ENV{TERMUX_APP__PACKAGE_NAME})
++    set(TERMUX_APP_PACKAGE $ENV{TERMUX_APP__PACKAGE_NAME})
++else()
++    set(TERMUX_APP_PACKAGE "com.termux")
++endif()
++
++message(STATUS "Building for package: ${TERMUX_APP_PACKAGE}")
++
+ add_library(termux-api SHARED termux-api.c)
+ add_library(termux-api-static STATIC termux-api.c)
+ set_target_properties(termux-api-static PROPERTIES OUTPUT_NAME termux-api)
++target_compile_definitions(termux-api PRIVATE
++    PREFIX="${TERMUX_PREFIX}"
++    TERMUX_APP_PACKAGE="${TERMUX_APP_PACKAGE}"
++)
++target_compile_definitions(termux-api-static PRIVATE
++    PREFIX="${TERMUX_PREFIX}"
++    TERMUX_APP_PACKAGE="${TERMUX_APP_PACKAGE}"
++)
+
+ add_executable(termux-api-broadcast termux-api-broadcast.c)
+ target_link_libraries(termux-api-broadcast termux-api-static)
+--- a/termux-api.c
++++ b/termux-api.c
+@@ -24,10 +24,22 @@
+ #define TERMUX_API_PACKAGE_VERSION "0.59.1"
+
+ #ifndef PREFIX
+-# define PREFIX "/data/data/com.termux/files/usr"
++# define PREFIX "/data/data/com.anthroid/files/usr"
+ #endif
+
+-#define LISTEN_SOCKET_ADDRESS "com.termux.api://listen"
++#ifndef TERMUX_APP_PACKAGE
++# define TERMUX_APP_PACKAGE "com.anthroid"
++#endif
++
++/* Construct socket address and receiver from package name */
++#define _STRINGIFY(x) #x
++#define STRINGIFY(x) _STRINGIFY(x)
++
++#define LISTEN_SOCKET_ADDRESS STRINGIFY(TERMUX_APP_PACKAGE) ".api://listen"
++
++/* API receiver component - package.api/.TermuxApiReceiver */
++#define API_RECEIVER STRINGIFY(TERMUX_APP_PACKAGE) ".api/.TermuxApiReceiver"
+
+ /* passes the arguments to the plugin via the unix socket, falling
+  * back to exec_am_broadcast() if that doesn't work
+@@ -264,7 +276,7 @@
+     child_argv[3] = "0";
+     child_argv[4] = "-n";
+     // Use full component name so that it works without having the Termux:API
+-    child_argv[5] = "com.termux.api/.TermuxApiReceiver";
++    child_argv[5] = API_RECEIVER;
+     child_argv[6] = "--es";
+     // Input/output are reversed for the java process (our output is its input):
+     child_argv[7] = "socket_input";

@@ -611,14 +611,30 @@ AVAILABLE TOOLS:
 - Bash: Execute shell commands (USE THIS for file operations)
 - Write/Edit: Create or modify files (these work correctly)
 
-ANDROID FEATURES (use Bash with am/content commands):
-- Open URL: am start -a android.intent.action.VIEW -d "https://..."
-- Open app: am start -n com.package.name/.MainActivity
-- Send broadcast: am broadcast -a android.intent.action.XXX
-- Content query: content query --uri content://...
+ANDROID FEATURES (use Bash with am broadcast to call Android tools):
+Call Android tools via broadcast, result written to /sdcard/anthroid_tool_result.txt:
+  am broadcast -a com.anthroid.TOOL_CALL --es tool "TOOL_NAME" --es input '{"key":"value"}' -p com.anthroid && sleep 0.5 && cat /sdcard/anthroid_tool_result.txt
 
-Note: Advanced Android features (notifications, clipboard, location) require API mode.
+Available Android tools:
+- show_notification: Input: {"title": "...", "message": "..."}
+- open_url: Input: {"url": "https://..."}
+- launch_app: Input: {"package": "com.example.app"}
+- list_apps: Input: {"filter": "user|system|all", "limit": 50}
+- get_app_info: Input: {"package": "com.example.app"}
+- read_clipboard: Input: {} (no parameters needed)
+- write_clipboard: Input: {"text": "..."}
+- get_location: Input: {"provider": "network|gps"}
+- geocode: Input: {"address": "..."}
+- reverse_geocode: Input: {"latitude": 0.0, "longitude": 0.0}
+- query_calendar: Input: {"days_ahead": 7, "limit": 20}
+- add_calendar_event: Input: {"title": "...", "start_time": ms, "end_time": ms}
+- query_media: Input: {"type": "images|videos|audio", "limit": 20}
+
+Example - show notification:
+  am broadcast -a com.anthroid.TOOL_CALL --es tool "show_notification" --es input '{"title":"Hello","message":"World"}' -p com.anthroid
+
 When the user asks about files, use Bash commands.
+When the user asks about Android features, use am broadcast with the tools above.
 """.trimIndent()
     }
 }

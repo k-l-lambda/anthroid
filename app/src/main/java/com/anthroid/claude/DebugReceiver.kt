@@ -5,8 +5,11 @@ import android.content.Context
 import android.content.Intent
 import android.os.Environment
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.launch
 import java.io.File
 
 /**
@@ -30,7 +33,10 @@ class DebugReceiver : BroadcastReceiver() {
         const val ACTION_SEND_MESSAGE = "com.anthroid.DEBUG_SEND_MESSAGE"
         const val ACTION_CONFIG_API = "com.anthroid.DEBUG_CONFIG_API"
         const val ACTION_READ_CONVERSATION = "com.anthroid.DEBUG_READ_CONVERSATION"
+        const val ACTION_TOOL_CALL = "com.anthroid.TOOL_CALL"
         const val EXTRA_MESSAGE = "message"
+        const val EXTRA_TOOL = "tool"
+        const val EXTRA_INPUT = "input"
         const val EXTRA_API_KEY = "api_key"
         const val EXTRA_BASE_URL = "base_url"
         const val EXTRA_MODEL = "model"
@@ -91,6 +97,7 @@ class DebugReceiver : BroadcastReceiver() {
             ACTION_SEND_MESSAGE -> handleSendMessage(intent)
             ACTION_CONFIG_API -> handleConfigApi(context, intent)
             ACTION_READ_CONVERSATION -> handleReadConversation(context)
+            ACTION_TOOL_CALL -> handleToolCall(context, intent)
         }
     }
 
@@ -146,5 +153,41 @@ class DebugReceiver : BroadcastReceiver() {
                 Log.e(TAG, "Failed to write conversation", e)
             }
         }, 100)
+    }
+
+    private fun handleToolCall(context: Context, intent: Intent) {
+        val tool = intent.getStringExtra(EXTRA_TOOL)
+        val input = intent.getStringExtra(EXTRA_INPUT) ?: "{}"
+        
+        if (tool.isNullOrBlank()) {
+            Log.w(TAG, "Received empty tool name")
+            writeToolResult("Error: tool name is required")
+            return
+        }
+
+        Log.i(TAG, "Tool call: tool=$tool, input=${input.take(100)}")
+
+        // Execute tool in coroutine
+        val androidTools = AndroidTools(context)
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                val result = androidTools.executeTool(tool, input)
+                Log.i(TAG, "Tool result: ${result.take(100)}")
+                writeToolResult(result)
+            } catch (e: Exception) {
+                Log.e(TAG, "Tool execution failed", e)
+                writeToolResult("Error: ${e.message}")
+            }
+        }
+    }
+
+    private fun writeToolResult(result: String) {
+        try {
+            val outputFile = File(Environment.getExternalStorageDirectory(), "anthroid_tool_result.txt")
+            outputFile.writeText(result)
+            Log.i(TAG, "Tool result written to ${outputFile.absolutePath}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to write tool result", e)
+        }
     }
 }
