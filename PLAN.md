@@ -117,11 +117,69 @@ Take photos to add visual context to chat messages.
 
 Enable Claude to execute terminal commands.
 
+#### Current Status (Dec 2025)
+
+**Problem:** Claude CLI uses MCP (Model Context Protocol) for tools. In `--print` mode, the CLI expects an external MCP server to handle tool calls. Our approach of describing tools in system prompt and executing them in Android code doesn't work because:
+1. CLI sends tool_use events but expects MCP server responses
+2. We can intercept and execute tools locally, but results don't reach Claude
+3. Claude receives `<tool_use_error>` and thinks tools are unavailable
+
+**Workaround (Current):** API mode with tool definitions works correctly. When API key is configured, tools work as expected.
+
+#### New Approach: Fork Claude Code Package
+
+Since Claude CLI is a Node.js application, we can fork it and implement tools directly inside.
+
+##### Step 1: Analyze Package Structure
+```bash
+# Copy package from device
+adb pull /data/data/com.anthroid/files/usr/lib/node_modules/@anthropic-ai/claude-code ./claude-code-original
+
+# List files
+ls -la ./claude-code-original/
+```
+
+##### Step 2: Deobfuscate/Beautify
+```bash
+# Install js-beautify
+npm install -g js-beautify
+
+# Beautify main CLI file
+js-beautify cli.js > cli.beautified.js
+```
+
+##### Step 3: Understand Tool Architecture
+- Find where tool_use events are dispatched
+- Locate MCP client connection code
+- Identify how tool results are sent back to Claude API
+
+##### Step 4: Create Forked Package
+- Fork @anthropic-ai/claude-code
+- Remove minification for maintainability
+- Keep original functionality intact
+
+##### Step 5: Implement Android Tools Inside CLI
+- Add tool handlers for: bash, run_termux, read_terminal, clipboard, etc.
+- Execute commands via Node.js child_process
+- Return results directly without MCP
+
+##### Step 6: Build and Install
+```bash
+# Build forked package
+npm pack
+
+# Install on device
+npm install -g ./anthroid-claude-code-*.tgz
+```
+
 #### Tool Types
 1. **bash**: Execute shell commands
 2. **read**: Read file contents
 3. **write**: Write/create files
 4. **edit**: Modify existing files
+5. **run_termux**: Execute in visible terminal
+6. **read_terminal**: Read terminal output
+7. **read_clipboard/write_clipboard**: Clipboard access
 
 #### Security Considerations
 - Sandboxed execution in app's data directory
