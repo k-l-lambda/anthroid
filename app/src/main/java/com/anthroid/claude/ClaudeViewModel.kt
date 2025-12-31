@@ -386,8 +386,15 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             val termuxLib = "/data/data/com.anthroid/files/usr/lib"
             val termuxPrefix = "/data/data/com.anthroid/files/usr"
 
-            // Wrap command with environment setup to ensure proper PATH and HOME
-            val wrappedCommand = "export HOME='$termuxHome' PREFIX='$termuxPrefix' PATH='$termuxBin' LD_LIBRARY_PATH='$termuxLib' LANG='en_US.UTF-8' TERM='xterm-256color' && $command"
+            // If command uses /system/bin, don't set LD_LIBRARY_PATH to avoid library conflicts
+            val usesSystemBin = command.contains("/system/bin")
+            val wrappedCommand = if (usesSystemBin) {
+                // For system commands: include /system/bin in PATH, unset LD_LIBRARY_PATH
+                "export HOME='$termuxHome' PREFIX='$termuxPrefix' PATH='/system/bin:$termuxBin' LANG='en_US.UTF-8' TERM='xterm-256color' && unset LD_LIBRARY_PATH && $command"
+            } else {
+                // For termux commands: use termux environment with system bin fallback
+                "export HOME='$termuxHome' PREFIX='$termuxPrefix' PATH='$termuxBin:/system/bin' LD_LIBRARY_PATH='$termuxLib' LANG='en_US.UTF-8' TERM='xterm-256color' && $command"
+            }
 
             val process = Runtime.getRuntime().exec(
                 arrayOf("$termuxBin/bash", "-c", wrappedCommand),

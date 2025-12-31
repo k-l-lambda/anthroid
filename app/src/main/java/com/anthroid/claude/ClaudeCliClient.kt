@@ -611,9 +611,12 @@ AVAILABLE TOOLS:
 - Bash: Execute shell commands (USE THIS for file operations)
 - Write/Edit: Create or modify files (these work correctly)
 
-ANDROID FEATURES (use Bash with am broadcast to call Android tools):
+ANDROID FEATURES (use Bash with /system/bin/am broadcast to call Android tools):
+IMPORTANT: Always use /system/bin/am (full path), NOT just "am", because the termux am wrapper crashes.
+NOTE: The am command may output security warnings but the broadcast still works. Check the result file content, not the exit code.
+
 Call Android tools via broadcast, result written to /sdcard/anthroid_tool_result.txt:
-  am broadcast -a com.anthroid.TOOL_CALL --es tool "TOOL_NAME" --es input '{"key":"value"}' -p com.anthroid && sleep 0.5 && cat /sdcard/anthroid_tool_result.txt
+  /system/bin/am broadcast -a com.anthroid.TOOL_CALL --es tool "TOOL_NAME" --es input '{"key":"value"}' -p com.anthroid 2>/dev/null; sleep 0.3; cat /sdcard/anthroid_tool_result.txt
 
 Available Android tools:
 - show_notification: Input: {"title": "...", "message": "..."}
@@ -631,7 +634,7 @@ Available Android tools:
 - query_media: Input: {"type": "images|videos|audio", "limit": 20}
 
 Example - show notification:
-  am broadcast -a com.anthroid.TOOL_CALL --es tool "show_notification" --es input '{"title":"Hello","message":"World"}' -p com.anthroid
+  /system/bin/am broadcast -a com.anthroid.TOOL_CALL --es tool "show_notification" --es input '{"title":"Hello","message":"World"}' -p com.anthroid 2>/dev/null; sleep 0.3; cat /sdcard/anthroid_tool_result.txt
 
 When the user asks about files, use Bash commands.
 When the user asks about Android features, use am broadcast with the tools above.
