@@ -9,11 +9,6 @@
         app:showAsAction="always" />
 
     <item
-        android:id="@+id/action_api_config"
-        android:title="API Key"
-        app:showAsAction="never" />
-
-    <item
         android:id="@+id/action_settings"
         android:icon="@drawable/ic_settings"
         android:title="Settings"
