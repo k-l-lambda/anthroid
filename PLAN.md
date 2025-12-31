@@ -110,7 +110,45 @@ Enable Claude to execute terminal commands and Android features.
 
 ## In Progress / Planned Phases
 
-### Phase 5: Camera Input for Chat (Next)
+### Phase 5: Conversation Management (Next)
+
+Manage Claude CLI conversation history from the Chat UI.
+
+#### Background
+Claude CLI stores conversations as JSONL files in `~/.claude/projects/{project-path}/`:
+- Each conversation is a UUID.jsonl file (e.g., `3d6acbeb-4407-4c77-a429-103ee213e34b.jsonl`)
+- Messages have: type (user/assistant), content, timestamp, parentUuid (threading), tool calls
+- Agent sessions stored separately as `agent-*.jsonl`
+- Currently 177+ conversation files on test device, many empty (abandoned sessions)
+
+#### Features
+- List past conversations with preview (first user message as title)
+- View full conversation history with message details
+- Resume conversation (continue from previous session)
+- Delete individual conversations
+- Bulk cleanup of empty/abandoned sessions
+- Search within conversations
+- Storage stats (total size, conversation count)
+
+#### Implementation Tasks
+- [ ] Create ConversationManager.kt for JSONL parsing
+- [ ] Add conversation list UI (RecyclerView in drawer or separate activity)
+- [ ] Parse JSONL format: extract messages, timestamps, tool calls
+- [ ] Generate conversation title from first user message
+- [ ] Implement conversation resume with --resume flag
+- [ ] Add delete functionality with confirmation
+- [ ] Add storage stats display
+- [ ] Implement search across conversations
+
+#### Technical Notes
+- JSONL format: one JSON object per line
+- Each message has UUID linking to parent (conversation threading)
+- CLI supports `--resume SESSION_ID` to continue conversation
+- Storage path: `/data/data/com.anthroid/files/home/.claude/projects/-data-data-com-anthroid-files/`
+
+---
+
+### Phase 5b: Camera Input for Chat
 
 Take photos to add visual context to chat messages.
 
@@ -210,7 +248,8 @@ app/src/main/java/com/anthroid/
 | M2 | ✅ Done | Claude CLI runs in terminal |
 | M3 | ✅ Done | Chat UI with ViewPager2 navigation |
 | M4 | ✅ Done | QR code configuration scanner |
-| M5 | 🔄 Next | Camera input for chat |
+| M5 | 🔄 Next | Conversation management |
+| M5b | ⏳ | Camera input for chat |
 | M6 | ✅ Done | Tool execution working |
 | M7 | ⏳ | Voice I/O (STT + TTS) |
 | M8 | ⏳ | Production-ready release |
