@@ -537,6 +537,19 @@ class ClaudeCliClient(private val context: Context) {
     }
 
     /**
+     * Set conversation ID to resume a previous session.
+     */
+    fun setConversationId(sessionId: String) {
+        conversationId = sessionId
+        Log.i(TAG, "Conversation ID set: $sessionId")
+    }
+
+    /**
+     * Get current conversation ID.
+     */
+    fun getConversationId(): String? = conversationId
+
+    /**
      * Build environment variables for Claude CLI.
      */
     private fun buildEnvironment(): Map<String, String> {

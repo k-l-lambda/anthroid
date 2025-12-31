@@ -191,6 +191,14 @@ class MainPagerActivity : AppCompatActivity() {
                 startActivity(Intent(this, TermuxActivity::class.java))
                 true
             }
+            R.id.action_history -> {
+                // Show conversation history dialog via ClaudeFragment
+                val fragment = supportFragmentManager.findFragmentById(R.id.fragment_container)
+                if (fragment is ClaudeFragment) {
+                    fragment.showConversationHistoryDialog()
+                }
+                true
+            }
             R.id.action_settings -> {
                 startActivity(Intent(this, SettingsActivity::class.java))
                 true

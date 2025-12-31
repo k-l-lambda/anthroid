@@ -1,71 +1,158 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout
+<FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@color/background_color">
+    android:layout_height="match_parent">
 
-    <!-- Status bar for installation warnings -->
-    <TextView
-        android:id="@+id/status_text"
+    <!-- Main chat content -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/main_content"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="#FFF3CD"
-        android:padding="8dp"
-        android:textColor="#856404"
-        android:textSize="12sp"
-        android:visibility="gone"
-        app:layout_constraintTop_toTopOf="parent"
-        tools:text="Claude CLI not installed"
-        tools:visibility="visible" />
+        android:layout_height="match_parent"
+        android:background="@color/background_color">
 
-    <!-- Messages list -->
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/messages_recycler_view"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:clipToPadding="false"
-        android:padding="8dp"
-        app:layout_constraintBottom_toTopOf="@id/input_container"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/status_text" />
-
-    <!-- Input container -->
-    <LinearLayout
-        android:id="@+id/input_container"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@color/background_color"
-        android:elevation="4dp"
-        android:orientation="horizontal"
-        android:padding="8dp"
-        app:layout_constraintBottom_toBottomOf="parent">
-
-        <EditText
-            android:id="@+id/input_field"
-            android:layout_width="0dp"
+        <!-- Status bar for installation warnings -->
+        <TextView
+            android:id="@+id/status_text"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:background="@drawable/input_background"
-            android:hint="Message Claude..."
-            android:imeOptions="actionSend"
-            android:inputType="textMultiLine"
-            android:maxLines="4"
-            android:padding="12dp"
-            android:textSize="16sp" />
+            android:background="#FFF3CD"
+            android:padding="8dp"
+            android:textColor="#856404"
+            android:textSize="12sp"
+            android:visibility="gone"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:text="Claude CLI not installed"
+            tools:visibility="visible" />
 
-        <ImageButton
-            android:id="@+id/send_button"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_marginStart="8dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Send"
-            android:src="@android:drawable/ic_menu_send"
-            android:tint="@color/colorPrimary" />
-    </LinearLayout>
+        <!-- Messages list -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/messages_recycler_view"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:clipToPadding="false"
+            android:padding="8dp"
+            app:layout_constraintBottom_toTopOf="@id/input_container"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/status_text" />
 
-</androidx.constraintlayout.widget.ConstraintLayout>
+        <!-- Input container -->
+        <LinearLayout
+            android:id="@+id/input_container"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@color/background_color"
+            android:elevation="4dp"
+            android:orientation="horizontal"
+            android:padding="8dp"
+            app:layout_constraintBottom_toBottomOf="parent">
+
+            <EditText
+                android:id="@+id/input_field"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:background="@drawable/input_background"
+                android:hint="Message Claude..."
+                android:imeOptions="actionSend"
+                android:inputType="textMultiLine"
+                android:maxLines="4"
+                android:padding="12dp"
+                android:textSize="16sp" />
+
+            <ImageButton
+                android:id="@+id/send_button"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginStart="8dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Send"
+                android:src="@android:drawable/ic_menu_send"
+                app:tint="@color/colorPrimary" />
+        </LinearLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- History panel overlay (right side, 70% width) -->
+    <FrameLayout
+        android:id="@+id/history_panel_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone">
+
+        <!-- Left dim area - click to close -->
+        <View
+            android:id="@+id/history_dim_overlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#80000000" />
+
+        <!-- Right panel (70% width) -->
+        <LinearLayout
+            android:id="@+id/history_panel"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_gravity="end"
+            android:orientation="vertical"
+            android:background="@color/background_color"
+            android:elevation="8dp"
+            android:padding="16dp">
+
+            <!-- Title row with New Chat icon -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingBottom="8dp">
+
+                <TextView
+                    android:id="@+id/history_title"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="History"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
+
+                <ImageButton
+                    android:id="@+id/btn_new_chat"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="New Chat"
+                    android:src="@android:drawable/ic_menu_add"
+                    app:tint="#4A7DFF" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/history_stats"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="12sp"
+                android:textColor="#666666"
+                android:paddingBottom="12dp" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/history_list"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <TextView
+                android:id="@+id/history_empty_text"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="No conversations yet"
+                android:textAlignment="center"
+                android:padding="32dp"
+                android:visibility="gone" />
+
+        </LinearLayout>
+
+    </FrameLayout>
+
+</FrameLayout>

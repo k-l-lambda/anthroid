@@ -8,7 +8,9 @@ import android.widget.EditText
 import androidx.appcompat.app.AlertDialog
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
+import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.Fragment
@@ -25,6 +27,8 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import com.anthroid.claude.DebugReceiver
+import com.anthroid.claude.ConversationManager
+import com.anthroid.claude.ui.ConversationAdapter
 
 /**
  * Fragment for Claude AI chat interface.
@@ -44,7 +48,18 @@ class ClaudeFragment : Fragment() {
     private lateinit var sendButton: ImageButton
     private lateinit var statusText: TextView
 
+    // History panel views
+    private lateinit var historyPanelContainer: FrameLayout
+    private lateinit var historyDimOverlay: View
+    private lateinit var historyPanel: LinearLayout
+    private lateinit var historyList: RecyclerView
+    private lateinit var historyStats: TextView
+    private lateinit var historyEmptyText: TextView
+    private lateinit var btnNewChat: ImageButton
+
     private lateinit var messageAdapter: MessageAdapter
+    private lateinit var conversationAdapter: ConversationAdapter
+    private lateinit var conversationManager: ConversationManager
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -59,11 +74,13 @@ class ClaudeFragment : Fragment() {
 
         // Initialize ViewModel - scoped to Activity to survive fragment recreation
         viewModel = ViewModelProvider(requireActivity())[ClaudeViewModel::class.java]
+        conversationManager = ConversationManager(requireContext())
 
         // Configure API from shared preferences
         configureApiFromPrefs()
 
         setupViews(view)
+        setupHistoryPanel(view)
         setupRecyclerView()
         observeViewModel()
     }
@@ -96,6 +113,56 @@ class ClaudeFragment : Fragment() {
             } else {
                 false
             }
+        }
+    }
+
+    private fun setupHistoryPanel(view: View) {
+        historyPanelContainer = view.findViewById(R.id.history_panel_container)
+        historyDimOverlay = view.findViewById(R.id.history_dim_overlay)
+        historyPanel = view.findViewById(R.id.history_panel)
+        historyList = view.findViewById(R.id.history_list)
+        historyStats = view.findViewById(R.id.history_stats)
+        historyEmptyText = view.findViewById(R.id.history_empty_text)
+        btnNewChat = view.findViewById(R.id.btn_new_chat)
+
+        // Set panel width to 70% of screen
+        view.post {
+            val screenWidth = view.width
+            val panelWidth = (screenWidth * 0.7).toInt()
+            historyPanel.layoutParams = FrameLayout.LayoutParams(
+                panelWidth,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            ).apply {
+                gravity = android.view.Gravity.END
+            }
+        }
+
+        // Click dim area to close
+        historyDimOverlay.setOnClickListener {
+            hideHistoryPanel()
+        }
+
+        // Setup conversation adapter
+        conversationAdapter = ConversationAdapter(
+            onConversationClick = { conversation ->
+                Log.i(TAG, "Selected conversation: ${conversation.sessionId}")
+                viewModel.resumeConversation(conversation.sessionId)
+                hideHistoryPanel()
+                Toast.makeText(requireContext(), "Resumed: ${conversation.title.take(30)}", Toast.LENGTH_SHORT).show()
+            },
+            onDeleteClick = { _ ->
+                // Delete disabled
+            }
+        )
+
+        historyList.layoutManager = LinearLayoutManager(requireContext())
+        historyList.adapter = conversationAdapter
+
+        // New chat button
+        btnNewChat.setOnClickListener {
+            viewModel.startNewConversation()
+            hideHistoryPanel()
+            Toast.makeText(requireContext(), "Started new conversation", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -197,7 +264,65 @@ class ClaudeFragment : Fragment() {
         }
     }
 
+    /**
+     * Show history panel (right side, 70% width).
+     * Public to allow calling from MainPagerActivity menu.
+     */
+    fun showConversationHistoryDialog() {
+        showHistoryPanel()
+    }
 
+    private fun showHistoryPanel() {
+        historyPanelContainer.visibility = View.VISIBLE
+
+        // Load conversations
+        viewLifecycleOwner.lifecycleScope.launch {
+            val conversations = conversationManager.getConversations()
+            val stats = conversationManager.getStorageStats()
+
+            conversationAdapter.submitList(conversations)
+
+            if (conversations.isEmpty()) {
+                historyEmptyText.visibility = View.VISIBLE
+                historyList.visibility = View.GONE
+            } else {
+                historyEmptyText.visibility = View.GONE
+                historyList.visibility = View.VISIBLE
+            }
+
+            val sizeKb = stats.totalSizeBytes / 1024
+            historyStats.text = "${stats.conversationCount} conversations · ${sizeKb}KB"
+        }
+
+        // Animate panel slide in from right
+        historyPanel.translationX = historyPanel.width.toFloat()
+        historyPanel.animate()
+            .translationX(0f)
+            .setDuration(200)
+            .start()
+
+        historyDimOverlay.alpha = 0f
+        historyDimOverlay.animate()
+            .alpha(1f)
+            .setDuration(200)
+            .start()
+    }
+
+    private fun hideHistoryPanel() {
+        // Animate panel slide out to right
+        historyPanel.animate()
+            .translationX(historyPanel.width.toFloat())
+            .setDuration(200)
+            .start()
+
+        historyDimOverlay.animate()
+            .alpha(0f)
+            .setDuration(200)
+            .withEndAction {
+                historyPanelContainer.visibility = View.GONE
+            }
+            .start()
+    }
 
     /**
      * Show dialog to configure API key for Android tools support.
@@ -205,13 +330,13 @@ class ClaudeFragment : Fragment() {
     fun showApiConfigDialog() {
         val prefs = requireActivity().getSharedPreferences("claude_config", android.content.Context.MODE_PRIVATE)
         val currentKey = prefs.getString("api_key", "") ?: ""
-        
+
         val input = EditText(requireContext()).apply {
             hint = "sk-ant-api03-..."
             setText(currentKey)
             setPadding(48, 32, 48, 32)
         }
-        
+
         AlertDialog.Builder(requireContext())
             .setTitle("Configure Claude API")
             .setMessage("Enter your Anthropic API key to enable Android tools (notification, location, calendar, etc.)")

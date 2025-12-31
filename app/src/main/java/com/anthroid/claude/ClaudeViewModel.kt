@@ -22,6 +22,7 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
     private val cliClient = ClaudeCliClient(application)
     private val apiClient = ClaudeApiClient(application)
     private val androidTools = AndroidTools(application)
+    private val conversationManager = ConversationManager(application)
 
     // Chat messages
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
@@ -594,6 +595,69 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
      */
     fun clearError() {
         _error.value = null
+    }
+
+
+    /**
+     * Resume a conversation from history.
+     * Loads messages from JSONL file and sets CLI session ID.
+     */
+    fun resumeConversation(sessionId: String) {
+        Log.i(TAG, "Resuming conversation: $sessionId")
+        viewModelScope.launch {
+            // Clear current messages
+            _messages.value = emptyList()
+            _currentResponse.value = ""
+            
+            // Load messages from conversation file
+            val historyMessages = conversationManager.loadConversation(sessionId)
+            Log.i(TAG, "Loaded ${historyMessages.size} messages from history")
+            
+            // Convert to UI messages
+            val uiMessages = historyMessages.mapNotNull { msg ->
+                when (msg.type) {
+                    "user" -> Message(
+                        role = MessageRole.USER,
+                        content = msg.content,
+                        timestamp = msg.timestamp
+                    )
+                    "assistant" -> if (msg.toolName != null) {
+                        Message(
+                            role = MessageRole.TOOL,
+                            content = msg.content,
+                            timestamp = msg.timestamp,
+                            toolName = msg.toolName,
+                            toolInput = msg.toolInput
+                        )
+                    } else if (msg.content.isNotEmpty()) {
+                        Message(
+                            role = MessageRole.ASSISTANT,
+                            content = msg.content,
+                            timestamp = msg.timestamp
+                        )
+                    } else null
+                    else -> null
+                }
+            }
+            
+            _messages.value = uiMessages
+            
+            // Set session ID for CLI to resume
+            cliClient.setConversationId(sessionId)
+            
+            Log.i(TAG, "Conversation resumed with ${uiMessages.size} UI messages")
+        }
+    }
+
+    /**
+     * Start a new conversation (clear current and reset session).
+     */
+    fun startNewConversation() {
+        Log.i(TAG, "Starting new conversation")
+        _messages.value = emptyList()
+        _currentResponse.value = ""
+        apiClient.clearHistory()
+        cliClient.clearConversation()
     }
 
     /**

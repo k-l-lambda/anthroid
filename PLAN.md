@@ -110,41 +110,44 @@ Enable Claude to execute terminal commands and Android features.
 
 ## In Progress / Planned Phases
 
-### Phase 5: Conversation Management (Next)
+### Phase 5: Conversation Management (Complete)
 
 Manage Claude CLI conversation history from the Chat UI.
 
 #### Background
 Claude CLI stores conversations as JSONL files in `~/.claude/projects/{project-path}/`:
-- Each conversation is a UUID.jsonl file (e.g., `3d6acbeb-4407-4c77-a429-103ee213e34b.jsonl`)
-- Messages have: type (user/assistant), content, timestamp, parentUuid (threading), tool calls
-- Agent sessions stored separately as `agent-*.jsonl`
-- Currently 177+ conversation files on test device, many empty (abandoned sessions)
-
-#### Features
-- List past conversations with preview (first user message as title)
-- View full conversation history with message details
-- Resume conversation (continue from previous session)
-- Delete individual conversations
-- Bulk cleanup of empty/abandoned sessions
-- Search within conversations
-- Storage stats (total size, conversation count)
-
-#### Implementation Tasks
-- [ ] Create ConversationManager.kt for JSONL parsing
-- [ ] Add conversation list UI (RecyclerView in drawer or separate activity)
-- [ ] Parse JSONL format: extract messages, timestamps, tool calls
-- [ ] Generate conversation title from first user message
-- [ ] Implement conversation resume with --resume flag
-- [ ] Add delete functionality with confirmation
-- [ ] Add storage stats display
-- [ ] Implement search across conversations
-
-#### Technical Notes
-- JSONL format: one JSON object per line
-- Each message has UUID linking to parent (conversation threading)
-- CLI supports `--resume SESSION_ID` to continue conversation
+- Each conversation is a UUID.jsonl file
+- Messages have: type (user/assistant), content, timestamp, tool calls
 - Storage path: `/data/data/com.anthroid/files/home/.claude/projects/-data-data-com-anthroid-files/`
+
+#### Implementation (Done - Jan 2026)
+
+**UI Components:**
+- History button (clock icon) in main toolbar alongside terminal/settings
+- Right-side sliding panel (70% width) for conversation history
+- Dimmed left area (30%) - click to close panel
+- "+" icon in panel header for new chat
+- Conversation list with title, preview, timestamp, message count
+
+**Core Classes:**
+- `ConversationManager.kt` - JSONL parsing, conversation listing, storage stats
+- `ConversationAdapter.kt` - RecyclerView adapter for conversation items
+- Updated `ClaudeFragment.kt` - Side panel show/hide with animations
+- Updated `ClaudeCliClient.kt` - `setConversationId()` for resume support
+
+**Features:**
+- [x] List past conversations sorted by recent
+- [x] Preview shows first user message as title
+- [x] Resume conversation with `--resume SESSION_ID` flag
+- [x] Start new conversation (clears session)
+- [x] Storage stats display (count, total size)
+- [x] Slide-in panel animation from right
+- [x] Click outside to dismiss panel
+
+**Technical Notes:**
+- Tool results filtered from message content display
+- Empty conversations filtered from list
+- Panel width set to 70% programmatically via `view.post{}`
 
 ---
 
@@ -248,7 +251,7 @@ app/src/main/java/com/anthroid/
 | M2 | ✅ Done | Claude CLI runs in terminal |
 | M3 | ✅ Done | Chat UI with ViewPager2 navigation |
 | M4 | ✅ Done | QR code configuration scanner |
-| M5 | 🔄 Next | Conversation management |
+| M5 | ✅ Done | Conversation management |
 | M5b | ⏳ | Camera input for chat |
 | M6 | ✅ Done | Tool execution working |
 | M7 | ⏳ | Voice I/O (STT + TTS) |
