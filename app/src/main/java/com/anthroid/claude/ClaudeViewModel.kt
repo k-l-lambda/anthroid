@@ -184,8 +184,8 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             is ClaudeEvent.Error -> {
                 Log.e(TAG, "Claude error: ${event.message}")
                 _error.value = event.message
-                // Remove empty streaming message on error
-                removeStreamingMessage()
+                // Show error in chat UI instead of removing message
+                showErrorMessage(event.message)
             }
 
             is ClaudeEvent.SessionEnded -> {
@@ -242,6 +242,36 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         _messages.value = _messages.value.filter { it.id != msgId }
         streamingMessageId = null
         _currentResponse.value = ""
+    }
+
+    /**
+     * Show error message in chat UI.
+     */
+    private fun showErrorMessage(errorMessage: String) {
+        val msgId = streamingMessageId
+        if (msgId != null) {
+            // Update existing streaming message to show error
+            val oldList = _messages.value
+            val newList = oldList.map { msg ->
+                if (msg.id == msgId) {
+                    msg.copy(content = "Error: $errorMessage", isStreaming = false, isError = true)
+                } else {
+                    msg
+                }
+            }
+            _messages.value = newList
+            streamingMessageId = null
+            _currentResponse.value = ""
+        } else {
+            // Add new error message
+            val errorMsg = Message(
+                role = MessageRole.ASSISTANT,
+                content = "Error: $errorMessage",
+                isError = true
+            )
+            _messages.value = _messages.value + errorMsg
+        }
+        _isProcessing.value = false
     }
 
     /**
@@ -502,6 +532,7 @@ data class Message(
     val content: String,
     val timestamp: Long = System.currentTimeMillis(),
     val isStreaming: Boolean = false,
+    val isError: Boolean = false,
     val toolName: String? = null,
     val toolInput: String? = null
 )

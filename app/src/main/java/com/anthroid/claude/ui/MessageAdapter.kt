@@ -1,6 +1,7 @@
 package com.anthroid.claude.ui
 
 import android.util.Log
+import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -93,9 +94,16 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
             if (message.isStreaming && message.content.isEmpty()) {
                 contentText.text = "..."
                 streamingIndicator?.visibility = View.VISIBLE
+                contentText.setTextColor(Color.parseColor("#333333"))
             } else {
                 contentText.text = message.content
                 streamingIndicator?.visibility = if (message.isStreaming) View.VISIBLE else View.GONE
+                // Show error messages in red
+                if (message.isError) {
+                    contentText.setTextColor(Color.parseColor("#D32F2F"))
+                } else {
+                    contentText.setTextColor(Color.parseColor("#333333"))
+                }
             }
         }
     }
@@ -125,6 +133,7 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
         override fun areContentsTheSame(oldItem: Message, newItem: Message): Boolean {
             return oldItem.content == newItem.content &&
                    oldItem.isStreaming == newItem.isStreaming &&
+                   oldItem.isError == newItem.isError &&
                    oldItem.role == newItem.role &&
                    oldItem.toolName == newItem.toolName &&
                    oldItem.toolInput == newItem.toolInput
