@@ -59,6 +59,14 @@ public class TermuxApplication extends Application {
                 return;
             }
 
+            // Ensure termux-am directory exists for socket server
+            java.io.File amSocketDir = new java.io.File(TermuxConstants.TERMUX_APP.TERMUX_AM_SOCKET_FILE_PATH).getParentFile();
+            if (amSocketDir != null && !amSocketDir.exists()) {
+                if (!amSocketDir.mkdirs()) {
+                    Logger.logError(LOG_TAG, "Failed to create termux-am socket directory: " + amSocketDir.getAbsolutePath());
+                }
+            }
+
             // Setup termux-am-socket server
             TermuxAmSocketServer.setupTermuxAmSocketServer(context);
         } else {
