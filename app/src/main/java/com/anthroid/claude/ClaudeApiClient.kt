@@ -361,6 +361,8 @@ class ClaudeApiClient(private val context: Context) {
         tools.put(createTool("bash", "Execute a shell command in Termux", mapOf("command" to "string:Shell command to execute"), listOf("command")))
         tools.put(createTool("run_termux", "Execute a command in the visible Termux terminal", mapOf("command" to "string:Command to execute", "session_id" to "string:Terminal session ID", "timeout" to "integer:Timeout in ms"), listOf("command")))
         tools.put(createTool("read_terminal", "Read the full text content from the terminal session", mapOf("session_id" to "string:Terminal session ID", "max_lines" to "integer:Maximum number of lines to return (0 for all)")))
+        tools.put(createTool("read_clipboard", "Read text from the device clipboard", mapOf()))
+        tools.put(createTool("write_clipboard", "Write text to the device clipboard", mapOf("text" to "string:Text to copy to clipboard"), listOf("text")))
         return tools
     }
 

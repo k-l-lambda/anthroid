@@ -157,7 +157,8 @@ class ClaudeCliClient(private val context: Context) {
                 "--verbose",
                 "--include-partial-messages",
                 "--print",
-                "--dangerously-skip-permissions"
+                "--dangerously-skip-permissions",
+                "--disallowedTools", "Bash"  // Disable CLI's built-in bash, use our custom bash tool
             )
             // Add conversation flag to resume previous session (reduces latency)
             conversationId?.let {
@@ -589,8 +590,18 @@ class ClaudeCliClient(private val context: Context) {
      */
     private fun getAndroidToolsPrompt(): String {
         return """
-IMPORTANT: You have MCP server "android-tools" with these tools. USE THESE MCP TOOLS instead of Bash for Android operations:
+IMPORTANT: You have MCP server "android-tools" with these tools. USE THESE MCP TOOLS:
 
+Shell Tools:
+- bash: Execute shell command in Termux environment. Input: {"command": "..."}
+- run_termux: Execute command in visible Termux terminal. Input: {"command": "...", "timeout": 30000}
+- read_terminal: Read current terminal output. Input: {"session_id": null, "max_lines": 100}
+
+Clipboard Tools:
+- read_clipboard: Read text from device clipboard. No input required.
+- write_clipboard: Write text to clipboard. Input: {"text": "..."}
+
+Android Tools:
 - show_notification: Show a notification. Input: {"title": "...", "message": "..."}
 - open_url: Open URL in browser. Input: {"url": "..."}
 - launch_app: Launch app by package. Input: {"package": "com.example.app"}

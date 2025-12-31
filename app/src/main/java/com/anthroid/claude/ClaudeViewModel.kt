@@ -69,10 +69,13 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
      * Check if Claude CLI is installed or API is configured.
      */
     fun checkClaudeInstallation() {
-        useCliMode = cliClient.isClaudeInstalled()
+        val cliAvailable = cliClient.isClaudeInstalled()
         val apiConfigured = apiClient.isConfigured()
+        // Prefer API mode when configured, as it has proper tool support
+        // CLI mode uses MCP which doesn't support our custom Android tools
+        useCliMode = cliAvailable && !apiConfigured
         _isClaudeInstalled.value = useCliMode || apiConfigured
-        Log.i(TAG, "Claude CLI installed: $useCliMode, API configured: $apiConfigured")
+        Log.i(TAG, "Claude CLI installed: $cliAvailable, API configured: $apiConfigured, using CLI mode: $useCliMode")
     }
 
     /**
@@ -360,38 +363,42 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                     command = command,
                     timeout = 60000
                 )
-                result.toToolResult()
-            } else {
-                // Fallback to direct execution with Termux shell
-                Log.i(TAG, "Termux terminal not available, using direct execution")
-                val termuxBin = "/data/data/com.anthroid/files/usr/bin"
-                val termuxHome = "/data/data/com.anthroid/files/home"
-                val termuxLib = "/data/data/com.anthroid/files/usr/lib"
-
-                val env = arrayOf(
-                    "HOME=$termuxHome",
-                    "PREFIX=/data/data/com.anthroid/files/usr",
-                    "PATH=$termuxBin",
-                    "LD_LIBRARY_PATH=$termuxLib",
-                    "LANG=en_US.UTF-8",
-                    "TERM=xterm-256color"
-                )
-
-                val process = Runtime.getRuntime().exec(
-                    arrayOf("$termuxBin/bash", "-c", command),
-                    env,
-                    java.io.File(termuxHome)
-                )
-
-                val output = process.inputStream.bufferedReader().readText()
-                val errorOutput = process.errorStream.bufferedReader().readText()
-                val exitCode = process.waitFor()
-
-                if (exitCode == 0) {
-                    output.ifEmpty { "(no output)" }
-                } else {
-                    "Exit code: $exitCode\n$output$errorOutput"
+                // If bridge succeeded, return result
+                if (result.success) {
+                    return result.toToolResult()
                 }
+                Log.w(TAG, "Terminal bridge failed: ${result.output}, falling back to direct execution")
+            }
+
+            // Fallback to direct execution with Termux shell
+            Log.i(TAG, "Using direct execution for bash command")
+            val termuxBin = "/data/data/com.anthroid/files/usr/bin"
+            val termuxHome = "/data/data/com.anthroid/files/home"
+            val termuxLib = "/data/data/com.anthroid/files/usr/lib"
+
+            val env = arrayOf(
+                "HOME=$termuxHome",
+                "PREFIX=/data/data/com.anthroid/files/usr",
+                "PATH=$termuxBin",
+                "LD_LIBRARY_PATH=$termuxLib",
+                "LANG=en_US.UTF-8",
+                "TERM=xterm-256color"
+            )
+
+            val process = Runtime.getRuntime().exec(
+                arrayOf("$termuxBin/bash", "-c", command),
+                env,
+                java.io.File(termuxHome)
+            )
+
+            val output = process.inputStream.bufferedReader().readText()
+            val errorOutput = process.errorStream.bufferedReader().readText()
+            val exitCode = process.waitFor()
+
+            if (exitCode == 0) {
+                output.ifEmpty { "(no output)" }
+            } else {
+                "Exit code: $exitCode\n$output$errorOutput"
             }
         } catch (e: Exception) {
             Log.e(TAG, "Bash execution failed", e)
