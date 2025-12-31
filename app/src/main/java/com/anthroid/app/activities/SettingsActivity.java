@@ -1,6 +1,7 @@
 package com.anthroid.app.activities;
 
 import android.content.Context;
+import android.content.Intent;
 import android.os.Bundle;
 import android.os.Environment;
 
@@ -69,6 +70,7 @@ public class SettingsActivity extends AppCompatActivity {
                     configureTermuxWidgetPreference(context);
                     configureAboutPreference(context);
                     configureDonatePreference(context);
+                    configureComponentsPreference(context);
                 }
             }.start();
         }
@@ -160,6 +162,16 @@ public class SettingsActivity extends AppCompatActivity {
 
                 donatePreference.setOnPreferenceClickListener(preference -> {
                     ShareUtils.openUrl(context, TermuxConstants.TERMUX_DONATE_URL);
+                    return true;
+                });
+            }
+        }
+
+        private void configureComponentsPreference(@NonNull Context context) {
+            Preference componentsPreference = findPreference("components");
+            if (componentsPreference != null) {
+                componentsPreference.setOnPreferenceClickListener(preference -> {
+                    context.startActivity(new Intent(context, ComponentsActivity.class));
                     return true;
                 });
             }
