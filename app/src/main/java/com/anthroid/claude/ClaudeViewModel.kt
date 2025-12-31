@@ -295,6 +295,8 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 "add_calendar_event" -> json.optString("title", event.input)
                 "query_media" -> json.optString("type", "images")
                 "read_terminal" -> "session: " + json.optString("session_id", "current")
+                "read_clipboard" -> "read clipboard"
+                "write_clipboard" -> json.optString("text", event.input).take(50) + "..."
                 else -> event.input
             }
         } catch (e: Exception) {
@@ -317,6 +319,8 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 event.name.lowercase() == "read" -> executeReadTool(event.input)
                 event.name.lowercase() == "write" -> executeWriteTool(event.input)
                 event.name.lowercase() == "read_terminal" -> executeReadTerminalTool(event.input)
+                event.name.lowercase() == "read_clipboard" -> executeReadClipboardTool()
+                event.name.lowercase() == "write_clipboard" -> executeWriteClipboardTool(event.input)
                 androidTools.isAndroidTool(event.name) -> androidTools.executeTool(event.name, event.input)
                 else -> "Tool '${event.name}' not supported"
             }
@@ -484,6 +488,51 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             result.toToolResult()
         } catch (e: Exception) {
             Log.e(TAG, "run_termux failed", e)
+            "Error: ${e.message}"
+        }
+    }
+
+
+    /**
+     * Read text from clipboard.
+     */
+    private fun executeReadClipboardTool(): String {
+        return try {
+            val clipboard = getApplication<Application>().getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            val clip = clipboard.primaryClip
+            if (clip != null && clip.itemCount > 0) {
+                val text = clip.getItemAt(0).text?.toString()
+                if (text.isNullOrEmpty()) {
+                    "Clipboard is empty"
+                } else {
+                    text
+                }
+            } else {
+                "Clipboard is empty"
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "read_clipboard failed", e)
+            "Error: ${e.message}"
+        }
+    }
+
+    /**
+     * Write text to clipboard.
+     */
+    private fun executeWriteClipboardTool(input: String): String {
+        return try {
+            val json = org.json.JSONObject(input)
+            val text = json.optString("text", "")
+            if (text.isEmpty()) {
+                return "Error: text is required"
+            }
+
+            val clipboard = getApplication<Application>().getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            val clip = android.content.ClipData.newPlainText("Claude", text)
+            clipboard.setPrimaryClip(clip)
+            "Text copied to clipboard (${text.length} characters)"
+        } catch (e: Exception) {
+            Log.e(TAG, "write_clipboard failed", e)
             "Error: ${e.message}"
         }
     }
