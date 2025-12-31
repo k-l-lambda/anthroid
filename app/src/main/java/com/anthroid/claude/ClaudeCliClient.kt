@@ -611,20 +611,14 @@ AVAILABLE TOOLS:
 - Bash: Execute shell commands (USE THIS for file operations)
 - Write/Edit: Create or modify files (these work correctly)
 
-ANDROID FEATURES (use Bash with termux-api commands):
-- Notification: termux-notification --title "Title" --content "Message"
-- Open URL: termux-open-url "https://..."
-- Clipboard read: termux-clipboard-get
-- Clipboard write: termux-clipboard-set "text"
-- Location: termux-location
-- Toast message: termux-toast "message"
-- Vibrate: termux-vibrate
-- TTS: termux-tts-speak "text"
-- Battery info: termux-battery-status
-- WiFi info: termux-wifi-connectioninfo
+ANDROID FEATURES (use Bash with am/content commands):
+- Open URL: am start -a android.intent.action.VIEW -d "https://..."
+- Open app: am start -n com.package.name/.MainActivity
+- Send broadcast: am broadcast -a android.intent.action.XXX
+- Content query: content query --uri content://...
 
+Note: Advanced Android features (notifications, clipboard, location) require API mode.
 When the user asks about files, use Bash commands.
-When the user asks about Android features (notifications, apps, location, etc.), use Bash with termux-api commands.
 """.trimIndent()
     }
 }
