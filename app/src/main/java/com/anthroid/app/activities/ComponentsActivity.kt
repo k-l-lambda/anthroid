@@ -52,6 +52,7 @@ class ComponentsActivity : AppCompatActivity() {
         ),
         Component(
             id = "claude-code",
+            preInstalled = true,
             name = "Claude Code CLI",
             description = "Claude AI assistant CLI tool",
             checkCommand = "claude --version",
@@ -254,6 +255,7 @@ class ComponentsActivity : AppCompatActivity() {
         val checkCommand: String,
         val installCommand: String,
         val binaryPath: String,
+        val preInstalled: Boolean = false,  // Pre-installed components cannot be reinstalled via UI
         var status: ComponentStatus = ComponentStatus.CHECKING,
         var version: String? = null
     )
@@ -306,8 +308,8 @@ class ComponentsActivity : AppCompatActivity() {
                     holder.progressBar.visibility = View.GONE
                 }
                 ComponentStatus.INSTALLED -> {
-                    holder.statusText.text = "Installed" + (component.version?.let { " ($it)" } ?: "")
-                    holder.installButton.visibility = View.VISIBLE
+                    holder.statusText.text = "Installed" + (component.version?.let { " ($it)" } ?: "") + (if (component.preInstalled) " (bundled)" else "")
+                    holder.installButton.visibility = if (component.preInstalled) View.GONE else View.VISIBLE
                     holder.installButton.text = "Reinstall"
                     holder.installButton.isEnabled = true
                     holder.progressBar.visibility = View.GONE
