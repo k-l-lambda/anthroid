@@ -548,6 +548,8 @@ class ClaudeCliClient(private val context: Context) {
             "TMPDIR" to "$PREFIX_PATH/tmp",
             "LANG" to "en_US.UTF-8",
             "TERM" to "xterm-256color",
+            "SHELL" to "$PREFIX_PATH/bin/bash",
+            "CLAUDE_CODE_SHELL" to "$PREFIX_PATH/bin/bash",
             "OPENSSL_CONF" to "$PREFIX_PATH/etc/tls/openssl.cnf"
         )
     }
