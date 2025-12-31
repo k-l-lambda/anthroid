@@ -1,0 +1,9 @@
+# Ensure shell scripts always use LF line endings
+*.sh text eol=lf
+*.bash text eol=lf
+
+# Binary files
+*.zip binary
+*.apk binary
+*.jar binary
+*.so binary
