@@ -132,24 +132,29 @@ object TerminalCommandBridge {
                 lastLogTime = now
             }
 
-            if (newContent.contains(marker)) {
-                // Extract output before marker
-                output = newContent.substringBefore(marker).trim()
+            // Check if marker appears on its own line (not within the echo command)
+            val markerLineRegex = Regex("^\\s*" + Regex.escape(marker) + "\\s*$", RegexOption.MULTILINE)
+            if (markerLineRegex.containsMatchIn(newContent)) {
+                // Extract output before marker line
+                val lines = newContent.lines()
+                val markerLineIndex = lines.indexOfFirst { it.trim() == marker }
 
-                // Remove the echoed command from beginning
-                // The command line typically includes the prompt + command + newline
-                val cmdLine = command.trim()
-                val lines = output.lines()
-                if (lines.isNotEmpty()) {
-                    // Find where the actual output starts (after command echo)
-                    val outputStartIndex = lines.indexOfFirst { line ->
+                if (markerLineIndex >= 0) {
+                    // Get lines before marker
+                    val outputLines = lines.take(markerLineIndex)
+
+                    // Remove the echoed command from beginning
+                    val cmdLine = command.trim()
+
+                    // Find where actual output starts (skip command echoes)
+                    val outputStartIndex = outputLines.indexOfFirst { line ->
                         !line.contains(cmdLine) && !line.contains("echo '$marker'")
                     }
-                    if (outputStartIndex > 0) {
-                        output = lines.drop(outputStartIndex).joinToString("\n").trim()
-                    } else if (outputStartIndex == -1) {
-                        // All lines contain command - likely no output
-                        output = ""
+
+                    output = if (outputStartIndex >= 0) {
+                        outputLines.drop(outputStartIndex).joinToString("\n").trim()
+                    } else {
+                        "" // No actual output
                     }
                 }
                 break
