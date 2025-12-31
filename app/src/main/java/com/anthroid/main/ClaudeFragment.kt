@@ -19,6 +19,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.anthroid.BuildConfig
 import com.anthroid.R
 import com.anthroid.claude.ClaudeViewModel
+import com.anthroid.claude.MessageRole
 import com.anthroid.claude.ui.MessageAdapter
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
@@ -156,6 +157,24 @@ class ClaudeFragment : Fragment() {
             }
         }
 
+        // Observe read conversation requests from adb
+        viewLifecycleOwner.lifecycleScope.launch {
+            DebugReceiver.readConversationFlow.collect {
+                Log.i(TAG, "Read conversation request received")
+                val messages = viewModel.messages.value
+                val sb = StringBuilder()
+                messages.forEach { msg ->
+                    val role = if (msg.role == MessageRole.USER) "USER" else "ASSISTANT"
+                    sb.append("[$role] ${msg.content}")
+                    if (msg.toolName != null) {
+                        sb.append("\nTOOL: ${msg.toolName}(${msg.toolInput?.take(100) ?: ""})")
+                    }
+                    sb.append("\n\n")
+                }
+                DebugReceiver.updateConversation(sb.toString())
+                Log.i(TAG, "Conversation updated: ${messages.size} messages")
+            }
+        }
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.isClaudeInstalled.collectLatest { isInstalled ->
                 if (!isInstalled) {

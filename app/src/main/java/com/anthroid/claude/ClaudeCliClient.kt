@@ -158,7 +158,7 @@ class ClaudeCliClient(private val context: Context) {
                 "--include-partial-messages",
                 "--print",
                 "--dangerously-skip-permissions",
-                "--disallowedTools", "Bash"  // Disable CLI's built-in bash, use our custom bash tool
+                // Note: CLI's built-in Bash tool is enabled for file operations
             )
             // Add conversation flag to resume previous session (reduces latency)
             conversationId?.let {
@@ -590,32 +590,26 @@ class ClaudeCliClient(private val context: Context) {
      */
     private fun getAndroidToolsPrompt(): String {
         return """
-IMPORTANT: You have MCP server "android-tools" with these tools. USE THESE MCP TOOLS:
+IMPORTANT: You are running on Android/Termux. Some built-in tools may not work correctly.
 
-Shell Tools:
-- bash: Execute shell command in Termux environment. Input: {"command": "..."}
-- run_termux: Execute command in visible Termux terminal. Input: {"command": "...", "timeout": 30000}
-- read_terminal: Read current terminal output. Input: {"session_id": null, "max_lines": 100}
+FILE OPERATIONS:
+- AVOID using Glob, Read tools directly - they have compatibility issues on Android
+- USE the Bash tool for ALL file operations:
+  - List files: Bash with "ls -la /path"
+  - Read file: Bash with "cat /path/file"
+  - Find files: Bash with "find /path -name '*.txt'"
+  - Search content: Bash with "grep -r 'pattern' /path"
 
-Clipboard Tools:
-- read_clipboard: Read text from device clipboard. No input required.
-- write_clipboard: Write text to clipboard. Input: {"text": "..."}
+ENVIRONMENT:
+- Home directory: /data/data/com.anthroid/files/home
+- Prefix: /data/data/com.anthroid/files/usr
+- Current working directory: /data/data/com.anthroid/files
 
-Android Tools:
-- show_notification: Show a notification. Input: {"title": "...", "message": "..."}
-- open_url: Open URL in browser. Input: {"url": "..."}
-- launch_app: Launch app by package. Input: {"package": "com.example.app"}
-- list_apps: List installed apps. Input: {"filter": "user|system|all", "limit": 50}
-- get_app_info: Get app details. Input: {"package": "com.example.app"}
-- geocode: Address to coordinates. Input: {"address": "..."}
-- reverse_geocode: Coordinates to address. Input: {"latitude": 0.0, "longitude": 0.0}
-- get_location: Get device location. Input: {"provider": "network|gps"}
-- query_calendar: Query calendar events. Input: {"days_ahead": 7, "limit": 20}
-- add_calendar_event: Add calendar event. Input: {"title": "...", "start_time": ms, "end_time": ms}
-- query_media: Query media files. Input: {"type": "images|videos|audio", "limit": 20}
-- send_intent: Send Android intent. Input: {"action": "...", "data": "...", "type": "..."}
+AVAILABLE TOOLS:
+- Bash: Execute shell commands (USE THIS for file operations)
+- Write/Edit: Create or modify files (these work correctly)
 
-Use these tools by calling them with the appropriate JSON input when the user requests device actions.
+When the user asks about files, directories, or system information, always use Bash commands.
 """.trimIndent()
     }
 }
