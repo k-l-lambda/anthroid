@@ -316,6 +316,12 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         _messages.value = _messages.value + toolMessage
 
         viewModelScope.launch {
+            // In CLI mode, tool execution happens but CLI doesn't receive results
+            // because CLI uses MCP protocol which we haven't implemented
+            if (useCliMode) {
+                Log.w(TAG, "Tool '${event.name}' called in CLI mode - results may not be sent back to Claude")
+            }
+
             val result = when {
                 event.name.lowercase() == "run_termux" -> executeRunTermuxTool(event.input)
                 event.name.lowercase() == "bash" -> executeBashTool(event.input)
@@ -328,9 +334,12 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 else -> "Tool '${event.name}' not supported"
             }
 
-            // Update tool message to show completed
+            // Update tool message to show completed with result
             _messages.value = _messages.value.map { msg ->
-                if (msg.id == toolMessage.id) msg.copy(isStreaming = false)
+                if (msg.id == toolMessage.id) msg.copy(
+                    isStreaming = false,
+                    content = "${toolInputText}\n\n📤 Result:\n${result.take(500)}${if (result.length > 500) "..." else ""}"
+                )
                 else msg
             }
 
@@ -375,25 +384,24 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             val termuxBin = "/data/data/com.anthroid/files/usr/bin"
             val termuxHome = "/data/data/com.anthroid/files/home"
             val termuxLib = "/data/data/com.anthroid/files/usr/lib"
+            val termuxPrefix = "/data/data/com.anthroid/files/usr"
 
-            val env = arrayOf(
-                "HOME=$termuxHome",
-                "PREFIX=/data/data/com.anthroid/files/usr",
-                "PATH=$termuxBin",
-                "LD_LIBRARY_PATH=$termuxLib",
-                "LANG=en_US.UTF-8",
-                "TERM=xterm-256color"
-            )
+            // Wrap command with environment setup to ensure proper PATH and HOME
+            val wrappedCommand = "export HOME='$termuxHome' PREFIX='$termuxPrefix' PATH='$termuxBin' LD_LIBRARY_PATH='$termuxLib' LANG='en_US.UTF-8' TERM='xterm-256color' && $command"
 
             val process = Runtime.getRuntime().exec(
-                arrayOf("$termuxBin/bash", "-c", command),
-                env,
+                arrayOf("$termuxBin/bash", "-c", wrappedCommand),
+                null,
                 java.io.File(termuxHome)
             )
 
             val output = process.inputStream.bufferedReader().readText()
             val errorOutput = process.errorStream.bufferedReader().readText()
             val exitCode = process.waitFor()
+
+            Log.i(TAG, "Bash execution completed: exitCode=$exitCode, outputLen=${output.length}, errorLen=${errorOutput.length}")
+            if (output.isNotEmpty()) Log.d(TAG, "Output: ${output.take(200)}")
+            if (errorOutput.isNotEmpty()) Log.w(TAG, "Error: ${errorOutput.take(200)}")
 
             if (exitCode == 0) {
                 output.ifEmpty { "(no output)" }
