@@ -1,6 +1,12 @@
 package com.anthroid.claude
 
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
 import android.os.Bundle
+import android.os.IBinder
+import android.util.Log
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.Toast
@@ -14,7 +20,9 @@ import android.widget.ImageButton
 import android.widget.TextView
 import com.anthroid.BuildConfig
 import com.anthroid.R
+import com.anthroid.app.TermuxService
 import com.anthroid.claude.ui.MessageAdapter
+import com.anthroid.terminal.TerminalSession
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -23,6 +31,10 @@ import kotlinx.coroutines.launch
  * Chat activity for Claude AI interaction.
  */
 class ClaudeActivity : AppCompatActivity() {
+
+    companion object {
+        private const val TAG = "ClaudeActivity"
+    }
 
     private val viewModel: ClaudeViewModel by viewModels()
 
@@ -33,12 +45,62 @@ class ClaudeActivity : AppCompatActivity() {
 
     private lateinit var messageAdapter: MessageAdapter
 
+    private var termuxService: TermuxService? = null
+
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            Log.d(TAG, "TermuxService connected")
+            val binder = service as? TermuxService.LocalBinder
+            termuxService = binder?.service
+
+            termuxService?.let { svc ->
+                // Register terminal command bridge
+                TerminalCommandBridge.register(svc, ::getCurrentSession)
+                Log.d(TAG, "TerminalCommandBridge registered")
+
+                // Ensure at least one session exists for command execution
+                if (svc.termuxSessions.isEmpty()) {
+                    Log.d(TAG, "No terminal sessions, creating one for Claude")
+                    svc.createTermuxSession(null, null, null, null, false, "claude-session")
+                    Log.d(TAG, "Terminal session created")
+                }
+            }
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            Log.d(TAG, "TermuxService disconnected")
+            TerminalCommandBridge.unregister()
+            termuxService = null
+        }
+    }
+
+    /**
+     * Get current/first available terminal session for command execution.
+     */
+    private fun getCurrentSession(): TerminalSession? {
+        val svc = termuxService ?: return null
+        return if (svc.termuxSessions.isNotEmpty()) {
+            svc.termuxSessions[0].terminalSession
+        } else {
+            null
+        }
+    }
+
+    private fun bindTermuxService() {
+        val intent = Intent(this, TermuxService::class.java)
+        startService(intent)
+        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_claude)
 
         // Configure API from shared preferences or environment
         configureApiFromPrefs()
+
+        // Bind to TermuxService for terminal command execution
+        bindTermuxService()
 
         setupViews()
         setupRecyclerView()
@@ -137,5 +199,10 @@ class ClaudeActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        try {
+            unbindService(serviceConnection)
+        } catch (e: Exception) {
+            Log.w(TAG, "Error unbinding service", e)
+        }
     }
 }
