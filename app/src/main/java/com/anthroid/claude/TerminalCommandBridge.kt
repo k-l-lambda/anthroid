@@ -16,6 +16,7 @@ import java.util.UUID
  */
 object TerminalCommandBridge {
     private const val TAG = "TerminalCommandBridge"
+    private const val PREFIX = "/data/data/com.anthroid/files/usr"
 
     private var termuxService: TermuxService? = null
     private var currentSessionGetter: (() -> TerminalSession?)? = null
