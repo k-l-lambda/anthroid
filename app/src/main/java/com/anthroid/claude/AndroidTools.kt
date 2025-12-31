@@ -4,6 +4,8 @@ import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.Geocoder
@@ -55,6 +57,8 @@ class AndroidTools(private val context: Context) {
             "query_calendar" -> queryCalendar(input)
             "add_calendar_event" -> addCalendarEvent(input)
             "query_media" -> queryMedia(input)
+            "read_clipboard" -> readClipboard()
+            "write_clipboard" -> writeClipboard(input)
             else -> "Unknown tool: $name"
         }
     } catch (e: Exception) {
@@ -65,7 +69,8 @@ class AndroidTools(private val context: Context) {
     fun isAndroidTool(name: String) = name.lowercase() in listOf(
         "open_url", "launch_app", "send_intent", "list_apps", "get_app_info",
         "show_notification", "geocode", "reverse_geocode", "get_location",
-        "query_calendar", "add_calendar_event", "query_media"
+        "query_calendar", "add_calendar_event", "query_media",
+        "read_clipboard", "write_clipboard"
     )
 
     private fun openUrl(input: String): String {
@@ -261,5 +266,25 @@ class AndroidTools(private val context: Context) {
             }
         }
         return if (result.length() > 0) result.toString(2) else "No $mediaType found"
+    }
+
+    private fun readClipboard(): String {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = clipboard.primaryClip
+        if (clip != null && clip.itemCount > 0) {
+            val text = clip.getItemAt(0).text?.toString()
+            return if (text.isNullOrEmpty()) "Clipboard is empty" else text
+        }
+        return "Clipboard is empty"
+    }
+
+    private fun writeClipboard(input: String): String {
+        val json = JSONObject(input)
+        val text = json.optString("text", "")
+        if (text.isEmpty()) return "Error: text is required"
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = ClipData.newPlainText("Claude", text)
+        clipboard.setPrimaryClip(clip)
+        return "Text copied to clipboard (${text.length} characters)"
     }
 }
