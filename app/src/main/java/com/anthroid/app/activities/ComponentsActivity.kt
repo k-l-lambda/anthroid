@@ -65,6 +65,22 @@ class ComponentsActivity : AppCompatActivity() {
             checkCommand = "ssh -V",
             installCommand = "pkg install openssh -y",
             binaryPath = "$PREFIX/bin/ssh"
+        ),
+        Component(
+            id = "git",
+            name = "Git",
+            description = "Version control system",
+            checkCommand = "git --version",
+            installCommand = "pkg install git -y",
+            binaryPath = "$PREFIX/bin/git"
+        ),
+        Component(
+            id = "gh",
+            name = "GitHub CLI",
+            description = "GitHub command line tool",
+            checkCommand = "gh --version",
+            installCommand = "pkg install gh -y",
+            binaryPath = "$PREFIX/bin/gh"
         )
     )
 
@@ -138,13 +154,73 @@ class ComponentsActivity : AppCompatActivity() {
         Thread {
             components.forEach { component ->
                 val installed = File(component.binaryPath).exists()
-                component.status = if (installed) ComponentStatus.INSTALLED else ComponentStatus.NOT_INSTALLED
+                if (installed) {
+                    // Try to get version by running the check command
+                    val version = getComponentVersion(component)
+                    component.version = version
+                    component.status = ComponentStatus.INSTALLED
+                } else {
+                    component.status = ComponentStatus.NOT_INSTALLED
+                    component.version = null
+                }
 
                 runOnUiThread {
                     adapter.notifyDataSetChanged()
                 }
             }
         }.start()
+    }
+
+    private fun getComponentVersion(component: Component): String? {
+        return try {
+            val env = arrayOf(
+                "PATH=$PREFIX/bin",
+                "LD_LIBRARY_PATH=$PREFIX/lib",
+                "HOME=/data/data/com.anthroid/files/home"
+            )
+            val process = Runtime.getRuntime().exec(
+                arrayOf("$PREFIX/bin/bash", "-c", component.checkCommand),
+                env
+            )
+            val output = process.inputStream.bufferedReader().readText().trim()
+            val errorOutput = process.errorStream.bufferedReader().readText().trim()
+            process.waitFor()
+
+            // Parse version from output - extract version number pattern
+            val combinedOutput = if (output.isNotEmpty()) output else errorOutput
+            parseVersion(combinedOutput, component.id)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting version for ${component.id}: ${e.message}")
+            null
+        }
+    }
+
+    private fun parseVersion(output: String, componentId: String): String? {
+        if (output.isBlank()) return null
+
+        return when (componentId) {
+            "nodejs" -> {
+                // "v22.12.0" -> "22.12.0"
+                output.trim().removePrefix("v")
+            }
+            "claude-code" -> {
+                // "2.0.76 (Claude Code)" -> "2.0.76"
+                output.split(" ").firstOrNull()
+            }
+            "openssh" -> {
+                // "OpenSSH_10.2p1, OpenSSL 3.6.0" -> "10.2p1"
+                Regex("OpenSSH_([\\d.p]+)").find(output)?.groupValues?.get(1)
+            }
+            "git" -> {
+                // "git version 2.48.1" -> "2.48.1"
+                Regex("git version ([\\d.]+)").find(output)?.groupValues?.get(1)
+            }
+            "gh" -> {
+                // "gh version 2.65.0" -> "2.65.0"
+                Regex("gh version ([\\d.]+)").find(output)?.groupValues?.get(1)
+            }
+            else -> output.trim().take(20)
+        }
     }
 
     private fun installComponent(component: Component) {
