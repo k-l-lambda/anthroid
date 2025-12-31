@@ -30,14 +30,15 @@ import kotlin.coroutines.resume
 class AndroidTools(private val context: Context) {
     companion object {
         private const val TAG = "AndroidTools"
-        private const val CHANNEL_ID = "claude_agent"
+        private const val CHANNEL_ID = "claude_agent_v2"
     }
 
     init { createNotificationChannel() }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, "Claude Agent", NotificationManager.IMPORTANCE_DEFAULT)
+            val channel = NotificationChannel(CHANNEL_ID, "Claude Agent", NotificationManager.IMPORTANCE_HIGH)
+            channel.description = "Notifications from Claude Agent"
             context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
     }
@@ -141,7 +142,12 @@ class AndroidTools(private val context: Context) {
         }
         val id = json.optInt("id", System.currentTimeMillis().toInt())
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_service_notification).setContentTitle(title).setContentText(message).setAutoCancel(true).build()
+            .setSmallIcon(R.drawable.ic_service_notification)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .build()
         Log.i(TAG, "Calling NotificationManagerCompat.notify with id=$id, title=$title, message=$message")
         NotificationManagerCompat.from(context).notify(id, notification)
         Log.i(TAG, "Notification posted successfully")

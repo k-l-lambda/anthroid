@@ -365,6 +365,24 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             val command = org.json.JSONObject(input).optString("command", "")
             Log.i(TAG, "Executing bash: $command")
 
+            // Intercept TOOL_CALL broadcasts and execute directly (broadcasts from subprocess dont work)
+            if (command.contains("com.anthroid.TOOL_CALL") && command.contains("--es tool")) {
+                Log.i(TAG, "Intercepting TOOL_CALL command for direct execution")
+                val toolRegex = Regex("""--es tool ["'"]([^"'"]+)["'"]""")
+                val inputRegex = Regex("""--es input '(\{.*?\})'""")
+                val toolMatch = toolRegex.find(command)
+                val inputMatch = inputRegex.find(command)
+                val toolName = toolMatch?.groupValues?.getOrNull(1) ?: ""
+                val toolInput = inputMatch?.groupValues?.getOrNull(1) ?: "{}"
+                Log.i(TAG, "Parsed tool=$toolName, input=$toolInput")
+                if (toolName.isNotEmpty()) {
+                    val androidTools = AndroidTools(getApplication())
+                    val result = androidTools.executeTool(toolName, toolInput)
+                    Log.i(TAG, "Direct tool execution result: $result")
+                    return result
+                }
+            }
+
             // Try Termux terminal bridge first
             if (TerminalCommandBridge.isAvailable()) {
                 Log.i(TAG, "Using Termux terminal for bash command")
