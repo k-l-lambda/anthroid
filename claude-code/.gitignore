@@ -1,0 +1,8 @@
+# Node modules
+node_modules/
+
+# Packed archives
+*.tgz
+
+# Platform-specific binaries (keep in vendor/)
+# vendor/
