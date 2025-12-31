@@ -113,7 +113,7 @@ Take photos to add visual context to chat messages.
 
 ---
 
-### Phase 6: Tool Integration
+### Phase 6: Tool Integration (Complete)
 
 Enable Claude to execute terminal commands.
 
@@ -261,7 +261,7 @@ app/src/main/java/com/anthroid/
 | M3 | ✅ Done | Chat UI with ViewPager2 navigation |
 | M4 | ✅ Done | QR code configuration scanner |
 | M5 | 🔄 Next | Camera input for chat |
-| M6 | ⏳ | Tool execution working |
+| M6 | ✅ Done | Tool execution working |
 | M7 | ⏳ | Voice I/O (STT + TTS) |
 | M8 | ⏳ | Production-ready release |
 
