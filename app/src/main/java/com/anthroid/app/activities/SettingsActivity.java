@@ -118,9 +118,11 @@ public class SettingsActivity extends AppCompatActivity {
                     new Thread() {
                         @Override
                         public void run() {
-                            String title = "About";
+                            String title = "About Anthroid";
 
                             StringBuilder aboutString = new StringBuilder();
+                            aboutString.append("## ").append(TermuxConstants.ANTHROID_APP_NAME).append("\n\n");
+                            aboutString.append(TermuxConstants.ANTHROID_APP_DESCRIPTION).append("\n\n");
                             aboutString.append(TermuxUtils.getAppInfoMarkdownString(context, TermuxUtils.AppInfoMode.TERMUX_AND_PLUGIN_PACKAGES));
                             aboutString.append("\n\n").append(AndroidUtils.getDeviceInfoMarkdownString(context, true));
                             aboutString.append("\n\n").append(TermuxUtils.getImportantLinksMarkdownString(context));
@@ -132,7 +134,7 @@ public class SettingsActivity extends AppCompatActivity {
                             reportInfo.setReportString(aboutString.toString());
                             reportInfo.setReportSaveFileLabelAndPath(userActionName,
                                 Environment.getExternalStorageDirectory() + "/" +
-                                    FileUtils.sanitizeFileName(TermuxConstants.TERMUX_APP_NAME + "-" + userActionName + ".log", true, true));
+                                    FileUtils.sanitizeFileName(TermuxConstants.ANTHROID_APP_NAME + "-" + userActionName + ".log", true, true));
 
                             ReportActivity.startReportActivity(context, reportInfo);
                         }
@@ -144,26 +146,10 @@ public class SettingsActivity extends AppCompatActivity {
         }
 
         private void configureDonatePreference(@NonNull Context context) {
+            // Anthroid: Donate feature is disabled
             Preference donatePreference = findPreference("donate");
             if (donatePreference != null) {
-                String signingCertificateSHA256Digest = PackageUtils.getSigningCertificateSHA256DigestForPackage(context);
-                if (signingCertificateSHA256Digest != null) {
-                    // If APK is a Google Playstore release, then do not show the donation link
-                    // since Termux isn't exempted from the playstore policy donation links restriction
-                    // Check Fund solicitations: https://pay.google.com/intl/en_in/about/policy/
-                    String apkRelease = TermuxUtils.getAPKRelease(signingCertificateSHA256Digest);
-                    if (apkRelease == null || apkRelease.equals(TermuxConstants.APK_RELEASE_GOOGLE_PLAYSTORE_SIGNING_CERTIFICATE_SHA256_DIGEST)) {
-                        donatePreference.setVisible(false);
-                        return;
-                    } else {
-                        donatePreference.setVisible(true);
-                    }
-                }
-
-                donatePreference.setOnPreferenceClickListener(preference -> {
-                    ShareUtils.openUrl(context, TermuxConstants.TERMUX_DONATE_URL);
-                    return true;
-                });
+                donatePreference.setVisible(false);
             }
         }
 

@@ -569,6 +569,35 @@ public final class TermuxConstants {
     public static final String TERMUX_DONATE_URL = TERMUX_SITE_URL + "/donate"; // Default: "https://termux.dev/donate"
 
 
+    /*
+     * Anthroid project urls (this fork)
+     */
+
+    /** Anthroid app name */
+    public static final String ANTHROID_APP_NAME = "Anthroid";
+
+    /** Anthroid app description */
+    public static final String ANTHROID_APP_DESCRIPTION = "Android + Anthropic: AI-powered terminal for Claude";
+
+    /** Anthroid GitHub organization url */
+    public static final String ANTHROID_GITHUB_ORGANIZATION_URL = "https://github.com/anthropics";
+
+    /** Anthroid GitHub repo url - placeholder since this is a private project */
+    public static final String ANTHROID_GITHUB_REPO_URL = "https://github.com/anthropics/anthroid";
+
+    /** Anthroid GitHub issues url */
+    public static final String ANTHROID_GITHUB_ISSUES_URL = ANTHROID_GITHUB_REPO_URL + "/issues";
+
+    /** Claude Code CLI documentation */
+    public static final String CLAUDE_CODE_DOCS_URL = "https://docs.anthropic.com/claude-code";
+
+    /** Anthropic website */
+    public static final String ANTHROPIC_WEBSITE_URL = "https://anthropic.com";
+
+    /** Anthropic API console */
+    public static final String ANTHROPIC_CONSOLE_URL = "https://console.anthropic.com";
+
+
 
 
 
