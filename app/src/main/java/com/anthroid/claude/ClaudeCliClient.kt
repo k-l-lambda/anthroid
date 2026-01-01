@@ -138,17 +138,176 @@ class ClaudeCliClient(private val context: Context) {
     }.flowOn(Dispatchers.IO)
 
     /**
+     * Data class for image with base64 content.
+     */
+    data class ImageData(
+        val base64: String,
+        val mimeType: String
+    )
+
+    /**
+     * Send a message with images using stream-json input format.
+     * This enables multimodal support via CLI without needing API key.
+     *
+     * @param message The text message to send
+     * @param images List of images with base64 content
+     * @return Flow of ClaudeEvent objects with streaming response
+     */
+    fun chatWithImages(message: String, images: List<ImageData>): Flow<ClaudeEvent> = channelFlow {
+        val env = buildEnvironment()
+        val claudePath = getClaudePath()
+
+        Log.i(TAG, "Starting Claude stream-json mode with ${images.size} images")
+
+        try {
+            val cmdArgs = mutableListOf(
+                claudePath,
+                "--print",
+                "--input-format", "stream-json",
+                "--output-format", "stream-json",
+                "--verbose",
+                "--include-partial-messages",
+                "--dangerously-skip-permissions"
+            )
+
+            // Add conversation flag to resume previous session
+            conversationId?.let {
+                cmdArgs.add("--resume")
+                cmdArgs.add(it)
+            }
+
+            val processBuilder = ProcessBuilder(cmdArgs)
+                .directory(File("$PREFIX_PATH/.."))
+                .redirectErrorStream(false)
+
+            processBuilder.environment().putAll(env)
+
+            val proc = processBuilder.start()
+            process = proc
+
+            // Build stream-json input message with images
+            val contentArray = org.json.JSONArray()
+
+            // Add text content
+            if (message.isNotBlank()) {
+                contentArray.put(JSONObject().apply {
+                    put("type", "text")
+                    put("text", message)
+                })
+            }
+
+            // Add image content blocks
+            images.forEach { image ->
+                contentArray.put(JSONObject().apply {
+                    put("type", "image")
+                    put("source", JSONObject().apply {
+                        put("type", "base64")
+                        put("media_type", image.mimeType)
+                        put("data", image.base64)
+                    })
+                })
+            }
+
+            // Construct the stream-json input format
+            val inputJson = JSONObject().apply {
+                put("type", "user")
+                put("message", JSONObject().apply {
+                    put("role", "user")
+                    put("content", contentArray)
+                })
+            }
+
+            // Write JSON to stdin
+            val writer = BufferedWriter(OutputStreamWriter(proc.outputStream))
+            val jsonLine = inputJson.toString()
+            Log.d(TAG, "Sending stream-json input: ${jsonLine.take(200)}...")
+            writer.write(jsonLine)
+            writer.newLine()
+            writer.flush()
+            writer.close()
+            Log.i(TAG, "Stdin closed with stream-json message")
+
+            // Read stderr in background
+            val stderrJob = launch {
+                val reader = BufferedReader(InputStreamReader(proc.errorStream))
+                try {
+                    var line: String?
+                    while (reader.readLine().also { line = it } != null) {
+                        if (line!!.contains("unused DT entry")) continue
+                        Log.w(TAG, "Claude stderr: $line")
+                    }
+                } catch (e: IOException) {
+                    if (isActive) Log.e(TAG, "Error reading stderr", e)
+                } finally {
+                    reader.close()
+                }
+            }
+
+            // Read stdout line by line for stream-json events
+            val stdoutReader = BufferedReader(InputStreamReader(proc.inputStream))
+            try {
+                var line: String?
+                while (stdoutReader.readLine().also { line = it } != null) {
+                    if (line!!.isNotBlank()) {
+                        Log.d(TAG, "Stream event: ${line!!.take(100)}")
+                        parseStreamEvent(line!!)?.let { event ->
+                            // Capture session ID from system event
+                            if (event is ClaudeEvent.MessageStart) {
+                                try {
+                                    val json = JSONObject(line!!)
+                                    if (json.optString("type") == "system") {
+                                        val sessionId = json.optString("session_id", "")
+                                        if (sessionId.isNotEmpty()) {
+                                            conversationId = sessionId
+                                            Log.i(TAG, "Captured session ID: $sessionId")
+                                        }
+                                    }
+                                } catch (e: Exception) { /* ignore */ }
+                            }
+                            send(event)
+                        }
+                    }
+                }
+            } catch (e: IOException) {
+                if (isActive) Log.e(TAG, "Error reading stdout", e)
+            } finally {
+                stdoutReader.close()
+            }
+
+            val exitCode = proc.waitFor()
+            Log.i(TAG, "Claude stream-json process exited with code: $exitCode")
+
+            stderrJob.cancelAndJoin()
+
+            send(ClaudeEvent.MessageEnd)
+            send(ClaudeEvent.SessionEnded(exitCode))
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to run Claude stream-json mode", e)
+            send(ClaudeEvent.Error("Failed to run Claude: " + e.message))
+        } finally {
+            process = null
+        }
+
+        awaitClose { }
+    }.flowOn(Dispatchers.IO)
+
+    /**
      * Send a message using streaming JSON mode for real-time response.
      * Uses --output-format stream-json for true streaming.
      *
      * @param message The message to send to Claude
+     * @param imagePaths List of image file paths to include in the message (deprecated, use chatWithImages instead)
      * @return Flow of ClaudeEvent objects with real-time streaming
      */
-    fun chatStreaming(message: String): Flow<ClaudeEvent> = channelFlow {
+    fun chatStreaming(message: String, imagePaths: List<String> = emptyList()): Flow<ClaudeEvent> = channelFlow {
         val env = buildEnvironment()
         val claudePath = getClaudePath()
 
         Log.i(TAG, "Starting Claude streaming mode for message: " + message.take(50) + "...")
+        if (imagePaths.isNotEmpty()) {
+            Log.i(TAG, "Including ${imagePaths.size} images: ${imagePaths.joinToString()}")
+        }
 
         try {
             val cmdArgs = mutableListOf(
@@ -160,6 +319,11 @@ class ClaudeCliClient(private val context: Context) {
                 "--dangerously-skip-permissions",
                 // Note: CLI's built-in Bash tool is enabled for file operations
             )
+            // Add image flags for each image path
+            imagePaths.forEach { imagePath ->
+                cmdArgs.add("--image")
+                cmdArgs.add(imagePath)
+            }
             // Add conversation flag to resume previous session (reduces latency)
             conversationId?.let {
                 cmdArgs.add("--resume")

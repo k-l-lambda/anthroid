@@ -22,6 +22,14 @@ class ClaudeApiClient(private val context: Context) {
         private const val TAG = "ClaudeApiClient"
     }
 
+    /**
+     * Represents an image to be sent with a message.
+     */
+    data class ImageContent(
+        val base64Data: String,
+        val mimeType: String = "image/jpeg"
+    )
+
     private var apiKey: String = ""
     private var baseUrl: String = BuildConfig.CLAUDE_API_BASE_URL
     private var model: String = BuildConfig.CLAUDE_API_MODEL
@@ -48,8 +56,10 @@ class ClaudeApiClient(private val context: Context) {
 
     /**
      * Send a message and receive streaming response.
+     * @param userMessage The text message to send
+     * @param images Optional list of images to include in the message
      */
-    fun chat(userMessage: String): Flow<ClaudeEvent> = channelFlow {
+    fun chat(userMessage: String, images: List<ImageContent> = emptyList()): Flow<ClaudeEvent> = channelFlow {
         if (!isConfigured()) {
             send(ClaudeEvent.Error("API key not configured"))
             return@channelFlow
@@ -57,11 +67,42 @@ class ClaudeApiClient(private val context: Context) {
 
         withContext(Dispatchers.IO) {
             try {
+                // Build content array for multimodal message
+                val contentArray = JSONArray()
+
+                // Add images first (if any)
+                images.forEach { image ->
+                    contentArray.put(JSONObject().apply {
+                        put("type", "image")
+                        put("source", JSONObject().apply {
+                            put("type", "base64")
+                            put("media_type", image.mimeType)
+                            put("data", image.base64Data)
+                        })
+                    })
+                }
+
+                // Add text content
+                if (userMessage.isNotEmpty()) {
+                    contentArray.put(JSONObject().apply {
+                        put("type", "text")
+                        put("text", userMessage)
+                    })
+                }
+
                 // Add user message to history
                 conversationHistory.add(JSONObject().apply {
                     put("role", "user")
-                    put("content", userMessage)
+                    if (images.isEmpty()) {
+                        // Simple text content
+                        put("content", userMessage)
+                    } else {
+                        // Multimodal content array
+                        put("content", contentArray)
+                    }
                 })
+
+                Log.d(TAG, "Sending message with ${images.size} images")
 
                 val url = URL("$baseUrl/v1/messages")
                 val connection = url.openConnection() as HttpURLConnection

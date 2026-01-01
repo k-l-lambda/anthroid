@@ -1,6 +1,7 @@
 package com.anthroid.claude
 
 import android.app.Application
+import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -44,6 +45,10 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
     private val _isClaudeInstalled = MutableStateFlow(false)
     val isClaudeInstalled: StateFlow<Boolean> = _isClaudeInstalled.asStateFlow()
 
+    // Pending images for next message
+    private val _pendingImages = MutableStateFlow<List<MessageImage>>(emptyList())
+    val pendingImages: StateFlow<List<MessageImage>> = _pendingImages.asStateFlow()
+
     // Use CLI or API
     private var useCliMode = false
 
@@ -80,18 +85,48 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
+     * Add an image to pending images.
+     */
+    fun addPendingImage(uri: Uri) {
+        val mimeType = ImageUtils.getMimeType(getApplication(), uri)
+        val image = MessageImage(uri = uri, mimeType = mimeType)
+        _pendingImages.value = _pendingImages.value + image
+        Log.d(TAG, "Added pending image: $uri, total: ${_pendingImages.value.size}")
+    }
+
+    /**
+     * Remove a pending image by ID.
+     */
+    fun removePendingImage(imageId: String) {
+        _pendingImages.value = _pendingImages.value.filter { it.id != imageId }
+        Log.d(TAG, "Removed pending image: $imageId, remaining: ${_pendingImages.value.size}")
+    }
+
+    /**
+     * Clear all pending images.
+     */
+    fun clearPendingImages() {
+        _pendingImages.value = emptyList()
+    }
+
+    /**
      * Send a message to Claude.
      */
     fun sendMessage(content: String) {
-        if (content.isBlank()) return
+        val images = _pendingImages.value.toList()
+        if (content.isBlank() && images.isEmpty()) return
 
-        Log.i(TAG, "Sending message: ${content.take(50)}... (useCliMode=$useCliMode)")
+        Log.i(TAG, "Sending message: ${content.take(50)}... with ${images.size} images (useCliMode=$useCliMode)")
 
-        // Add user message
+        // Add user message with images
         val userMessage = Message(
             role = MessageRole.USER,
-            content = content
+            content = content,
+            images = images
         )
+
+        // Clear pending images
+        _pendingImages.value = emptyList()
 
         // Add streaming assistant message placeholder
         val assistantMessage = Message(
@@ -111,15 +146,53 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         sessionJob?.cancel()
         sessionJob = viewModelScope.launch {
             try {
-                if (useCliMode) {
-                    // Use CLI client with streaming mode (--output-format stream-json)
-                    cliClient.chatStreaming(content)
+                val hasImages = images.isNotEmpty()
+
+                if (hasImages) {
+                    // Images can use CLI with stream-json input, or API mode
+                    val imageDataList = images.mapNotNull { image ->
+                        val base64 = ImageUtils.processImageForApi(getApplication(), image.uri)
+                        if (base64 != null) {
+                            Pair(base64, image.mimeType)
+                        } else null
+                    }
+
+                    if (useCliMode && cliClient.isClaudeInstalled()) {
+                        // CLI mode with stream-json input for images
+                        Log.d(TAG, "CLI mode: sending ${imageDataList.size} images via stream-json")
+                        val cliImages = imageDataList.map { (base64, mimeType) ->
+                            ClaudeCliClient.ImageData(base64, mimeType)
+                        }
+                        cliClient.chatWithImages(content, cliImages)
+                            .collect { event ->
+                                handleEvent(event)
+                            }
+                    } else if (apiClient.isConfigured()) {
+                        // API mode for images
+                        Log.d(TAG, "API mode: sending ${imageDataList.size} images")
+                        val apiImages = imageDataList.map { (base64, mimeType) ->
+                            ClaudeApiClient.ImageContent(base64, mimeType)
+                        }
+                        apiClient.chat(content, apiImages)
+                            .collect { event ->
+                                handleEvent(event)
+                            }
+                    } else {
+                        // Neither CLI nor API available for images
+                        _error.value = "Images require Claude CLI or API key to be configured"
+                        _isProcessing.value = false
+                        _messages.value = _messages.value.filter { it.id != streamingMessageId }
+                        return@launch
+                    }
+                } else if (useCliMode) {
+                    // CLI mode for text-only messages
+                    cliClient.chatStreaming(content, emptyList())
                         .collect { event ->
                             handleEvent(event)
                         }
                 } else {
-                    // Use HTTP API client
-                    apiClient.chat(content)
+                    // API mode for text-only messages
+                    apiClient.chat(content, emptyList())
                         .collect { event ->
                             handleEvent(event)
                         }
@@ -687,7 +760,17 @@ data class Message(
     val isStreaming: Boolean = false,
     val isError: Boolean = false,
     val toolName: String? = null,
-    val toolInput: String? = null
+    val toolInput: String? = null,
+    val images: List<MessageImage> = emptyList()
+)
+
+/**
+ * Represents an image attached to a message.
+ */
+data class MessageImage(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val uri: Uri,
+    val mimeType: String = "image/jpeg"
 )
 
 /**

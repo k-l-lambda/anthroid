@@ -9,6 +9,12 @@
         app:showAsAction="always" />
 
     <item
+        android:id="@+id/action_camera"
+        android:icon="@drawable/ic_camera"
+        android:title="Camera"
+        app:showAsAction="always" />
+
+    <item
         android:id="@+id/action_history"
         android:icon="@android:drawable/ic_menu_recent_history"
         android:title="History"

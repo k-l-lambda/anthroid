@@ -5,6 +5,8 @@ import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
@@ -12,6 +14,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.anthroid.R
 import com.anthroid.claude.Message
+import com.anthroid.claude.MessageImage
 import com.anthroid.claude.MessageRole
 import java.text.SimpleDateFormat
 import java.util.*
@@ -81,12 +84,14 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
         private val contentText: TextView = itemView.findViewById(R.id.message_content)
         private val timestampText: TextView = itemView.findViewById(R.id.message_timestamp)
         private val streamingIndicator: ProgressBar? = itemView.findViewById(R.id.streaming_indicator)
+        private val imagesContainer: LinearLayout? = itemView.findViewById(R.id.images_container)
 
         private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
 
         fun bind(message: Message) {
-            Log.d(TAG, "bind: id=${message.id.take(8)}, len=${message.content.length}, streaming=${message.isStreaming}")
+            Log.d(TAG, "bind: id=${message.id.take(8)}, len=${message.content.length}, streaming=${message.isStreaming}, images=${message.images.size}")
             updateContent(message)
+            updateImages(message)
             timestampText.text = timeFormat.format(Date(message.timestamp))
         }
 
@@ -103,6 +108,43 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
                     contentText.setTextColor(Color.parseColor("#D32F2F"))
                 } else {
                     contentText.setTextColor(Color.parseColor("#333333"))
+                }
+            }
+            // Hide content text if empty and has images
+            if (message.content.isEmpty() && message.images.isNotEmpty()) {
+                contentText.visibility = View.GONE
+            } else {
+                contentText.visibility = View.VISIBLE
+            }
+        }
+
+        private fun updateImages(message: Message) {
+            imagesContainer?.let { container ->
+                container.removeAllViews()
+                if (message.images.isEmpty()) {
+                    container.visibility = View.GONE
+                    return
+                }
+
+                container.visibility = View.VISIBLE
+                val context = itemView.context
+                val imageSize = (60 * context.resources.displayMetrics.density).toInt()
+                val imageMargin = (4 * context.resources.displayMetrics.density).toInt()
+
+                message.images.forEach { messageImage ->
+                    val imageView = ImageView(context).apply {
+                        layoutParams = LinearLayout.LayoutParams(imageSize, imageSize).apply {
+                            marginEnd = imageMargin
+                        }
+                        scaleType = ImageView.ScaleType.CENTER_CROP
+                        setBackgroundColor(Color.parseColor("#E0E0E0"))
+                        try {
+                            setImageURI(messageImage.uri)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to load image: ${messageImage.uri}", e)
+                        }
+                    }
+                    container.addView(imageView)
                 }
             }
         }
@@ -136,7 +178,8 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
                    oldItem.isError == newItem.isError &&
                    oldItem.role == newItem.role &&
                    oldItem.toolName == newItem.toolName &&
-                   oldItem.toolInput == newItem.toolInput
+                   oldItem.toolInput == newItem.toolInput &&
+                   oldItem.images == newItem.images
         }
 
         override fun getChangePayload(oldItem: Message, newItem: Message): Any? {

@@ -34,10 +34,31 @@
             android:layout_height="0dp"
             android:clipToPadding="false"
             android:padding="8dp"
-            app:layout_constraintBottom_toTopOf="@id/input_container"
+            app:layout_constraintBottom_toTopOf="@id/pending_images_scroll"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/status_text" />
+
+        <!-- Pending images preview area -->
+        <HorizontalScrollView
+            android:id="@+id/pending_images_scroll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            android:background="@color/background_color"
+            android:scrollbars="none"
+            app:layout_constraintBottom_toTopOf="@id/input_container">
+
+            <LinearLayout
+                android:id="@+id/pending_images_container"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp" />
+        </HorizontalScrollView>
 
         <!-- Input container -->
         <LinearLayout

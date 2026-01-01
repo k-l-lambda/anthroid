@@ -227,7 +227,13 @@ def downloadBootstrap(String arch, String expectedChecksum, String version) {
         }
     }
 
-    def remoteUrl = "https://github.com/termux/termux-packages/releases/download/bootstrap-" + version + "/bootstrap-" + arch + ".zip"
+    def remoteUrl
+    if (arch == "aarch64") {
+        // Use custom bootstrap-v2 with Node.js included
+        remoteUrl = "https://github.com/k-l-lambda/anthroid/releases/download/bootstrap-v2/bootstrap-" + arch + ".zip"
+    } else {
+        remoteUrl = "https://github.com/termux/termux-packages/releases/download/bootstrap-" + version + "/bootstrap-" + arch + ".zip"
+    }
     logger.quiet("Downloading " + remoteUrl + " ...")
 
     file.parentFile.mkdirs()
@@ -260,15 +266,15 @@ task downloadBootstraps() {
         def packageVariant = project.ext.packageVariant
         if (packageVariant == "apt-android-7") {
             def version = "2022.04.28-r5" + "+" + packageVariant
-            downloadBootstrap("aarch64", "4a51a7eb209fe82efc24d52e3cccc13165f27377290687cb82038cbd8e948430", version)
-            downloadBootstrap("arm", "6459a786acbae50d4c8a36fa1c3de6a4dd2d482572f6d54f73274709bd627325", version)
-            downloadBootstrap("i686", "919d212b2f19e08600938db4079e794e947365022dbfd50ac342c50fcedcd7be", version)
+            downloadBootstrap("aarch64", "f6ef0c9ab16a609c140db3c98a17e1daaa80622809038c9461b4c45af4c76c70", version)
+            // downloadBootstrap("arm", "6459a786acbae50d4c8a36fa1c3de6a4dd2d482572f6d54f73274709bd627325", version)
+            // downloadBootstrap("i686", "919d212b2f19e08600938db4079e794e947365022dbfd50ac342c50fcedcd7be", version)
             // downloadBootstrap("x86_64", "61b02fdc03ea4f5d9da8d8cf018013fdc6659e6da6cbf44e9b24d1c623580b89", version) // Skipped
         } else if (packageVariant == "apt-android-5") {
             def version = "2022.04.28-r6" + "+" + packageVariant
             downloadBootstrap("aarch64", "913609d439415c828c5640be1b0561467e539cb1c7080662decaaca2fb4820e7", version)
-            downloadBootstrap("arm", "26bfb45304c946170db69108e5eb6e3641aad751406ce106c80df80cad2eccf8", version)
-            downloadBootstrap("i686", "46dcfeb5eef67ba765498db9fe4c50dc4690805139aa0dd141a9d8ee0693cd27", version)
+            // downloadBootstrap("arm", "26bfb45304c946170db69108e5eb6e3641aad751406ce106c80df80cad2eccf8", version)
+            // downloadBootstrap("i686", "46dcfeb5eef67ba765498db9fe4c50dc4690805139aa0dd141a9d8ee0693cd27", version)
             downloadBootstrap("x86_64", "615b590679ee6cd885b7fd2ff9473c845e920f9b422f790bb158c63fe42b8481", version)
         } else {
             throw new GradleException("Unsupported TERMUX_PACKAGE_VARIANT \"" + packageVariant + "\"")

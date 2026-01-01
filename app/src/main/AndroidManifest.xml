@@ -154,6 +154,12 @@
             android:label="Scan QR Code"
             android:theme="@style/Theme.TermuxApp.DayNight.DarkActionBar" />
 
+        <activity
+            android:name=".claude.CameraCaptureActivity"
+            android:exported="false"
+            android:label="Take Photo"
+            android:theme="@style/Theme.TermuxApp.DayNight.DarkActionBar" />
+
         <activity-alias
             android:name=".app.api.file.FileShareReceiverActivity"
             android:exported="true"

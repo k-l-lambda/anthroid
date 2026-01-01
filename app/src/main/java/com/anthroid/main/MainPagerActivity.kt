@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.Manifest
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
@@ -19,6 +20,7 @@ import com.anthroid.R
 import com.anthroid.app.TermuxActivity
 import com.anthroid.app.TermuxService
 import com.anthroid.app.activities.SettingsActivity
+import com.anthroid.claude.CameraCaptureActivity
 import com.anthroid.claude.TerminalCommandBridge
 import com.anthroid.terminal.TerminalSession
 
@@ -42,6 +44,24 @@ class MainPagerActivity : AppCompatActivity() {
     ) { permissions ->
         permissions.entries.forEach { (permission, granted) ->
             Log.d(TAG, "Permission $permission: ${if (granted) "granted" else "denied"}")
+        }
+    }
+
+    // Camera activity launcher
+    private val cameraLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK) {
+            @Suppress("DEPRECATION")
+            val imageUri = result.data?.getParcelableExtra<Uri>(CameraCaptureActivity.EXTRA_IMAGE_URI)
+            imageUri?.let { uri ->
+                Log.d(TAG, "Camera result: $uri")
+                // Pass to ClaudeFragment
+                val fragment = supportFragmentManager.findFragmentById(R.id.fragment_container)
+                if (fragment is ClaudeFragment) {
+                    fragment.addPendingImage(uri)
+                }
+            }
         }
     }
 
@@ -189,6 +209,11 @@ class MainPagerActivity : AppCompatActivity() {
         return when (item.itemId) {
             R.id.action_terminal -> {
                 startActivity(Intent(this, TermuxActivity::class.java))
+                true
+            }
+            R.id.action_camera -> {
+                // Launch camera capture activity
+                cameraLauncher.launch(Intent(this, CameraCaptureActivity::class.java))
                 true
             }
             R.id.action_history -> {

@@ -1,5 +1,6 @@
 package com.anthroid.main
 
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -9,7 +10,9 @@ import androidx.appcompat.app.AlertDialog
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -22,6 +25,7 @@ import com.anthroid.BuildConfig
 import com.anthroid.R
 import com.anthroid.claude.ClaudeViewModel
 import com.anthroid.claude.MessageRole
+import com.anthroid.claude.MessageImage
 import com.anthroid.claude.ui.MessageAdapter
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
@@ -56,6 +60,10 @@ class ClaudeFragment : Fragment() {
     private lateinit var historyStats: TextView
     private lateinit var historyEmptyText: TextView
     private lateinit var btnNewChat: ImageButton
+
+    // Pending images views
+    private lateinit var pendingImagesScroll: HorizontalScrollView
+    private lateinit var pendingImagesContainer: LinearLayout
 
     private lateinit var messageAdapter: MessageAdapter
     private lateinit var conversationAdapter: ConversationAdapter
@@ -101,6 +109,8 @@ class ClaudeFragment : Fragment() {
         inputField = view.findViewById(R.id.input_field)
         sendButton = view.findViewById(R.id.send_button)
         statusText = view.findViewById(R.id.status_text)
+        pendingImagesScroll = view.findViewById(R.id.pending_images_scroll)
+        pendingImagesContainer = view.findViewById(R.id.pending_images_container)
 
         sendButton.setOnClickListener {
             sendMessage()
@@ -206,6 +216,13 @@ class ClaudeFragment : Fragment() {
             }
         }
 
+        // Observe pending images
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewModel.pendingImages.collect { images ->
+                updatePendingImagesView(images)
+            }
+        }
+
         // Observe debug messages from adb
         viewLifecycleOwner.lifecycleScope.launch {
             DebugReceiver.debugMessageFlow.collect { message ->
@@ -258,9 +275,48 @@ class ClaudeFragment : Fragment() {
 
     private fun sendMessage() {
         val message = inputField.text.toString().trim()
-        if (message.isNotEmpty()) {
+        val hasPendingImages = viewModel.pendingImages.value.isNotEmpty()
+        if (message.isNotEmpty() || hasPendingImages) {
             viewModel.sendMessage(message)
             inputField.text.clear()
+        }
+    }
+
+    /**
+     * Add a pending image from camera or gallery.
+     * Called from MainPagerActivity after camera result.
+     */
+    fun addPendingImage(uri: Uri) {
+        viewModel.addPendingImage(uri)
+    }
+
+    /**
+     * Update the pending images preview area.
+     */
+    private fun updatePendingImagesView(images: List<MessageImage>) {
+        pendingImagesContainer.removeAllViews()
+
+        if (images.isEmpty()) {
+            pendingImagesScroll.visibility = View.GONE
+            return
+        }
+
+        pendingImagesScroll.visibility = View.VISIBLE
+
+        images.forEach { image ->
+            val itemView = LayoutInflater.from(requireContext())
+                .inflate(R.layout.item_pending_image, pendingImagesContainer, false)
+
+            val imageView = itemView.findViewById<ImageView>(R.id.pending_image)
+            val removeButton = itemView.findViewById<ImageButton>(R.id.btn_remove_image)
+
+            imageView.setImageURI(image.uri)
+
+            removeButton.setOnClickListener {
+                viewModel.removePendingImage(image.id)
+            }
+
+            pendingImagesContainer.addView(itemView)
         }
     }
 
