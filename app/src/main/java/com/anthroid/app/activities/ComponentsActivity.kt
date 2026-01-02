@@ -33,6 +33,20 @@ class ComponentsActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "ComponentsActivity"
         private val PREFIX = "/data/data/com.anthroid/files/usr"
+
+        /**
+         * Generate install command that downloads .deb and extracts binary manually.
+         * This bypasses broken install scripts that have hardcoded com.termux paths.
+         */
+        fun makeInstallCommand(pkgName: String, binaryName: String = pkgName): String {
+            return "cd ~ && apt-get download $pkgName && " +
+                "mkdir -p $PREFIX/tmp/extract_$pkgName && " +
+                "dpkg-deb -x `${pkgName}_*.deb $PREFIX/tmp/extract_$pkgName && " +
+                "cp $PREFIX/tmp/extract_$pkgName/data/data/com.termux/files/usr/bin/$binaryName $PREFIX/bin/ && " +
+                "chmod 755 $PREFIX/bin/$binaryName && " +
+                "rm -rf $PREFIX/tmp/extract_$pkgName `${pkgName}_*.deb && " +
+                "echo 'Installed $binaryName successfully'"
+        }
     }
 
     private lateinit var recyclerView: RecyclerView
@@ -80,8 +94,16 @@ class ComponentsActivity : AppCompatActivity() {
             name = "GitHub CLI",
             description = "GitHub command line tool",
             checkCommand = "gh --version",
-            installCommand = "pkg install gh -y",
+            installCommand = makeInstallCommand("gh"),
             binaryPath = "$PREFIX/bin/gh"
+        ),
+        Component(
+            id = "sshpass",
+            name = "sshpass",
+            description = "Non-interactive SSH password authentication",
+            checkCommand = "sshpass -V",
+            installCommand = makeInstallCommand("sshpass"),
+            binaryPath = "$PREFIX/bin/sshpass"
         )
     )
 
@@ -219,6 +241,10 @@ class ComponentsActivity : AppCompatActivity() {
             "gh" -> {
                 // "gh version 2.65.0" -> "2.65.0"
                 Regex("gh version ([\\d.]+)").find(output)?.groupValues?.get(1)
+            }
+            "sshpass" -> {
+                // "sshpass 1.09" -> "1.09"
+                Regex("sshpass ([\\d.]+)").find(output)?.groupValues?.get(1)
             }
             else -> output.trim().take(20)
         }
