@@ -18,7 +18,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import java.io.File
 
+/**
+ * Manager for sherpa-onnx speech recognition using SenseVoice model.
+ * Model files are loaded from app's files directory (downloaded separately).
+ */
 class SherpaOnnxManager(private val context: Context) {
 
     companion object {
@@ -27,8 +32,17 @@ class SherpaOnnxManager(private val context: Context) {
         private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
         private const val MODEL_DIR = "sherpa-onnx-sensevoice"
-        private const val MODEL_FILE = "$MODEL_DIR/model.int8.onnx"
-        private const val TOKENS_FILE = "$MODEL_DIR/tokens.txt"
+        private const val MODEL_FILENAME = "model.int8.onnx"
+        private const val TOKENS_FILENAME = "tokens.txt"
+
+        fun isModelInstalled(context: Context): Boolean {
+            val modelDir = File(context.filesDir, MODEL_DIR)
+            val modelFile = File(modelDir, MODEL_FILENAME)
+            val tokensFile = File(modelDir, TOKENS_FILENAME)
+            return modelFile.exists() && tokensFile.exists()
+        }
+
+        fun getModelDir(context: Context): File = File(context.filesDir, MODEL_DIR)
     }
 
     private var recognizer: OfflineRecognizer? = null
@@ -36,26 +50,48 @@ class SherpaOnnxManager(private val context: Context) {
     private var recordingThread: Thread? = null
     @Volatile private var isRecording = false
     private val audioBuffer = mutableListOf<Float>()
+
     private val _recognizedText = MutableStateFlow("")
     val recognizedText: StateFlow<String> = _recognizedText.asStateFlow()
+
     private val _isInitialized = MutableStateFlow(false)
     val isInitialized: StateFlow<Boolean> = _isInitialized.asStateFlow()
+
     private val _isListening = MutableStateFlow(false)
     val isListening: StateFlow<Boolean> = _isListening.asStateFlow()
 
     suspend fun initialize(): Boolean = withContext(Dispatchers.IO) {
-        if (_isInitialized.value) { Log.d(TAG, "Already initialized"); return@withContext true }
+        if (_isInitialized.value) {
+            Log.d(TAG, "Already initialized")
+            return@withContext true
+        }
+
+        if (!isModelInstalled(context)) {
+            Log.e(TAG, "SenseVoice model not installed. Please install from Settings.")
+            return@withContext false
+        }
+
         try {
             Log.d(TAG, "Initializing SenseVoice recognizer...")
+
+            val modelDir = getModelDir(context)
+            val modelPath = File(modelDir, MODEL_FILENAME).absolutePath
+            val tokensPath = File(modelDir, TOKENS_FILENAME).absolutePath
+
             val featConfig = FeatureConfig(sampleRate = SAMPLE_RATE, featureDim = 80, dither = 0.0f)
-            val senseVoiceConfig = OfflineSenseVoiceModelConfig(model = MODEL_FILE, language = "", useInverseTextNormalization = true)
-            val modelConfig = OfflineModelConfig(senseVoice = senseVoiceConfig, tokens = TOKENS_FILE, numThreads = 2, debug = false, provider = "cpu", modelType = "sense_voice")
+            val senseVoiceConfig = OfflineSenseVoiceModelConfig(model = modelPath, language = "", useInverseTextNormalization = true)
+            val modelConfig = OfflineModelConfig(senseVoice = senseVoiceConfig, tokens = tokensPath, numThreads = 2, debug = false, provider = "cpu", modelType = "sense_voice")
             val config = OfflineRecognizerConfig(featConfig = featConfig, modelConfig = modelConfig, decodingMethod = "greedy_search")
-            recognizer = OfflineRecognizer(assetManager = context.assets, config = config)
+
+            recognizer = OfflineRecognizer(config = config)
+
             _isInitialized.value = true
             Log.d(TAG, "SenseVoice recognizer initialized successfully")
             true
-        } catch (e: Exception) { Log.e(TAG, "Failed to initialize recognizer: ${e.message}", e); false }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize recognizer: ${e.message}", e)
+            false
+        }
     }
 
     fun startRecording(): Boolean {

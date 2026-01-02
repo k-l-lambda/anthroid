@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="asr_model_entries">
+        <item>Disabled</item>
+        <item>SenseVoice (239MB, Best Quality)</item>
+    </string-array>
+    <string-array name="asr_model_values">
+        <item>none</item>
+        <item>sensevoice</item>
+    </string-array>
+</resources>

@@ -33,6 +33,7 @@ class ComponentsActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "ComponentsActivity"
         private val PREFIX = "/data/data/com.anthroid/files/usr"
+        private val FILES_DIR = "/data/data/com.anthroid/files"
 
         /**
          * Generate install command that downloads .deb and extracts binary manually.

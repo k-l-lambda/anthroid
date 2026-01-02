@@ -1,5 +1,13 @@
 <PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
 
+    <ListPreference
+        app:key="asr_model"
+        app:title="Voice Recognition Model"
+        app:summary="Select ASR model for voice input"
+        app:entries="@array/asr_model_entries"
+        app:entryValues="@array/asr_model_values"
+        app:defaultValue="none"/>
+
     <Preference
         app:key="components"
         app:title="Components"
