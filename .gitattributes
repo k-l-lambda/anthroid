@@ -8,3 +8,4 @@
 *.so binary
 claude-code/*.wasm filter=lfs diff=lfs merge=lfs -text
 claude-code/vendor/**/* filter=lfs diff=lfs merge=lfs -text
+*.onnx filter=lfs diff=lfs merge=lfs -text
