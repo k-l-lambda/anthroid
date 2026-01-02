@@ -220,6 +220,24 @@ class ClaudeFragment : Fragment() {
      */
     @SuppressLint("ClickableViewAccessibility")
     private fun setupVoiceInput() {
+        // Check ASR model preference
+        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(requireContext())
+        val asrModel = prefs.getString("asr_model", "none") ?: "none"
+        
+        if (asrModel == "none") {
+            micButton.visibility = View.GONE
+            return
+        }
+        
+        // Check if model is installed
+        if (!SherpaOnnxManager.isModelInstalled(requireContext())) {
+            micButton.visibility = View.GONE
+            Log.w(TAG, "ASR model not installed, hiding mic button")
+            return
+        }
+        
+        micButton.visibility = View.VISIBLE
+        
         // Setup mic button touch listener (press and hold to speak)
         micButton.setOnTouchListener { _, event ->
             when (event.action) {
