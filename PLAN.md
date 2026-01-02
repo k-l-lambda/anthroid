@@ -199,31 +199,117 @@ Integrate QR code scanning into the chat camera.
 
 ---
 
-### Phase 7: Voice I/O
+### Phase 7: Voice I/O (In Progress)
 
-Voice input and output for hands-free interaction.
+Voice input and output for hands-free interaction using sherpa-onnx (offline, Chinese + English).
 
-#### Voice Input (STT)
-- Android SpeechRecognizer API
+#### Voice Input (STT) - sherpa-onnx
+
+**Selected Model**: `sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20`
+- Bilingual: Chinese + English
+- Streaming recognition with real-time results
+- Offline (no internet required)
+- Model size: ~100MB
+
+**Architecture**:
+```
+┌─────────────────────────────────────────────┐
+│            ClaudeFragment                    │
+├─────────────────────────────────────────────┤
+│  ┌─────────────┐    ┌───────────────────┐   │
+│  │ Microphone  │ -> │  SherpaOnnxManager │   │
+│  │ (AudioRecord)│    │  (OnlineRecognizer)│   │
+│  └─────────────┘    └─────────┬─────────┘   │
+│                               │             │
+│                     ┌─────────▼─────────┐   │
+│                     │  Real-time text   │   │
+│                     │  -> Input field   │   │
+│                     └───────────────────┘   │
+└─────────────────────────────────────────────┘
+```
+
+**Key Features**:
 - Press-and-hold microphone button to speak
-- Real-time transcription to text input
+- Real-time transcription displayed in input field
+- Endpoint detection (automatic sentence segmentation)
+- Language auto-detection (Chinese/English)
 
 #### Voice Output (TTS)
-- Android TextToSpeech API
+- Android TextToSpeech API (Phase 7b, future)
 - Optional: Kokoro TTS for higher quality
-- Per-message play button
 
-#### UI Components
-- Microphone button next to input field
-- Speaker button on message bubbles
-- Settings: Voice selection, speech rate, auto-play toggle
+#### Files to Create
 
-#### Implementation Tasks
-- [ ] Add microphone button to ClaudeFragment
-- [ ] Integrate SpeechRecognizer for STT
-- [ ] Add TTS engine initialization
-- [ ] Message bubble play/stop controls
-- [ ] Voice settings in preferences
+##### 1. `app/src/main/java/com/anthroid/claude/SherpaOnnxManager.kt`
+```kotlin
+class SherpaOnnxManager(private val context: Context) {
+    private var recognizer: OnlineRecognizer? = null
+    private var audioRecord: AudioRecord? = null
+    private var isRecording = false
+
+    fun initialize()  // Load model from assets
+    fun startRecording(onResult: (String) -> Unit)
+    fun stopRecording()
+    fun release()
+}
+```
+
+##### 2. Model files in `app/src/main/assets/`
+```
+sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/
+├── encoder-epoch-99-avg-1.onnx
+├── decoder-epoch-99-avg-1.onnx
+├── joiner-epoch-99-avg-1.onnx
+└── tokens.txt
+```
+
+##### 3. Copy sherpa-onnx Kotlin API files
+From: https://github.com/k2-fsa/sherpa-onnx/tree/master/sherpa-onnx/kotlin-api
+- `OnlineRecognizer.kt`
+- `OnlineStream.kt`
+- `FeatureConfig.kt`
+
+#### Files to Modify
+
+##### 1. `app/build.gradle.kts`
+- Add sherpa-onnx-jni native library dependency
+- Or build from source and include .so files
+
+##### 2. `app/src/main/res/layout/fragment_claude.xml`
+- Add microphone ImageButton next to send button
+
+##### 3. `app/src/main/java/com/anthroid/main/ClaudeFragment.kt`
+- Initialize SherpaOnnxManager
+- Handle microphone button press/release
+- Update input field with recognition results
+
+##### 4. `app/src/main/AndroidManifest.xml`
+- RECORD_AUDIO permission (already exists)
+
+#### Implementation Order
+
+1. Download sherpa-onnx model files (~100MB)
+2. Copy sherpa-onnx Kotlin API files to project
+3. Add JNI library (.so files for arm64-v8a, armeabi-v7a)
+4. Create SherpaOnnxManager.kt
+5. Add microphone button to fragment_claude.xml
+6. Integrate voice input in ClaudeFragment.kt
+7. Test on device
+
+#### Model Download URLs
+
+```bash
+# Bilingual model (Chinese + English)
+https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20.tar.bz2
+```
+
+#### Technical Notes
+
+- Sample rate: 16000 Hz
+- Audio format: PCM 16-bit mono
+- Buffer interval: 100ms
+- Endpoint detection: Built-in (rule-based silence detection)
+- JNI library: `libsherpa-onnx-jni.so`
 
 ---
 
@@ -276,7 +362,7 @@ app/src/main/java/com/anthroid/
 | M5b | ✅ Done | Camera input for chat |
 | M5c | ⏳ | QR code in chat camera |
 | M6 | ✅ Done | Tool execution working |
-| M7 | ⏳ | Voice I/O (STT + TTS) |
+| M7 | 🔄 In Progress | Voice I/O (sherpa-onnx STT) |
 | M8 | ⏳ | Production-ready release |
 
 ---
