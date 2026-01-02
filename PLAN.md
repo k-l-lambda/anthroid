@@ -151,29 +151,50 @@ Claude CLI stores conversations as JSONL files in `~/.claude/projects/{project-p
 
 ---
 
-### Phase 5b: Camera Input for Chat
+### Phase 5b: Camera Input for Chat (Complete)
 
 Take photos to add visual context to chat messages.
 
 #### Features
-- Camera button in chat input area
+- Camera icon in top toolbar (with history/settings/terminal)
 - Photo preview before sending
 - Multiple photos per message support
-- Photos sent as base64 encoded images with next message
+- Gallery picker support
+- Pending images can be deleted before sending
 
-#### Implementation Tasks
-- [ ] Add camera button to ClaudeFragment input bar
-- [ ] CameraX integration for photo capture
-- [ ] Photo preview/thumbnail display above input
-- [ ] Remove photo option (X button on preview)
-- [ ] Encode photos as base64 for Claude API
-- [ ] Update ClaudeCliClient to support image content
-- [ ] Gallery picker as alternative to camera
+#### Implementation (Done - Jan 2026)
+- [x] Add camera button to toolbar
+- [x] CameraCaptureActivity with CameraX
+- [x] Photo preview/thumbnail display above input
+- [x] Remove photo option (X button on preview)
+- [x] Encode photos as base64 for Claude API
+- [x] Update ClaudeCliClient to support --image flag
+- [x] Gallery picker as alternative to camera
 
 #### Technical Notes
-- Claude CLI --print mode supports multimodal input
-- Images need to be base64 encoded in JSON format
-- Max image size considerations for API limits
+- Images stored in context.cacheDir
+- Max dimension 1024px, JPEG 85% quality
+- CLI mode: `--image <path>` flag
+- API mode: base64 in content array
+
+---
+
+### Phase 5c: QR Code in Chat Camera (Planned)
+
+Integrate QR code scanning into the chat camera.
+
+#### Features
+- QR scan mode toggle in CameraCaptureActivity
+- Real-time QR detection using CameraX ImageAnalysis
+- Overlay showing decoded content
+- Insert QR content as text into chat input
+
+#### Implementation Tasks
+- [ ] Refactor QRScannerActivity barcode logic to shared utility
+- [ ] Add ImageAnalysis use case to CameraCaptureActivity
+- [ ] Toggle button for photo/QR mode
+- [ ] QR detection overlay UI
+- [ ] Return decoded text to chat input
 
 
 ---
@@ -252,7 +273,8 @@ app/src/main/java/com/anthroid/
 | M3 | ✅ Done | Chat UI with ViewPager2 navigation |
 | M4 | ✅ Done | QR code configuration scanner |
 | M5 | ✅ Done | Conversation management |
-| M5b | ⏳ | Camera input for chat |
+| M5b | ✅ Done | Camera input for chat |
+| M5c | ⏳ | QR code in chat camera |
 | M6 | ✅ Done | Tool execution working |
 | M7 | ⏳ | Voice I/O (STT + TTS) |
 | M8 | ⏳ | Production-ready release |
