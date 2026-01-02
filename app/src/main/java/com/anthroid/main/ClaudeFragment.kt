@@ -6,6 +6,8 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
+import android.graphics.Color
+import android.graphics.PorterDuff
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
@@ -63,6 +65,8 @@ class ClaudeFragment : Fragment() {
     // Voice input
     private var sherpaOnnxManager: SherpaOnnxManager? = null
     private var isVoiceInputInitialized = false
+    private var isLastInputFromVoice = false
+    private var originalInputBackground: android.graphics.drawable.Drawable? = null
 
     // History panel views
     private lateinit var historyPanelContainer: FrameLayout
@@ -246,11 +250,11 @@ class ClaudeFragment : Fragment() {
                     isVoiceInputInitialized = true
                     Log.i(TAG, "Voice input initialized successfully")
 
-                    // Observe recognized text
+                    // Real-time text updates logged for debugging only
+                    // Final text with emoji is set in stopVoiceRecording()
                     sherpaOnnxManager?.recognizedText?.collect { text ->
                         if (text.isNotEmpty()) {
-                            inputField.setText(text)
-                            inputField.setSelection(text.length)
+                            Log.d(TAG, "Real-time ASR: ")
                         }
                     }
                 } else {
@@ -284,6 +288,11 @@ class ClaudeFragment : Fragment() {
         // Start recording
         if (sherpaOnnxManager?.startRecording() == true) {
             micButton.setColorFilter(ContextCompat.getColor(requireContext(), android.R.color.holo_red_light))
+            // Add red tint overlay to input field
+            if (originalInputBackground == null) {
+                originalInputBackground = inputField.background
+            }
+            inputField.background.setColorFilter(Color.parseColor("#40FF0000"), PorterDuff.Mode.SRC_ATOP)
             Toast.makeText(requireContext(), "Listening...", Toast.LENGTH_SHORT).show()
         }
     }
@@ -293,11 +302,17 @@ class ClaudeFragment : Fragment() {
      */
     private fun stopVoiceRecording() {
         micButton.clearColorFilter()
+        // Restore input field background
+        inputField.background.clearColorFilter()
 
         val finalText = sherpaOnnxManager?.stopRecording() ?: ""
         if (finalText.isNotEmpty()) {
-            inputField.setText(finalText)
-            inputField.setSelection(finalText.length)
+            val existingText = inputField.text.toString()
+            val textWithEmoji = "🎤 $finalText"
+            val newText = if (existingText.isNotEmpty()) "$existingText $textWithEmoji" else textWithEmoji
+            inputField.setText(newText)
+            inputField.setSelection(newText.length)
+            isLastInputFromVoice = true
         }
     }
 
@@ -399,8 +414,9 @@ class ClaudeFragment : Fragment() {
         val message = inputField.text.toString().trim()
         val hasPendingImages = viewModel.pendingImages.value.isNotEmpty()
         if (message.isNotEmpty() || hasPendingImages) {
-            viewModel.sendMessage(message)
+            viewModel.sendMessage(message, isLastInputFromVoice)
             inputField.text.clear()
+            isLastInputFromVoice = false
         }
     }
 
