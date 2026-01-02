@@ -70,6 +70,9 @@ android {
         implementation "androidx.camera:camera-lifecycle:${camerax_version}"
         implementation "androidx.camera:camera-view:${camerax_version}"
 
+        // Sherpa-onnx for offline speech recognition
+        implementation files('libs/sherpa-onnx-1.12.20.aar')
+
         implementation project(":terminal-view")
         implementation project(":termux-shared")
     }

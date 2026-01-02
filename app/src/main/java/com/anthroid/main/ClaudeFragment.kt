@@ -1,9 +1,13 @@
 package com.anthroid.main
 
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.widget.EditText
 import androidx.appcompat.app.AlertDialog
@@ -16,6 +20,8 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
@@ -26,6 +32,7 @@ import com.anthroid.R
 import com.anthroid.claude.ClaudeViewModel
 import com.anthroid.claude.MessageRole
 import com.anthroid.claude.MessageImage
+import com.anthroid.claude.SherpaOnnxManager
 import com.anthroid.claude.ui.MessageAdapter
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
@@ -50,7 +57,12 @@ class ClaudeFragment : Fragment() {
     private lateinit var recyclerView: RecyclerView
     private lateinit var inputField: EditText
     private lateinit var sendButton: ImageButton
+    private lateinit var micButton: ImageButton
     private lateinit var statusText: TextView
+
+    // Voice input
+    private var sherpaOnnxManager: SherpaOnnxManager? = null
+    private var isVoiceInputInitialized = false
 
     // History panel views
     private lateinit var historyPanelContainer: FrameLayout
@@ -68,6 +80,17 @@ class ClaudeFragment : Fragment() {
     private lateinit var messageAdapter: MessageAdapter
     private lateinit var conversationAdapter: ConversationAdapter
     private lateinit var conversationManager: ConversationManager
+
+    // Permission launcher for audio recording
+    private val requestAudioPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            initializeVoiceInput()
+        } else {
+            Toast.makeText(requireContext(), "Microphone permission required for voice input", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -90,6 +113,7 @@ class ClaudeFragment : Fragment() {
         setupViews(view)
         setupHistoryPanel(view)
         setupRecyclerView()
+        setupVoiceInput()
         observeViewModel()
     }
 
@@ -108,6 +132,7 @@ class ClaudeFragment : Fragment() {
         recyclerView = view.findViewById(R.id.messages_recycler_view)
         inputField = view.findViewById(R.id.input_field)
         sendButton = view.findViewById(R.id.send_button)
+        micButton = view.findViewById(R.id.mic_button)
         statusText = view.findViewById(R.id.status_text)
         pendingImagesScroll = view.findViewById(R.id.pending_images_scroll)
         pendingImagesContainer = view.findViewById(R.id.pending_images_container)
@@ -184,6 +209,103 @@ class ClaudeFragment : Fragment() {
             }
             adapter = messageAdapter
         }
+    }
+
+    /**
+     * Setup voice input with sherpa-onnx.
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun setupVoiceInput() {
+        // Setup mic button touch listener (press and hold to speak)
+        micButton.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    startVoiceRecording()
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    stopVoiceRecording()
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    /**
+     * Initialize sherpa-onnx voice input.
+     */
+    private fun initializeVoiceInput() {
+        if (isVoiceInputInitialized) return
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                sherpaOnnxManager = SherpaOnnxManager(requireContext())
+                val success = sherpaOnnxManager?.initialize() ?: false
+                if (success) {
+                    isVoiceInputInitialized = true
+                    Log.i(TAG, "Voice input initialized successfully")
+
+                    // Observe recognized text
+                    sherpaOnnxManager?.recognizedText?.collect { text ->
+                        if (text.isNotEmpty()) {
+                            inputField.setText(text)
+                            inputField.setSelection(text.length)
+                        }
+                    }
+                } else {
+                    Log.e(TAG, "Failed to initialize voice input")
+                    Toast.makeText(requireContext(), "Failed to initialize voice input", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error initializing voice input: ${e.message}", e)
+            }
+        }
+    }
+
+    /**
+     * Start voice recording.
+     */
+    private fun startVoiceRecording() {
+        // Check permission first
+        if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED) {
+            requestAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            return
+        }
+
+        // Initialize if needed
+        if (!isVoiceInputInitialized) {
+            initializeVoiceInput()
+            Toast.makeText(requireContext(), "Initializing voice input...", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Start recording
+        if (sherpaOnnxManager?.startRecording() == true) {
+            micButton.setColorFilter(ContextCompat.getColor(requireContext(), android.R.color.holo_red_light))
+            Toast.makeText(requireContext(), "Listening...", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Stop voice recording.
+     */
+    private fun stopVoiceRecording() {
+        micButton.clearColorFilter()
+
+        val finalText = sherpaOnnxManager?.stopRecording() ?: ""
+        if (finalText.isNotEmpty()) {
+            inputField.setText(finalText)
+            inputField.setSelection(finalText.length)
+        }
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        sherpaOnnxManager?.release()
+        sherpaOnnxManager = null
+        isVoiceInputInitialized = false
     }
 
     private fun observeViewModel() {
