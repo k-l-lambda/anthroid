@@ -84,15 +84,28 @@
                 android:padding="12dp"
                 android:textSize="16sp" />
 
-            <ImageButton
-                android:id="@+id/mic_button"
+            <FrameLayout
                 android:layout_width="48dp"
                 android:layout_height="48dp"
-                android:layout_marginStart="8dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Voice input"
-                android:src="@android:drawable/ic_btn_speak_now"
-                app:tint="@color/colorPrimary" />
+                android:layout_marginStart="8dp">
+
+                <ImageButton
+                    android:id="@+id/mic_button"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Voice input"
+                    android:src="@android:drawable/ic_btn_speak_now"
+                    app:tint="@color/colorPrimary" />
+
+                <ProgressBar
+                    android:id="@+id/mic_loading"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_gravity="center"
+                    android:visibility="gone" />
+
+            </FrameLayout>
 
             <ImageButton
                 android:id="@+id/send_button"

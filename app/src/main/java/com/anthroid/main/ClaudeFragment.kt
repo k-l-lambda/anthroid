@@ -18,6 +18,7 @@ import android.view.inputmethod.EditorInfo
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageButton
+import android.widget.ProgressBar
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -60,11 +61,13 @@ class ClaudeFragment : Fragment() {
     private lateinit var inputField: EditText
     private lateinit var sendButton: ImageButton
     private lateinit var micButton: ImageButton
+    private lateinit var micLoading: ProgressBar
     private lateinit var statusText: TextView
 
     // Voice input
     private var sherpaOnnxManager: SherpaOnnxManager? = null
     private var isVoiceInputInitialized = false
+    private var isVoiceInitializing = false
     private var isLastInputFromVoice = false
     private var originalInputBackground: android.graphics.drawable.Drawable? = null
 
@@ -137,6 +140,7 @@ class ClaudeFragment : Fragment() {
         inputField = view.findViewById(R.id.input_field)
         sendButton = view.findViewById(R.id.send_button)
         micButton = view.findViewById(R.id.mic_button)
+        micLoading = view.findViewById(R.id.mic_loading)
         statusText = view.findViewById(R.id.status_text)
         pendingImagesScroll = view.findViewById(R.id.pending_images_scroll)
         pendingImagesContainer = view.findViewById(R.id.pending_images_container)
@@ -258,7 +262,12 @@ class ClaudeFragment : Fragment() {
      * Initialize sherpa-onnx voice input.
      */
     private fun initializeVoiceInput() {
-        if (isVoiceInputInitialized) return
+        if (isVoiceInputInitialized || isVoiceInitializing) return
+
+        isVoiceInitializing = true
+        // Show loading indicator
+        micButton.visibility = View.INVISIBLE
+        micLoading.visibility = View.VISIBLE
 
         viewLifecycleOwner.lifecycleScope.launch {
             try {
@@ -266,6 +275,9 @@ class ClaudeFragment : Fragment() {
                 val success = sherpaOnnxManager?.initialize() ?: false
                 if (success) {
                     isVoiceInputInitialized = true
+                    isVoiceInitializing = false
+                    micLoading.visibility = View.GONE
+                    micButton.visibility = View.VISIBLE
                     Log.i(TAG, "Voice input initialized successfully")
 
                     // Real-time text updates logged for debugging only
@@ -276,6 +288,9 @@ class ClaudeFragment : Fragment() {
                         }
                     }
                 } else {
+                    isVoiceInitializing = false
+                    micLoading.visibility = View.GONE
+                    micButton.visibility = View.VISIBLE
                     Log.e(TAG, "Failed to initialize voice input")
                     Toast.makeText(requireContext(), "Failed to initialize voice input", Toast.LENGTH_SHORT).show()
                 }
