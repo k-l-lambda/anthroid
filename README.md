@@ -4,12 +4,23 @@
 
 ## Overview
 
-Anthroid (Android + Anthropic) is a mobile AI agent platform that enables:
+Anthroid (Android + Anthropic) brings the power of [Claude Code](https://docs.anthropic.com/claude-code) to mobile, with unique advantages over desktop CLI:
 
-- **Conversational AI**: Native chat interface with Claude, featuring markdown rendering and conversation history
-- **Multimodal Input**: Voice recognition, camera photos, QR code scanning
-- **Tool Execution**: Claude can execute commands, manage files, access location, calendar, and more
-- **Offline Capable**: Voice input works without internet using on-device speech recognition
+| Feature | Desktop CLI | Anthroid Mobile |
+|---------|-------------|-----------------|
+| **Voice Input** | Requires typing | Press-and-hold to speak (offline ASR) |
+| **Camera** | No native support | Take photos, scan QR codes |
+| **Mobility** | Desk-bound | AI assistant in your pocket |
+| **Location** | Manual input | GPS-aware tool execution |
+| **Always On** | Laptop needed | Quick access anytime |
+
+**What makes Anthroid special:**
+
+- **Voice-First Interaction**: Speak naturally in Chinese, English, Japanese, Korean, or Cantonese - no typing required
+- **Visual Context**: Snap photos to show Claude what you're looking at
+- **Mobile Tools**: Access location, calendar, notifications - things only a phone can do
+- **Offline Capable**: Voice recognition works without internet
+- **Same Power**: Full Claude Code toolset - Bash, file operations, web search
 
 ## Features
 
@@ -96,9 +107,9 @@ Or use QR code for quick setup:
 
 ## Architecture
 
-\`\`\`
+```
 ┌─────────────────────────────────────────────────┐
-│                 Anthroid App                     │
+│                 Anthroid App                    │
 ├─────────────────────────────────────────────────┤
 │   Chat UI          │   Terminal UI              │
 │   - Messages       │   - Full Linux shell       │
@@ -111,32 +122,11 @@ Or use QR code for quick setup:
 │   - Conversation management                     │
 ├─────────────────────────────────────────────────┤
 │   Native Components                             │
-│   - sherpa-onnx (offline ASR)                  │
-│   - ML Kit (QR scanning)                       │
-│   - CameraX (photo capture)                    │
+│   - sherpa-onnx (offline ASR)                   │
+│   - ML Kit (QR scanning)                        │
+│   - CameraX (photo capture)                     │
 └─────────────────────────────────────────────────┘
-\`\`\`
-
-## Project Structure
-
-\`\`\`
-anthroid/
-├── app/                          # Main application
-│   └── src/main/java/com/anthroid/
-│       ├── main/                 # Chat UI (ClaudeFragment)
-│       ├── claude/               # Claude integration
-│       │   ├── ClaudeViewModel   # State management
-│       │   ├── ClaudeApiClient   # HTTP API client
-│       │   └── ui/MessageAdapter # Message rendering
-│       └── app/                  # Terminal (TermuxActivity)
-├── terminal-emulator/            # Terminal emulation library
-├── terminal-view/                # Terminal UI component
-└── termux-shared/                # Shared utilities
-\`\`\`
-
-## Development
-
-See [PLAN.md](PLAN.md) for detailed development phases and roadmap.
+```
 
 ### Key Technologies
 - **Kotlin** - Primary language
