@@ -809,9 +809,16 @@ Available Android tools:
 - query_calendar: Input: {"days_ahead": 7, "limit": 20}
 - add_calendar_event: Input: {"title": "...", "start_time": ms, "end_time": ms}
 - query_media: Input: {"type": "images|videos|audio", "limit": 20}
+- set_app_proxy: Set up VPN proxy for specified apps. Input: {"apps": ["pkg1", "pkg2"], "proxy_host": "localhost", "proxy_port": 1091, "proxy_type": "SOCKS5"}
+  NOTE: Requires VPN permission granted in Settings > VPN Proxy first
+- stop_app_proxy: Stop VPN proxy service. Input: {}
+- get_proxy_status: Get current VPN proxy status. Input: {}
 
 Example - show notification:
   /system/bin/am broadcast -a com.anthroid.TOOL_CALL --es tool "show_notification" --es input '{"title":"Hello","message":"World"}' -p com.anthroid 2>/dev/null; sleep 0.3; cat /sdcard/anthroid_tool_result.txt
+
+Example - set up proxy for an app:
+  /system/bin/am broadcast -a com.anthroid.TOOL_CALL --es tool "set_app_proxy" --es input '{"apps":["com.browser.app"],"proxy_host":"localhost","proxy_port":1091}' -p com.anthroid 2>/dev/null; sleep 0.3; cat /sdcard/anthroid_tool_result.txt
 
 When the user asks about files, use Bash commands.
 When the user asks about Android features, use am broadcast with the tools above.

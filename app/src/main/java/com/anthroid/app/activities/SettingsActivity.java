@@ -29,6 +29,11 @@ import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.preference.SwitchPreferenceCompat;
+import com.anthroid.vpn.ProxyVpnService;
+import com.anthroid.vpn.VpnSettingsHelper;
 import com.anthroid.R;
 import com.anthroid.shared.activities.ReportActivity;
 import com.anthroid.shared.file.FileUtils;
@@ -73,6 +78,29 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     public static class RootPreferencesFragment extends PreferenceFragmentCompat {
+        private ActivityResultLauncher<Intent> vpnPermissionLauncher;
+
+        @Override
+        public void onCreate(Bundle savedInstanceState) {
+            super.onCreate(savedInstanceState);
+            
+            // Register VPN permission launcher
+            vpnPermissionLauncher = registerForActivityResult(
+                new ActivityResultContracts.StartActivityForResult(),
+                result -> {
+                    if (result.getResultCode() == RESULT_OK) {
+                        // Permission granted
+                        Toast.makeText(requireContext(), "VPN permission granted", Toast.LENGTH_SHORT).show();
+                        updateVpnStatus(requireContext());
+                    } else {
+                        // Permission denied
+                        Toast.makeText(requireContext(), "VPN permission denied", Toast.LENGTH_SHORT).show();
+                        updateVpnStatus(requireContext());
+                    }
+                }
+            );
+        }
+
         @Override
         public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
             Context context = getContext();
@@ -82,6 +110,7 @@ public class SettingsActivity extends AppCompatActivity {
 
             // Configure ASR model preference on main thread
             configureAsrModelPreference(context);
+            configureVpnProxyPreference(context);
 
             new Thread() {
                 @Override
@@ -95,6 +124,49 @@ public class SettingsActivity extends AppCompatActivity {
                     configureComponentsPreference(context);
                 }
             }.start();
+        }
+
+        
+        
+        private void configureVpnProxyPreference(@NonNull Context context) {
+            // VPN Permission preference
+            Preference vpnPermission = findPreference("vpn_permission");
+            if (vpnPermission != null) {
+                updateVpnPermissionSummary(context, vpnPermission);
+                vpnPermission.setOnPreferenceClickListener(preference -> {
+                    Intent prepareIntent = ProxyVpnService.Companion.prepare(context);
+                    if (prepareIntent != null) {
+                        vpnPermissionLauncher.launch(prepareIntent);
+                    } else {
+                        Toast.makeText(context, "VPN permission already granted", Toast.LENGTH_SHORT).show();
+                    }
+                    return true;
+                });
+            }
+            
+            // VPN Status preference
+            updateVpnStatus(context);
+        }
+        
+        private void updateVpnPermissionSummary(@NonNull Context context, Preference pref) {
+            boolean granted = ProxyVpnService.Companion.prepare(context) == null;
+            pref.setSummary(granted ? "Permission granted (ready for agent tools)" : "Tap to grant VPN permission");
+        }
+        
+        private void updateVpnStatus(@NonNull Context context) {
+            Preference vpnStatus = findPreference("vpn_status");
+            if (vpnStatus != null) {
+                if (ProxyVpnService.Companion.isRunning()) {
+                    vpnStatus.setSummary(VpnSettingsHelper.INSTANCE.getStatusInfo());
+                } else {
+                    vpnStatus.setSummary("Not running (use set_app_proxy tool to start)");
+                }
+            }
+            
+            Preference vpnPermission = findPreference("vpn_permission");
+            if (vpnPermission != null) {
+                updateVpnPermissionSummary(context, vpnPermission);
+            }
         }
 
         private void configureTermuxAPIPreference(@NonNull Context context) {

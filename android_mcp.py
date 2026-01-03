@@ -31,6 +31,32 @@ def run_cmd(cmd, timeout=30):
     except Exception as e:
         return f"Error: {e}"
 
+def call_android_tool(tool_name, tool_input):
+    """Call AndroidTools via broadcast and read result from file."""
+    # Escape JSON for shell
+    input_json = json.dumps(tool_input).replace('"', '\\"')
+
+    # Remove old result file
+    result_file = "/sdcard/anthroid_tool_result.txt"
+    run_cmd(f"rm -f {result_file}")
+
+    # Send broadcast
+    cmd = f'am broadcast -a com.anthroid.TOOL_CALL --es tool "{tool_name}" --es input "{input_json}" -p com.anthroid'
+    log(f"Broadcast: {cmd[:100]}...")
+    run_cmd(cmd)
+
+    # Wait for result file
+    for _ in range(30):  # Wait up to 3 seconds
+        time.sleep(0.1)
+        if os.path.exists(result_file):
+            try:
+                with open(result_file, 'r') as f:
+                    return f.read()
+            except:
+                pass
+
+    return "Error: Tool execution timeout"
+
 def show_notification(title, message):
     """Show notification using termux-toast or am command."""
     # Try termux-toast first (simpler, works without root)
@@ -39,7 +65,7 @@ def show_notification(title, message):
         return f"Toast shown: {message}"
     except:
         pass
-    
+
     # Fallback: use am start with ACTION_VIEW for a simple notification
     # Or write to a file that the app monitors
     result_file = f"{HOME}/.notification_request"
@@ -65,7 +91,7 @@ def list_apps(filter_type="user", limit=50):
         cmd = "pm list packages -3"
     else:
         cmd = "pm list packages"
-    
+
     output = run_cmd(cmd)
     packages = [line.replace("package:", "") for line in output.strip().split("\n") if line.startswith("package:")]
     return json.dumps(packages[:limit], indent=2)
@@ -86,10 +112,27 @@ def query_calendar():
     except:
         return "Error: termux-calendar-list not available. Install termux-api package."
 
+def set_app_proxy(apps, proxy_host="localhost", proxy_port=1091, proxy_type="SOCKS5"):
+    """Set up VPN proxy for specified apps."""
+    return call_android_tool("set_app_proxy", {
+        "apps": apps,
+        "proxy_host": proxy_host,
+        "proxy_port": proxy_port,
+        "proxy_type": proxy_type
+    })
+
+def stop_app_proxy():
+    """Stop VPN proxy service."""
+    return call_android_tool("stop_app_proxy", {})
+
+def get_proxy_status():
+    """Get current VPN proxy status."""
+    return call_android_tool("get_proxy_status", {})
+
 def call_tool(name, args):
     """Execute tool by name."""
     log(f"Calling: {name} with {args}")
-    
+
     if name == "show_notification":
         return show_notification(args.get("title", "Notification"), args.get("message", ""))
     elif name == "open_url":
@@ -102,6 +145,17 @@ def call_tool(name, args):
         return get_location()
     elif name == "query_calendar":
         return query_calendar()
+    elif name == "set_app_proxy":
+        return set_app_proxy(
+            args.get("apps", []),
+            args.get("proxy_host", "localhost"),
+            args.get("proxy_port", 1091),
+            args.get("proxy_type", "SOCKS5")
+        )
+    elif name == "stop_app_proxy":
+        return stop_app_proxy()
+    elif name == "get_proxy_status":
+        return get_proxy_status()
     else:
         return f"Unknown tool: {name}"
 
@@ -112,16 +166,19 @@ def get_tools():
         {"name": "launch_app", "description": "Launch an app", "inputSchema": {"type": "object", "properties": {"package": {"type": "string"}}, "required": ["package"]}},
         {"name": "list_apps", "description": "List installed apps", "inputSchema": {"type": "object", "properties": {"filter": {"type": "string", "enum": ["user", "system", "all"]}, "limit": {"type": "integer"}}}},
         {"name": "get_location", "description": "Get device location", "inputSchema": {"type": "object", "properties": {}}},
-        {"name": "query_calendar", "description": "Query calendar events", "inputSchema": {"type": "object", "properties": {}}}
+        {"name": "query_calendar", "description": "Query calendar events", "inputSchema": {"type": "object", "properties": {}}},
+        {"name": "set_app_proxy", "description": "Set up VPN proxy for specified apps. Routes traffic of specified apps through a proxy server.", "inputSchema": {"type": "object", "properties": {"apps": {"type": "array", "items": {"type": "string"}, "description": "Package names of apps to route through proxy (e.g., ['com.browser.app'])"}, "proxy_host": {"type": "string", "description": "Proxy server address", "default": "localhost"}, "proxy_port": {"type": "integer", "description": "Proxy server port", "default": 1091}, "proxy_type": {"type": "string", "enum": ["SOCKS5", "HTTP"], "description": "Proxy protocol type", "default": "SOCKS5"}}, "required": ["apps"]}},
+        {"name": "stop_app_proxy", "description": "Stop VPN proxy service", "inputSchema": {"type": "object", "properties": {}}},
+        {"name": "get_proxy_status", "description": "Get current VPN proxy status (running state, target apps, proxy server)", "inputSchema": {"type": "object", "properties": {}}}
     ]
 
 def handle_request(request):
     method = request.get("method", "")
     req_id = request.get("id")
     params = request.get("params", {})
-    
+
     log(f"Method: {method}")
-    
+
     if method == "initialize":
         return {"jsonrpc": "2.0", "id": req_id, "result": {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}}, "serverInfo": {"name": "android-tools", "version": "1.0.0"}}}
     elif method == "notifications/initialized":

@@ -19,6 +19,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.anthroid.R
+import com.anthroid.vpn.ProxyVpnService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -60,6 +61,9 @@ class AndroidTools(private val context: Context) {
             "query_media" -> queryMedia(input)
             "read_clipboard" -> readClipboard()
             "write_clipboard" -> writeClipboard(input)
+            "set_app_proxy" -> setAppProxy(input)
+            "stop_app_proxy" -> stopAppProxy()
+            "get_proxy_status" -> getProxyStatus()
             else -> "Unknown tool: $name"
         }
     } catch (e: Exception) {
@@ -71,7 +75,8 @@ class AndroidTools(private val context: Context) {
         "open_url", "launch_app", "send_intent", "list_apps", "get_app_info",
         "show_notification", "geocode", "reverse_geocode", "get_location",
         "query_calendar", "add_calendar_event", "query_media",
-        "read_clipboard", "write_clipboard"
+        "read_clipboard", "write_clipboard",
+        "set_app_proxy", "stop_app_proxy", "get_proxy_status"
     )
 
     private fun openUrl(input: String): String {
@@ -292,5 +297,82 @@ class AndroidTools(private val context: Context) {
         val clip = ClipData.newPlainText("Claude", text)
         clipboard.setPrimaryClip(clip)
         return "Text copied to clipboard (${text.length} characters)"
+    }
+
+    /**
+     * Set up VPN proxy for specified apps.
+     * Input: {"apps": ["com.example.app1", "com.example.app2"], "proxy_host": "localhost", "proxy_port": 1091, "proxy_type": "SOCKS5"}
+     *
+     * Note: VPN permission must be granted first via Settings > VPN Proxy.
+     * TODO: Actual packet forwarding requires tun2socks integration.
+     */
+    private fun setAppProxy(input: String): String {
+        val json = JSONObject(input)
+        val appsArray = json.optJSONArray("apps")
+        if (appsArray == null || appsArray.length() == 0) {
+            return "Error: apps array is required (list of package names)"
+        }
+
+        val apps = ArrayList<String>()
+        for (i in 0 until appsArray.length()) {
+            apps.add(appsArray.getString(i))
+        }
+
+        val proxyHost = json.optString("proxy_host", "localhost")
+        val proxyPort = json.optInt("proxy_port", 1091)
+        val proxyType = json.optString("proxy_type", "SOCKS5")
+
+        // Check VPN permission
+        val prepareIntent = ProxyVpnService.prepare(context)
+        if (prepareIntent != null) {
+            return "Error: VPN permission not granted. User needs to enable VPN in Settings > VPN Proxy first."
+        }
+
+        // Start VPN service
+        val intent = Intent(context, ProxyVpnService::class.java).apply {
+            action = ProxyVpnService.ACTION_START
+            putExtra(ProxyVpnService.EXTRA_PROXY_HOST, proxyHost)
+            putExtra(ProxyVpnService.EXTRA_PROXY_PORT, proxyPort)
+            putExtra(ProxyVpnService.EXTRA_PROXY_TYPE, proxyType)
+            putStringArrayListExtra(ProxyVpnService.EXTRA_TARGET_APPS, apps)
+        }
+        context.startService(intent)
+
+        return "VPN proxy started: ${apps.joinToString(", ")} -> $proxyType $proxyHost:$proxyPort"
+    }
+
+    /**
+     * Stop VPN proxy service.
+     */
+    private fun stopAppProxy(): String {
+        if (!ProxyVpnService.isRunning()) {
+            return "VPN proxy is not running"
+        }
+
+        val intent = Intent(context, ProxyVpnService::class.java).apply {
+            action = ProxyVpnService.ACTION_STOP
+        }
+        context.startService(intent)
+
+        return "VPN proxy stopped"
+    }
+
+    /**
+     * Get current VPN proxy status.
+     */
+    private fun getProxyStatus(): String {
+        return if (ProxyVpnService.isRunning()) {
+            val apps = ProxyVpnService.getTargetApps()
+            JSONObject()
+                .put("running", true)
+                .put("info", ProxyVpnService.getProxyInfo())
+                .put("target_apps", JSONArray(apps))
+                .toString(2)
+        } else {
+            JSONObject()
+                .put("running", false)
+                .put("info", "VPN proxy not running")
+                .toString(2)
+        }
     }
 }
