@@ -462,6 +462,18 @@ class ClaudeFragment : Fragment() {
     }
 
     /**
+     * Append QR code text to the input field.
+     * Called from MainPagerActivity after QR scan result.
+     */
+    fun appendQrText(text: String) {
+        val currentText = inputField.text.toString()
+        val newText = if (currentText.isEmpty()) text else currentText + " " + text
+        inputField.setText(newText)
+        inputField.setSelection(newText.length)
+        inputField.requestFocus()
+    }
+
+    /**
      * Update the pending images preview area.
      */
     private fun updatePendingImagesView(images: List<MessageImage>) {

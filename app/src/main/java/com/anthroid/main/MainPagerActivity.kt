@@ -54,12 +54,15 @@ class MainPagerActivity : AppCompatActivity() {
         if (result.resultCode == RESULT_OK) {
             @Suppress("DEPRECATION")
             val imageUri = result.data?.getParcelableExtra<Uri>(CameraCaptureActivity.EXTRA_IMAGE_URI)
-            imageUri?.let { uri ->
-                Log.d(TAG, "Camera result: $uri")
-                // Pass to ClaudeFragment
-                val fragment = supportFragmentManager.findFragmentById(R.id.fragment_container)
-                if (fragment is ClaudeFragment) {
-                    fragment.addPendingImage(uri)
+            val qrText = result.data?.getStringExtra(CameraCaptureActivity.EXTRA_QR_TEXT)
+            val fragment = supportFragmentManager.findFragmentById(R.id.fragment_container)
+            if (fragment is ClaudeFragment) {
+                if (imageUri != null) {
+                    Log.d(TAG, "Camera result: $imageUri")
+                    fragment.addPendingImage(imageUri)
+                } else if (qrText != null) {
+                    Log.d(TAG, "QR scan result: " + qrText.take(50) + "...")
+                    fragment.appendQrText(qrText)
                 }
             }
         }

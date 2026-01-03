@@ -10,14 +10,27 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Bottom controls bar -->
+    <!-- Scan mode viewfinder overlay (shown in QR scan mode) -->
+    <View
+        android:id="@+id/scan_viewfinder"
+        android:layout_width="250dp"
+        android:layout_height="250dp"
+        android:layout_gravity="center"
+        android:background="@drawable/qr_viewfinder"
+        android:visibility="gone" />
+
+    <!-- Bottom controls bar for photo mode -->
     <LinearLayout
+        android:id="@+id/photo_controls"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:padding="24dp"
+        android:paddingTop="24dp"
+        android:paddingBottom="24dp"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
         android:background="#80000000">
 
         <!-- Gallery picker button -->
@@ -31,15 +44,27 @@
             android:src="@android:drawable/ic_menu_gallery"
             app:tint="@android:color/white" />
 
-        <!-- Capture button -->
+        <!-- Capture button (center) -->
         <ImageButton
             android:id="@+id/capture_button"
             android:layout_width="72dp"
             android:layout_height="72dp"
-            android:layout_weight="0"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp"
             android:background="@drawable/bg_capture_button"
             android:contentDescription="Take photo"
             android:src="@drawable/ic_camera"
+            app:tint="@android:color/white" />
+
+        <!-- QR scan button -->
+        <ImageButton
+            android:id="@+id/qr_scan_button"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Scan QR code"
+            android:src="@drawable/ic_qr_code"
             app:tint="@android:color/white" />
 
         <!-- Switch camera button -->
@@ -55,8 +80,33 @@
 
     </LinearLayout>
 
+    <!-- Bottom controls bar for scan mode -->
+    <LinearLayout
+        android:id="@+id/scan_controls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:padding="24dp"
+        android:background="#80000000"
+        android:visibility="gone">
+
+        <!-- Back to photo button -->
+        <ImageButton
+            android:id="@+id/back_to_photo_button"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Back to photo"
+            android:src="@drawable/ic_camera"
+            app:tint="@android:color/white" />
+
+    </LinearLayout>
+
     <!-- Instructions -->
     <TextView
+        android:id="@+id/instruction_text"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|center_horizontal"
@@ -66,5 +116,63 @@
         android:textSize="16sp"
         android:shadowColor="@android:color/black"
         android:shadowRadius="3" />
+
+    <!-- QR result overlay -->
+    <LinearLayout
+        android:id="@+id/qr_result_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:background="#E0000000"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="QR Code Detected"
+            android:textColor="@android:color/white"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/qr_result_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:maxLines="4"
+            android:ellipsize="end"
+            android:textColor="@android:color/white"
+            android:textSize="16sp"
+            android:background="#40FFFFFF"
+            android:padding="12dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal"
+            android:gravity="end">
+
+            <Button
+                android:id="@+id/qr_cancel_button"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Cancel"
+                style="?android:attr/borderlessButtonStyle"
+                android:textColor="@android:color/white" />
+
+            <Button
+                android:id="@+id/qr_confirm_button"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="Use Text"
+                android:backgroundTint="#4CAF50" />
+
+        </LinearLayout>
+
+    </LinearLayout>
 
 </FrameLayout>
