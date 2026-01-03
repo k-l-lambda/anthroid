@@ -4,13 +4,13 @@
 
 ## Overview
 
-Anthroid (Android + Anthropic) reimagines AI assistance for mobile. While [Claude Code](https://docs.anthropic.com/claude-code) revolutionized AI-powered development on desktop, we asked: what if your AI agent could go wherever you go?
+Anthroid (Android + Anthropic) is a mobile implementation of [Claude Code](https://docs.anthropic.com/claude-code), designed around mobile-native input methods and device capabilities.
 
-Built for moments when you're away from your desk - commuting, traveling, or simply on the couch - Anthroid lets you interact with Claude through **voice** instead of typing, share **photos** of what you're looking at, and leverage your phone's unique capabilities like **GPS location** and **calendar access**.
-
-The result is an AI assistant that feels natural on mobile: speak in your language (Chinese, English, Japanese, Korean, or Cantonese), snap a picture to provide context, and get things done without needing a laptop. Voice recognition works **offline**, so you're never dependent on network connectivity.
-
-Under the hood, Anthroid provides the full [Claude Code](https://docs.anthropic.com/claude-code) toolset - Bash commands, file operations, web search - bringing desktop-class AI capabilities to your pocket.
+**Design Goals:**
+- **Mobile APIs** - Access to GPS location, calendar, notifications, and other Android system services
+- **Voice input** - Speech recognition (sherpa-onnx) for hands-free interaction, supporting zh/en/ja/ko/yue
+- **Visual context** - Camera integration for image-based queries and QR code scanning
+- **Full toolset** - Bash, file operations, web search - same capabilities as desktop Claude Code
 
 ## Features
 
