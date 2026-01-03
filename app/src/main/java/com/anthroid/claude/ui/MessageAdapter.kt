@@ -1,7 +1,9 @@
 package com.anthroid.claude.ui
 
 import android.util.Log
+import android.content.Context
 import android.graphics.Color
+import android.text.method.LinkMovementMethod
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -16,6 +18,10 @@ import com.anthroid.R
 import com.anthroid.claude.Message
 import com.anthroid.claude.MessageImage
 import com.anthroid.claude.MessageRole
+import io.noties.markwon.Markwon
+import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
+import io.noties.markwon.ext.tables.TablePlugin
+import io.noties.markwon.linkify.LinkifyPlugin
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -30,6 +36,20 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
         private const val VIEW_TYPE_ASSISTANT = 1
         private const val VIEW_TYPE_TOOL = 2
         private const val PAYLOAD_CONTENT_CHANGED = "content_changed"
+
+        @Volatile
+        private var markwonInstance: Markwon? = null
+
+        fun getMarkwon(context: Context): Markwon {
+            return markwonInstance ?: synchronized(this) {
+                markwonInstance ?: Markwon.builder(context.applicationContext)
+                    .usePlugin(StrikethroughPlugin.create())
+                    .usePlugin(TablePlugin.create(context.applicationContext))
+                    .usePlugin(LinkifyPlugin.create())
+                    .build()
+                    .also { markwonInstance = it }
+            }
+        }
     }
 
     override fun getItemViewType(position: Int): Int {
@@ -45,7 +65,7 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
         return when (viewType) {
             VIEW_TYPE_USER -> {
                 val view = LayoutInflater.from(parent.context).inflate(R.layout.item_message_user, parent, false)
-                MessageViewHolder(view)
+                MessageViewHolder(view, isAssistant = false)
             }
             VIEW_TYPE_TOOL -> {
                 val view = LayoutInflater.from(parent.context).inflate(R.layout.item_message_tool, parent, false)
@@ -53,7 +73,7 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
             }
             else -> {
                 val view = LayoutInflater.from(parent.context).inflate(R.layout.item_message_assistant, parent, false)
-                MessageViewHolder(view)
+                MessageViewHolder(view, isAssistant = true)
             }
         }
     }
@@ -80,13 +100,20 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
         }
     }
 
-    class MessageViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+    class MessageViewHolder(itemView: View, private val isAssistant: Boolean = false) : RecyclerView.ViewHolder(itemView) {
         private val contentText: TextView = itemView.findViewById(R.id.message_content)
         private val timestampText: TextView = itemView.findViewById(R.id.message_timestamp)
         private val streamingIndicator: ProgressBar? = itemView.findViewById(R.id.streaming_indicator)
         private val imagesContainer: LinearLayout? = itemView.findViewById(R.id.images_container)
 
         private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+        private val markwon: Markwon by lazy { getMarkwon(itemView.context) }
+
+        init {
+            if (isAssistant) {
+                contentText.movementMethod = LinkMovementMethod.getInstance()
+            }
+        }
 
         fun bind(message: Message) {
             Log.d(TAG, "bind: id=${message.id.take(8)}, len=${message.content.length}, streaming=${message.isStreaming}, images=${message.images.size}")
@@ -101,7 +128,12 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
                 streamingIndicator?.visibility = View.VISIBLE
                 contentText.setTextColor(Color.parseColor("#333333"))
             } else {
-                contentText.text = message.content
+                // Use Markwon for assistant messages, plain text for user messages
+                if (isAssistant && !message.isError && message.content.isNotEmpty()) {
+                    markwon.setMarkdown(contentText, message.content)
+                } else {
+                    contentText.text = message.content
+                }
                 streamingIndicator?.visibility = if (message.isStreaming) View.VISIBLE else View.GONE
                 // Show error messages in red
                 if (message.isError) {

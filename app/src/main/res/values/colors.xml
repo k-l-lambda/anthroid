@@ -9,8 +9,8 @@
     <color name="background_dark">#F3F4F6</color>
 
     <!-- Message colors -->
-    <color name="user_message_bg">#6366F1</color>
-    <color name="user_message_text">#FFFFFF</color>
+    <color name="user_message_bg">#E3F2FD</color>
+    <color name="user_message_text">#1565C0</color>
     <color name="assistant_message_bg">#F3F4F6</color>
     <color name="assistant_message_text">#1F2937</color>
 

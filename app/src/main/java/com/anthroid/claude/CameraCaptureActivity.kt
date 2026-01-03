@@ -2,6 +2,9 @@ package com.anthroid.claude
 
 import android.Manifest
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -297,6 +300,12 @@ class CameraCaptureActivity : AppCompatActivity() {
     }
 
     private fun returnQrResult(text: String) {
+        // Copy to clipboard
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = ClipData.newPlainText("QR Code", text)
+        clipboard.setPrimaryClip(clip)
+        Toast.makeText(this, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+        
         val resultIntent = Intent().apply {
             putExtra(EXTRA_QR_TEXT, text)
         }
