@@ -4,23 +4,13 @@
 
 ## Overview
 
-Anthroid (Android + Anthropic) brings the power of [Claude Code](https://docs.anthropic.com/claude-code) to mobile, with unique advantages over desktop CLI:
+Anthroid (Android + Anthropic) reimagines AI assistance for mobile. While [Claude Code](https://docs.anthropic.com/claude-code) revolutionized AI-powered development on desktop, we asked: what if your AI agent could go wherever you go?
 
-| Feature | Desktop CLI | Anthroid Mobile |
-|---------|-------------|-----------------|
-| **Voice Input** | Requires typing | Press-and-hold to speak (offline ASR) |
-| **Camera** | No native support | Take photos, scan QR codes |
-| **Mobility** | Desk-bound | AI assistant in your pocket |
-| **Location** | Manual input | GPS-aware tool execution |
-| **Always On** | Laptop needed | Quick access anytime |
+Built for moments when you're away from your desk - commuting, traveling, or simply on the couch - Anthroid lets you interact with Claude through **voice** instead of typing, share **photos** of what you're looking at, and leverage your phone's unique capabilities like **GPS location** and **calendar access**.
 
-**What makes Anthroid special:**
+The result is an AI assistant that feels natural on mobile: speak in your language (Chinese, English, Japanese, Korean, or Cantonese), snap a picture to provide context, and get things done without needing a laptop. Voice recognition works **offline**, so you're never dependent on network connectivity.
 
-- **Voice-First Interaction**: Speak naturally in Chinese, English, Japanese, Korean, or Cantonese - no typing required
-- **Visual Context**: Snap photos to show Claude what you're looking at
-- **Mobile Tools**: Access location, calendar, notifications - things only a phone can do
-- **Offline Capable**: Voice recognition works without internet
-- **Same Power**: Full Claude Code toolset - Bash, file operations, web search
+Under the hood, Anthroid provides the full [Claude Code](https://docs.anthropic.com/claude-code) toolset - Bash commands, file operations, web search - bringing desktop-class AI capabilities to your pocket.
 
 ## Features
 
@@ -70,7 +60,7 @@ Get the latest release from [GitHub Releases](https://github.com/k-l-lambda/anth
 
 ### Build from Source
 
-\`\`\`bash
+```bash
 # Clone repository
 git clone https://github.com/k-l-lambda/anthroid.git
 cd anthroid
@@ -80,7 +70,7 @@ cd anthroid
 
 # Install on device
 adb install app/build/outputs/apk/debug/anthroid-app_apt-android-7-debug_arm64-v8a.apk
-\`\`\`
+```
 
 ### Requirements
 - Android 7.0+ (API 24)
