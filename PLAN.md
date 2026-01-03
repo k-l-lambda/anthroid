@@ -179,27 +179,48 @@ Take photos to add visual context to chat messages.
 
 ---
 
-### Phase 5c: QR Code in Chat Camera (Planned)
+### Phase 5c: QR Code in Chat Camera (Complete)
 
 Integrate QR code scanning into the chat camera.
 
-#### Features
-- QR scan mode toggle in CameraCaptureActivity
-- Real-time QR detection using CameraX ImageAnalysis
-- Overlay showing decoded content
-- Insert QR content as text into chat input
+#### Features (Done - Jan 2026)
+- [x] QR scan mode toggle in CameraCaptureActivity
+- [x] Real-time QR detection using CameraX ImageAnalysis + ML Kit
+- [x] Viewfinder overlay UI with blue corner accents
+- [x] Instant text insertion (no confirmation step)
+- [x] QR content copied to clipboard automatically
+- [x] Insert QR content as text into chat input
 
-#### Implementation Tasks
-- [ ] Refactor QRScannerActivity barcode logic to shared utility
-- [ ] Add ImageAnalysis use case to CameraCaptureActivity
-- [ ] Toggle button for photo/QR mode
-- [ ] QR detection overlay UI
-- [ ] Return decoded text to chat input
+#### Technical Notes
+- Reused ML Kit BarcodeScanning from QRScannerActivity
+- ImageAnalysis runs concurrently with Preview
+- Toast notification on clipboard copy
 
 
 ---
 
-### Phase 7: Voice I/O (In Progress)
+### Phase 5d: Markdown Rendering (Complete)
+
+Rich text display for Claude agent messages.
+
+#### Features (Done - Jan 2026)
+- [x] Markwon library for markdown rendering
+- [x] Table support with proper formatting
+- [x] Strikethrough text support
+- [x] Auto-linkify URLs
+- [x] Clickable links in messages
+- [x] Light blue user message bubbles
+
+#### Technical Notes
+- Markwon singleton with thread-safe initialization
+- TablePlugin, StrikethroughPlugin, LinkifyPlugin
+- LinkMovementMethod for clickable links
+- Only applied to assistant messages (user messages plain text)
+
+
+---
+
+### Phase 7: Voice I/O (Complete)
 
 Voice input and output for hands-free interaction using sherpa-onnx (offline, Chinese + English).
 
@@ -360,9 +381,10 @@ app/src/main/java/com/anthroid/
 | M4 | ✅ Done | QR code configuration scanner |
 | M5 | ✅ Done | Conversation management |
 | M5b | ✅ Done | Camera input for chat |
-| M5c | ⏳ | QR code in chat camera |
+| M5c | ✅ Done | QR code in chat camera |
 | M6 | ✅ Done | Tool execution working |
-| M7 | 🔄 In Progress | Voice I/O (sherpa-onnx STT) |
+| M5d | ✅ Done | Markdown rendering |
+| M7 | ✅ Done | Voice I/O (sherpa-onnx STT) |
 | M8 | ⏳ | Production-ready release |
 
 ---
