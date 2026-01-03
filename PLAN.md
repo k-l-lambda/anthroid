@@ -346,6 +346,165 @@ Final polish and release preparation.
 
 ---
 
+### Phase 9: Per-App VPN Proxy Tool (Planned)
+
+Enable Anthroid to access internet through proxy while other apps connect directly.
+
+#### Background
+
+Android VpnService API supports per-app VPN routing since API 21 (Android 5.0):
+- `VpnService.Builder.addAllowedApplication(packageName)` - Only route specified apps
+- `VpnService.Builder.addDisallowedApplication(packageName)` - Route all except specified
+
+#### Technical Design
+
+```
+┌─────────────────────────────────────────────┐
+│              Android System                  │
+├─────────────────────────────────────────────┤
+│  Anthroid ──► VpnService ──► Proxy Server   │
+│              (tun interface)                 │
+│                                              │
+│  Other Apps ─────────────────► Direct       │
+└─────────────────────────────────────────────┘
+```
+
+#### Key Components
+
+1. **ProxyVpnService.kt** - VpnService implementation with tun2socks
+2. **Settings UI** - Proxy server/port, type (SOCKS5/HTTP), enable toggle
+3. **Permission Flow** - VpnService.prepare() user authorization
+
+#### References
+
+- [Android VpnService Docs](https://developer.android.com/develop/connectivity/vpn)
+- [TunProxy](https://github.com/raise-isayan/TunProxy) - Reference implementation
+- [sing-box](https://github.com/SagerNet/sing-box) - Go-based tun proxy
+
+#### Tasks
+
+- [ ] Research tun2socks integration options
+- [ ] Create ProxyVpnService.kt skeleton
+- [ ] Add proxy settings UI
+- [ ] Implement traffic forwarding
+- [ ] Test per-app routing
+
+---
+
+### Phase 10: Screen Automation Tools (Planned)
+
+Enable Claude to interact with phone screen - read content, take screenshots, click, type, and capture audio.
+
+#### Core Technologies
+
+| Technology | Purpose | Requirement |
+|------------|---------|-------------|
+| AccessibilityService | Read screen, click, type, gestures | User enables in Settings |
+| MediaProjection | Screenshots, screen recording | User permission dialog |
+| AudioPlaybackCapture | System audio capture | API 29+, MediaProjection |
+
+#### Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Claude Agent                          │
+├─────────────────────────────────────────────────────────┤
+│  Tool Request ──► AndroidTools.kt                        │
+│                        │                                 │
+│         ┌──────────────┼──────────────┐                  │
+│         ▼              ▼              ▼                  │
+│  AccessibilityService  MediaProjection  AudioCapture     │
+│  (UI Automation)       (Screenshots)    (System Sound)   │
+└─────────────────────────────────────────────────────────┘
+```
+
+#### New Tools
+
+**UI Automation (AccessibilityService):**
+| Tool | Description |
+|------|-------------|
+| `get_screen_text` | Get all text visible on screen |
+| `find_element` | Find element by text/id/class |
+| `click_element` | Click element by text or description |
+| `click_position` | Click at x,y coordinates |
+| `input_text` | Type text into focused input field |
+| `swipe` | Swipe gesture (scroll, drag) |
+| `long_press` | Long press at position |
+| `press_back` | Press system back button |
+| `press_home` | Press system home button |
+
+**Screen Capture (MediaProjection):**
+| Tool | Description |
+|------|-------------|
+| `take_screenshot` | Capture screen, return image path |
+| `start_recording` | Start screen recording |
+| `stop_recording` | Stop recording, return video path |
+| `capture_audio` | Record system audio (API 29+) |
+
+#### Key Components
+
+1. **AnthroidAccessibilityService.kt**
+   ```kotlin
+   class AnthroidAccessibilityService : AccessibilityService() {
+       fun getScreenText(): List<String>
+       fun clickByText(text: String): Boolean
+       fun clickAt(x: Float, y: Float): Boolean
+       fun inputText(text: String): Boolean
+       fun performSwipe(startX, startY, endX, endY): Boolean
+   }
+   ```
+
+2. **ScreenCaptureManager.kt**
+   ```kotlin
+   class ScreenCaptureManager(context: Context) {
+       fun requestPermission(activity: Activity)
+       fun captureScreen(): Bitmap?
+       fun startRecording(outputPath: String)
+       fun stopRecording()
+       fun startAudioCapture(): AudioRecord  // API 29+
+   }
+   ```
+
+3. **res/xml/accessibility_config.xml**
+   ```xml
+   <accessibility-service
+       android:canRetrieveWindowContent="true"
+       android:canPerformGestures="true"
+       android:accessibilityFlags="flagRetrieveInteractiveWindows"/>
+   ```
+
+#### Permission Flow
+
+```
+User opens Anthroid Settings
+    │
+    ├─► [UI Automation] ──► Opens system Accessibility Settings
+    │                       User enables AnthroidAccessibilityService
+    │
+    └─► [Screen Capture] ──► Shows MediaProjection permission dialog
+                            User grants permission (one-time or persistent)
+```
+
+#### References
+
+- [AccessibilityService Guide](https://developer.android.com/guide/topics/ui/accessibility/service)
+- [MediaProjection API](https://developer.android.com/media/grow/media-projection)
+- [AudioPlaybackCapture](https://developer.android.com/media/platform/av-capture)
+
+#### Tasks
+
+- [ ] Create AnthroidAccessibilityService.kt skeleton
+- [ ] Add accessibility_config.xml
+- [ ] Implement get_screen_text tool
+- [ ] Implement click/input/swipe tools
+- [ ] Create ScreenCaptureManager.kt
+- [ ] Implement take_screenshot tool
+- [ ] Add permission management UI in Settings
+- [ ] Implement audio capture (API 29+)
+- [ ] Test cross-app automation
+
+---
+
 ## File Structure (Current)
 
 ```
@@ -386,6 +545,8 @@ app/src/main/java/com/anthroid/
 | M5d | ✅ Done | Markdown rendering |
 | M7 | ✅ Done | Voice I/O (sherpa-onnx STT) |
 | M8 | ⏳ | Production-ready release |
+| M9 | 📋 Planned | Per-app VPN proxy tool |
+| M10 | 📋 Planned | Screen automation tools |
 
 ---
 
