@@ -235,4 +235,8 @@
     <!-- Donate Preference -->
     <string name="donate_preference_title">Donate</string>
 
+    <!-- Accessibility Service -->
+    <string name="accessibility_service_description">Anthroid Accessibility Service enables Claude AI to interact with your phone screen. This allows Claude to read screen content, click buttons, type text, and perform gestures to help automate tasks on your behalf.</string>
+    <string name="accessibility_service_label">Anthroid Screen Automation</string>
+
 </resources>

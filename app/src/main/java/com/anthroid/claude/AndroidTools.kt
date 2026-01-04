@@ -19,6 +19,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.anthroid.R
+import com.anthroid.accessibility.AnthroidAccessibilityService
 import com.anthroid.vpn.ProxyConfigManager
 import com.anthroid.vpn.ProxyVpnService
 import com.anthroid.vpn.models.ProxyServer
@@ -67,6 +68,21 @@ class AndroidTools(private val context: Context) {
             "set_app_proxy" -> setAppProxy(input)
             "stop_app_proxy" -> stopAppProxy()
             "get_proxy_status" -> getProxyStatus()
+            // Screen automation tools
+            "get_screen_text" -> getScreenText()
+            "get_screen_elements" -> getScreenElements(input)
+            "find_element" -> findElement(input)
+            "click_element" -> clickElement(input)
+            "click_position" -> clickPosition(input)
+            "input_text" -> inputText(input)
+            "swipe" -> swipe(input)
+            "long_press" -> longPress(input)
+            "press_back" -> pressBack()
+            "press_home" -> pressHome()
+            "open_recents" -> openRecents()
+            "open_notifications" -> openNotifications()
+            "scroll" -> scroll(input)
+            "get_accessibility_status" -> getAccessibilityStatus()
             else -> "Unknown tool: $name"
         }
     } catch (e: Exception) {
@@ -79,7 +95,12 @@ class AndroidTools(private val context: Context) {
         "show_notification", "geocode", "reverse_geocode", "get_location",
         "query_calendar", "add_calendar_event", "query_media",
         "read_clipboard", "write_clipboard",
-        "set_app_proxy", "stop_app_proxy", "get_proxy_status"
+        "set_app_proxy", "stop_app_proxy", "get_proxy_status",
+        // Screen automation tools
+        "get_screen_text", "get_screen_elements", "find_element",
+        "click_element", "click_position", "input_text", "swipe",
+        "long_press", "press_back", "press_home", "open_recents",
+        "open_notifications", "scroll", "get_accessibility_status"
     )
 
     private fun openUrl(input: String): String {
@@ -449,5 +470,152 @@ class AndroidTools(private val context: Context) {
                 .put("info", "VPN proxy not running")
                 .toString(2)
         }
+    }
+
+    // ==================== Screen Automation Tools ====================
+
+    /**
+     * Get all visible text on screen.
+     * Input: {} (no parameters)
+     * Requires: Accessibility service enabled
+     */
+    private fun getScreenText(): String {
+        return AnthroidAccessibilityService.getScreenText()
+    }
+
+    /**
+     * Get screen elements as structured JSON.
+     * Input: {"include_invisible": false}
+     * Returns element tree with text, description, bounds, clickable state
+     */
+    private fun getScreenElements(input: String): String {
+        val json = JSONObject(input)
+        val includeInvisible = json.optBoolean("include_invisible", false)
+        return AnthroidAccessibilityService.getScreenElements(includeInvisible)
+    }
+
+    /**
+     * Find element by text content.
+     * Input: {"text": "Search", "exact_match": false}
+     */
+    private fun findElement(input: String): String {
+        val json = JSONObject(input)
+        val text = json.optString("text", "")
+        if (text.isEmpty()) return "Error: text is required"
+        val exactMatch = json.optBoolean("exact_match", false)
+        return AnthroidAccessibilityService.findElementByText(text, exactMatch)
+    }
+
+    /**
+     * Click element by text.
+     * Input: {"text": "Button text"}
+     */
+    private fun clickElement(input: String): String {
+        val json = JSONObject(input)
+        val text = json.optString("text", "")
+        if (text.isEmpty()) return "Error: text is required"
+        return AnthroidAccessibilityService.clickByText(text)
+    }
+
+    /**
+     * Click at specific x,y coordinates.
+     * Input: {"x": 500, "y": 800}
+     */
+    private fun clickPosition(input: String): String {
+        val json = JSONObject(input)
+        val x = json.optDouble("x", -1.0).toFloat()
+        val y = json.optDouble("y", -1.0).toFloat()
+        if (x < 0 || y < 0) return "Error: x and y coordinates required"
+        return AnthroidAccessibilityService.clickAt(x, y)
+    }
+
+    /**
+     * Type text into focused input field.
+     * Input: {"text": "Hello world"}
+     */
+    private fun inputText(input: String): String {
+        val json = JSONObject(input)
+        val text = json.optString("text", "")
+        if (text.isEmpty()) return "Error: text is required"
+        return AnthroidAccessibilityService.inputText(text)
+    }
+
+    /**
+     * Perform swipe gesture.
+     * Input: {"start_x": 500, "start_y": 1500, "end_x": 500, "end_y": 500, "duration_ms": 300}
+     */
+    private fun swipe(input: String): String {
+        val json = JSONObject(input)
+        val startX = json.optDouble("start_x", -1.0).toFloat()
+        val startY = json.optDouble("start_y", -1.0).toFloat()
+        val endX = json.optDouble("end_x", -1.0).toFloat()
+        val endY = json.optDouble("end_y", -1.0).toFloat()
+        val durationMs = json.optLong("duration_ms", 300)
+        if (startX < 0 || startY < 0 || endX < 0 || endY < 0) {
+            return "Error: start_x, start_y, end_x, end_y required"
+        }
+        return AnthroidAccessibilityService.swipe(startX, startY, endX, endY, durationMs)
+    }
+
+    /**
+     * Long press at coordinates.
+     * Input: {"x": 500, "y": 800, "duration_ms": 1000}
+     */
+    private fun longPress(input: String): String {
+        val json = JSONObject(input)
+        val x = json.optDouble("x", -1.0).toFloat()
+        val y = json.optDouble("y", -1.0).toFloat()
+        val durationMs = json.optLong("duration_ms", 1000)
+        if (x < 0 || y < 0) return "Error: x and y coordinates required"
+        return AnthroidAccessibilityService.longPressAt(x, y, durationMs)
+    }
+
+    /**
+     * Press system back button.
+     */
+    private fun pressBack(): String {
+        return AnthroidAccessibilityService.pressBack()
+    }
+
+    /**
+     * Press system home button.
+     */
+    private fun pressHome(): String {
+        return AnthroidAccessibilityService.pressHome()
+    }
+
+    /**
+     * Open recent apps / overview.
+     */
+    private fun openRecents(): String {
+        return AnthroidAccessibilityService.openRecents()
+    }
+
+    /**
+     * Open notifications panel.
+     */
+    private fun openNotifications(): String {
+        return AnthroidAccessibilityService.openNotifications()
+    }
+
+    /**
+     * Scroll in a direction.
+     * Input: {"direction": "up|down|forward|backward"}
+     */
+    private fun scroll(input: String): String {
+        val json = JSONObject(input)
+        val direction = json.optString("direction", "down")
+        return AnthroidAccessibilityService.scroll(direction)
+    }
+
+    /**
+     * Get accessibility service status.
+     */
+    private fun getAccessibilityStatus(): String {
+        val isRunning = AnthroidAccessibilityService.isRunning()
+        return JSONObject()
+            .put("enabled", isRunning)
+            .put("message", if (isRunning) "Accessibility service is enabled" else "Accessibility service not enabled. Enable in Settings > Accessibility > Anthroid Screen Automation")
+            .toString(2)
     }
 }

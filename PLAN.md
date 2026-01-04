@@ -346,54 +346,75 @@ Final polish and release preparation.
 
 ---
 
-### Phase 9: Per-App VPN Proxy Tool (Planned)
+### Phase 9: Per-App VPN Proxy Tool (Complete)
 
-Enable Anthroid to access internet through proxy while other apps connect directly.
+Enable Anthroid to route specific app traffic through proxy while other apps connect directly.
 
-#### Background
+#### Implementation Summary (Jan 2026)
 
-Android VpnService API supports per-app VPN routing since API 21 (Android 5.0):
-- `VpnService.Builder.addAllowedApplication(packageName)` - Only route specified apps
-- `VpnService.Builder.addDisallowedApplication(packageName)` - Route all except specified
+**Components Built:**
+1. **ProxyVpnService.kt** - SOCKS5 VPN service with hev-socks5-tunnel native library
+2. **Tun2HttpVpnService.java** - HTTP VPN service with tun2http native library
+3. **AuthProxyForwarder.java** - Local proxy for adding authentication headers
+4. **ProxyConfigManager.kt** - JSON persistence for proxy server configuration
+5. **ProxySettingsActivity.kt** - Full management UI for proxy servers and app lists
 
-#### Technical Design
+**Features:**
+- [x] Per-app VPN routing (addAllowedApplication)
+- [x] SOCKS5 proxy support (via hev-socks5-tunnel)
+- [x] HTTP proxy support with authentication (via tun2http + AuthProxyForwarder)
+- [x] Proxy server management UI (add/edit/delete servers)
+- [x] Global app list for proxy routing
+- [x] set_app_proxy tool uses global app list by default
+- [x] Auto-save proxy servers when called via tool
+- [x] VPN status detection (checks actual interface state)
 
-```
-┌─────────────────────────────────────────────┐
-│              Android System                  │
-├─────────────────────────────────────────────┤
-│  Anthroid ──► VpnService ──► Proxy Server   │
-│              (tun interface)                 │
-│                                              │
-│  Other Apps ─────────────────► Direct       │
-└─────────────────────────────────────────────┘
-```
-
-#### Key Components
-
-1. **ProxyVpnService.kt** - VpnService implementation with tun2socks
-2. **Settings UI** - Proxy server/port, type (SOCKS5/HTTP), enable toggle
-3. **Permission Flow** - VpnService.prepare() user authorization
-
-#### References
-
-- [Android VpnService Docs](https://developer.android.com/develop/connectivity/vpn)
-- [TunProxy](https://github.com/raise-isayan/TunProxy) - Reference implementation
-- [sing-box](https://github.com/SagerNet/sing-box) - Go-based tun proxy
-
-#### Tasks
-
-- [ ] Research tun2socks integration options
-- [ ] Create ProxyVpnService.kt skeleton
-- [ ] Add proxy settings UI
-- [ ] Implement traffic forwarding
-- [ ] Test per-app routing
+**Commit:** `46d0e70` - Add proxy server management UI and fix VPN status detection
 
 ---
 
-### Phase 10: Screen Automation Tools (Planned)
+### Phase 10: Screen Automation Tools (In Progress)
 
 Enable Claude to interact with phone screen - read content, take screenshots, click, type, and capture audio.
+
+#### Implementation Progress (Jan 2026)
+
+**Completed:**
+- [x] Create AnthroidAccessibilityService.kt
+- [x] Add accessibility_config.xml
+- [x] Register service in AndroidManifest.xml
+- [x] Add accessibility tools to AndroidTools.kt
+
+**Pending:**
+- [ ] Add permission management UI in Settings
+- [ ] Create ScreenCaptureManager.kt for screenshots
+- [ ] Implement audio capture (API 29+)
+
+#### Available Tools (via am broadcast)
+
+| Tool | Input | Description |
+|------|-------|-------------|
+| `get_accessibility_status` | `{}` | Check if service is enabled |
+| `get_screen_text` | `{}` | Get all visible text |
+| `get_screen_elements` | `{"include_invisible": false}` | Get element tree as JSON |
+| `find_element` | `{"text": "...", "exact_match": false}` | Find element by text |
+| `click_element` | `{"text": "..."}` | Click element by text |
+| `click_position` | `{"x": 500, "y": 800}` | Click at coordinates |
+| `input_text` | `{"text": "..."}` | Type into focused field |
+| `swipe` | `{"start_x": 500, "start_y": 1500, "end_x": 500, "end_y": 500}` | Swipe gesture |
+| `long_press` | `{"x": 500, "y": 800, "duration_ms": 1000}` | Long press |
+| `press_back` | `{}` | Press back button |
+| `press_home` | `{}` | Press home button |
+| `open_recents` | `{}` | Open recent apps |
+| `open_notifications` | `{}` | Open notification panel |
+| `scroll` | `{"direction": "up\|down"}` | Scroll |
+
+#### User Setup Required
+
+User must enable accessibility service:
+1. Settings > Accessibility > Anthroid Screen Automation
+2. Enable the service
+3. Grant permission when prompted
 
 #### Core Technologies
 
@@ -493,10 +514,10 @@ User opens Anthroid Settings
 
 #### Tasks
 
-- [ ] Create AnthroidAccessibilityService.kt skeleton
-- [ ] Add accessibility_config.xml
-- [ ] Implement get_screen_text tool
-- [ ] Implement click/input/swipe tools
+- [x] Create AnthroidAccessibilityService.kt skeleton
+- [x] Add accessibility_config.xml
+- [x] Implement get_screen_text tool
+- [x] Implement click/input/swipe tools
 - [ ] Create ScreenCaptureManager.kt
 - [ ] Implement take_screenshot tool
 - [ ] Add permission management UI in Settings
@@ -545,8 +566,8 @@ app/src/main/java/com/anthroid/
 | M5d | ✅ Done | Markdown rendering |
 | M7 | ✅ Done | Voice I/O (sherpa-onnx STT) |
 | M8 | ⏳ | Production-ready release |
-| M9 | 📋 Planned | Per-app VPN proxy tool |
-| M10 | 📋 Planned | Screen automation tools |
+| M9 | ✅ Done | Per-app VPN proxy tool |
+| M10 | 🚧 In Progress | Screen automation tools |
 
 ---
 
