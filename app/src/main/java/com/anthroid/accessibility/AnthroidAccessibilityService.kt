@@ -28,9 +28,53 @@ class AnthroidAccessibilityService : AccessibilityService() {
         @Volatile
         private var instance: AnthroidAccessibilityService? = null
 
+        @Volatile
+        private var isInterrupted: Boolean = false
+
+        private var overlay: ScreenAutomationOverlay? = null
+
         fun getInstance(): AnthroidAccessibilityService? = instance
 
         fun isRunning(): Boolean = instance != null
+
+        /**
+         * Interrupt the current operation.
+         */
+        fun interrupt() {
+            isInterrupted = true
+            overlay?.setInterrupted()
+            Log.i(TAG, "Operation interrupted by user")
+        }
+
+        /**
+         * Check if operation was interrupted and reset flag.
+         */
+        private fun checkInterrupted(): Boolean {
+            if (isInterrupted) {
+                isInterrupted = false
+                return true
+            }
+            return false
+        }
+
+        /**
+         * Show overlay for an operation.
+         */
+        private fun showOverlay(operationText: String) {
+            val service = instance ?: return
+            if (overlay == null) {
+                overlay = ScreenAutomationOverlay.getInstance(service)
+            }
+            isInterrupted = false
+            overlay?.show(operationText) { interrupt() }
+        }
+
+        /**
+         * Complete the overlay with result.
+         */
+        private fun completeOverlay(resultText: String) {
+            overlay?.setCompleted(resultText, 1500)
+        }
 
         /**
          * Get all visible text on screen.
@@ -88,8 +132,14 @@ class AnthroidAccessibilityService : AccessibilityService() {
          * Click element by text.
          */
         fun clickByText(text: String): String {
-            val service = instance ?: return "Error: Accessibility service not enabled"
-            val root = service.rootInActiveWindow ?: return "Error: Cannot access screen content"
+            showOverlay("Clicking: $text")
+
+            if (checkInterrupted()) {
+                return "Error: Operation interrupted"
+            }
+
+            val service = instance ?: return "Error: Accessibility service not enabled".also { completeOverlay(it) }
+            val root = service.rootInActiveWindow ?: return "Error: Cannot access screen content".also { completeOverlay(it) }
 
             val node = findClickableByText(root, text)
             val result = if (node != null) {
@@ -100,6 +150,7 @@ class AnthroidAccessibilityService : AccessibilityService() {
                 "Element not found: $text"
             }
             root.recycle()
+            completeOverlay(result)
             return result
         }
 
@@ -107,10 +158,16 @@ class AnthroidAccessibilityService : AccessibilityService() {
          * Click at specific coordinates.
          */
         fun clickAt(x: Float, y: Float): String {
-            val service = instance ?: return "Error: Accessibility service not enabled"
+            showOverlay("Clicking at ($x, $y)")
+
+            if (checkInterrupted()) {
+                return "Error: Operation interrupted"
+            }
+
+            val service = instance ?: return "Error: Accessibility service not enabled".also { completeOverlay(it) }
 
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-                return "Error: Click at position requires Android 7.0+"
+                return "Error: Click at position requires Android 7.0+".also { completeOverlay(it) }
             }
 
             val path = Path()
@@ -121,15 +178,23 @@ class AnthroidAccessibilityService : AccessibilityService() {
                 .build()
 
             val dispatched = service.dispatchGesture(gesture, null, null)
-            return if (dispatched) "Clicked at ($x, $y)" else "Click failed at ($x, $y)"
+            val result = if (dispatched) "Clicked at ($x, $y)" else "Click failed at ($x, $y)"
+            completeOverlay(result)
+            return result
         }
 
         /**
          * Type text into focused input field.
          */
         fun inputText(text: String): String {
-            val service = instance ?: return "Error: Accessibility service not enabled"
-            val root = service.rootInActiveWindow ?: return "Error: Cannot access screen content"
+            showOverlay("Typing: ${text.take(20)}${if (text.length > 20) "..." else ""}")
+
+            if (checkInterrupted()) {
+                return "Error: Operation interrupted"
+            }
+
+            val service = instance ?: return "Error: Accessibility service not enabled".also { completeOverlay(it) }
+            val root = service.rootInActiveWindow ?: return "Error: Cannot access screen content".also { completeOverlay(it) }
 
             // Find focused node or first editable field
             val focusedNode = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
@@ -145,6 +210,7 @@ class AnthroidAccessibilityService : AccessibilityService() {
                 "No input field focused"
             }
             root.recycle()
+            completeOverlay(result)
             return result
         }
 
@@ -152,10 +218,16 @@ class AnthroidAccessibilityService : AccessibilityService() {
          * Perform swipe gesture.
          */
         fun swipe(startX: Float, startY: Float, endX: Float, endY: Float, durationMs: Long = 300): String {
-            val service = instance ?: return "Error: Accessibility service not enabled"
+            showOverlay("Swiping...")
+
+            if (checkInterrupted()) {
+                return "Error: Operation interrupted"
+            }
+
+            val service = instance ?: return "Error: Accessibility service not enabled".also { completeOverlay(it) }
 
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-                return "Error: Swipe requires Android 7.0+"
+                return "Error: Swipe requires Android 7.0+".also { completeOverlay(it) }
             }
 
             val path = Path()
@@ -167,21 +239,29 @@ class AnthroidAccessibilityService : AccessibilityService() {
                 .build()
 
             val dispatched = service.dispatchGesture(gesture, null, null)
-            return if (dispatched) {
+            val result = if (dispatched) {
                 "Swiped from ($startX, $startY) to ($endX, $endY)"
             } else {
                 "Swipe failed"
             }
+            completeOverlay(result)
+            return result
         }
 
         /**
          * Long press at coordinates.
          */
         fun longPressAt(x: Float, y: Float, durationMs: Long = 1000): String {
-            val service = instance ?: return "Error: Accessibility service not enabled"
+            showOverlay("Long pressing at ($x, $y)")
+
+            if (checkInterrupted()) {
+                return "Error: Operation interrupted"
+            }
+
+            val service = instance ?: return "Error: Accessibility service not enabled".also { completeOverlay(it) }
 
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-                return "Error: Long press requires Android 7.0+"
+                return "Error: Long press requires Android 7.0+".also { completeOverlay(it) }
             }
 
             val path = Path()
@@ -192,51 +272,71 @@ class AnthroidAccessibilityService : AccessibilityService() {
                 .build()
 
             val dispatched = service.dispatchGesture(gesture, null, null)
-            return if (dispatched) "Long pressed at ($x, $y)" else "Long press failed"
+            val result = if (dispatched) "Long pressed at ($x, $y)" else "Long press failed"
+            completeOverlay(result)
+            return result
         }
 
         /**
          * Press system back button.
          */
         fun pressBack(): String {
-            val service = instance ?: return "Error: Accessibility service not enabled"
+            showOverlay("Pressing back")
+            val service = instance ?: return "Error: Accessibility service not enabled".also { completeOverlay(it) }
             val success = service.performGlobalAction(GLOBAL_ACTION_BACK)
-            return if (success) "Pressed back" else "Back press failed"
+            val result = if (success) "Pressed back" else "Back press failed"
+            completeOverlay(result)
+            return result
         }
 
         /**
          * Press system home button.
          */
         fun pressHome(): String {
-            val service = instance ?: return "Error: Accessibility service not enabled"
+            showOverlay("Pressing home")
+            val service = instance ?: return "Error: Accessibility service not enabled".also { completeOverlay(it) }
             val success = service.performGlobalAction(GLOBAL_ACTION_HOME)
-            return if (success) "Pressed home" else "Home press failed"
+            val result = if (success) "Pressed home" else "Home press failed"
+            completeOverlay(result)
+            return result
         }
 
         /**
          * Open recent apps / overview.
          */
         fun openRecents(): String {
-            val service = instance ?: return "Error: Accessibility service not enabled"
+            showOverlay("Opening recents")
+            val service = instance ?: return "Error: Accessibility service not enabled".also { completeOverlay(it) }
             val success = service.performGlobalAction(GLOBAL_ACTION_RECENTS)
-            return if (success) "Opened recents" else "Open recents failed"
+            val result = if (success) "Opened recents" else "Open recents failed"
+            completeOverlay(result)
+            return result
         }
 
         /**
          * Open notifications panel.
          */
         fun openNotifications(): String {
-            val service = instance ?: return "Error: Accessibility service not enabled"
+            showOverlay("Opening notifications")
+            val service = instance ?: return "Error: Accessibility service not enabled".also { completeOverlay(it) }
             val success = service.performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
-            return if (success) "Opened notifications" else "Open notifications failed"
+            val result = if (success) "Opened notifications" else "Open notifications failed"
+            completeOverlay(result)
+            return result
         }
 
         /**
          * Scroll in a direction within a scrollable element.
          */
         fun scroll(direction: String): String {
-            val service = instance ?: return "Error: Accessibility service not enabled"
-            val root = service.rootInActiveWindow ?: return "Error: Cannot access screen content"
+            showOverlay("Scrolling $direction")
+
+            if (checkInterrupted()) {
+                return "Error: Operation interrupted"
+            }
+
+            val service = instance ?: return "Error: Accessibility service not enabled".also { completeOverlay(it) }
+            val root = service.rootInActiveWindow ?: return "Error: Cannot access screen content".also { completeOverlay(it) }
 
             val scrollable = findScrollable(root)
             val result = if (scrollable != null) {
@@ -252,6 +352,7 @@ class AnthroidAccessibilityService : AccessibilityService() {
                 "No scrollable element found"
             }
             root.recycle()
+            completeOverlay(result)
             return result
         }
 
@@ -412,6 +513,119 @@ class AnthroidAccessibilityService : AccessibilityService() {
             }
 
             return null
+        }
+
+        /**
+         * Wait for element with text to appear on screen.
+         * @param text Text to search for
+         * @param timeoutMs Maximum time to wait in milliseconds
+         * @param pollIntervalMs Interval between checks in milliseconds
+         * @return JSON with found status and element info
+         */
+        suspend fun waitForElement(text: String, timeoutMs: Long = 5000, pollIntervalMs: Long = 500): String {
+            showOverlay("Waiting for: $text")
+
+            val startTime = System.currentTimeMillis()
+            while (System.currentTimeMillis() - startTime < timeoutMs) {
+                if (checkInterrupted()) {
+                    return """{"found": false, "error": "Operation interrupted"}""".also { completeOverlay(it) }
+                }
+
+                val service = instance ?: return """{"found": false, "error": "Accessibility service not enabled"}""".also { completeOverlay(it) }
+                val root = service.rootInActiveWindow
+                if (root != null) {
+                    val results = JSONArray()
+                    findByText(root, text, false, results)
+                    root.recycle()
+
+                    if (results.length() > 0) {
+                        val result = """{"found": true, "count": ${results.length()}, "elements": $results}"""
+                        completeOverlay("Found: $text")
+                        return result
+                    }
+                }
+
+                kotlinx.coroutines.delay(pollIntervalMs)
+            }
+
+            val result = """{"found": false, "error": "Timeout waiting for element: $text"}"""
+            completeOverlay("Timeout: $text")
+            return result
+        }
+
+        /**
+         * Click element by text and then input text.
+         * Useful for search boxes that need to be clicked first.
+         */
+        fun focusAndInput(targetText: String, inputText: String): String {
+            showOverlay("Focus and input: $targetText")
+
+            if (checkInterrupted()) {
+                return "Error: Operation interrupted"
+            }
+
+            val service = instance ?: return "Error: Accessibility service not enabled".also { completeOverlay(it) }
+            val root = service.rootInActiveWindow ?: return "Error: Cannot access screen content".also { completeOverlay(it) }
+
+            // Find the element (editable or clickable)
+            val node = findEditableByText(root, targetText) ?: findClickableByText(root, targetText)
+
+            val result = if (node != null) {
+                // First click/focus
+                node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                Thread.sleep(300) // Wait for focus
+
+                // Then set text
+                val args = Bundle()
+                args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, inputText)
+                val success = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                node.recycle()
+
+                if (success) "Focused '$targetText' and typed: $inputText" else "Focus succeeded but typing failed"
+            } else {
+                "Element not found: $targetText"
+            }
+
+            root.recycle()
+            completeOverlay(result)
+            return result
+        }
+
+        /**
+         * Find editable element by text (for input fields with placeholder text).
+         */
+        private fun findEditableByText(node: AccessibilityNodeInfo, text: String): AccessibilityNodeInfo? {
+            val nodeText = node.text?.toString() ?: ""
+            val nodeDesc = node.contentDescription?.toString() ?: ""
+            val nodeHint = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                node.hintText?.toString() ?: ""
+            } else ""
+
+            if (node.isEditable && (nodeText.contains(text, ignoreCase = true) ||
+                nodeDesc.contains(text, ignoreCase = true) ||
+                nodeHint.contains(text, ignoreCase = true))) {
+                return AccessibilityNodeInfo.obtain(node)
+            }
+
+            for (i in 0 until node.childCount) {
+                val child = node.getChild(i) ?: continue
+                val result = findEditableByText(child, text)
+                child.recycle()
+                if (result != null) return result
+            }
+
+            return null
+        }
+
+        /**
+         * Get current app package name.
+         */
+        fun getCurrentApp(): String {
+            val service = instance ?: return """{"error": "Accessibility service not enabled"}"""
+            val root = service.rootInActiveWindow ?: return """{"error": "Cannot access screen content"}"""
+            val packageName = root.packageName?.toString() ?: "unknown"
+            root.recycle()
+            return """{"package": "$packageName"}"""
         }
     }
 

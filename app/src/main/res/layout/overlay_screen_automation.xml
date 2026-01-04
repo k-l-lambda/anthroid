@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/overlay_container"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:padding="12dp"
+    android:background="#E0424242"
+    android:elevation="8dp">
+
+    <!-- Robot head icon -->
+    <ImageView
+        android:id="@+id/overlay_icon"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:src="@drawable/ic_robot_active"
+        android:layout_marginEnd="12dp" />
+
+    <!-- Operation text -->
+    <TextView
+        android:id="@+id/overlay_text"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="Screen automation running..."
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        android:maxLines="2"
+        android:ellipsize="end" />
+
+    <!-- Stop button (shown when active) -->
+    <TextView
+        android:id="@+id/overlay_stop_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="STOP"
+        android:textColor="#FF5252"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:padding="8dp"
+        android:background="?android:attr/selectableItemBackground"
+        android:visibility="visible" />
+
+    <!-- Close button (shown when inactive) -->
+    <TextView
+        android:id="@+id/overlay_close_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="✕"
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        android:padding="8dp"
+        android:background="?android:attr/selectableItemBackground"
+        android:visibility="gone" />
+
+</LinearLayout>

@@ -83,6 +83,9 @@ class AndroidTools(private val context: Context) {
             "open_notifications" -> openNotifications()
             "scroll" -> scroll(input)
             "get_accessibility_status" -> getAccessibilityStatus()
+            "wait_for_element" -> waitForElement(input)
+            "focus_and_input" -> focusAndInput(input)
+            "get_current_app" -> getCurrentApp()
             else -> "Unknown tool: $name"
         }
     } catch (e: Exception) {
@@ -100,7 +103,8 @@ class AndroidTools(private val context: Context) {
         "get_screen_text", "get_screen_elements", "find_element",
         "click_element", "click_position", "input_text", "swipe",
         "long_press", "press_back", "press_home", "open_recents",
-        "open_notifications", "scroll", "get_accessibility_status"
+        "open_notifications", "scroll", "get_accessibility_status",
+        "wait_for_element", "focus_and_input", "get_current_app"
     )
 
     private fun openUrl(input: String): String {
@@ -617,5 +621,38 @@ class AndroidTools(private val context: Context) {
             .put("enabled", isRunning)
             .put("message", if (isRunning) "Accessibility service is enabled" else "Accessibility service not enabled. Enable in Settings > Accessibility > Anthroid Screen Automation")
             .toString(2)
+    }
+
+    /**
+     * Wait for element with text to appear on screen.
+     * Input: {"text": "Search", "timeout_ms": 5000, "poll_interval_ms": 500}
+     */
+    private suspend fun waitForElement(input: String): String {
+        val json = JSONObject(input)
+        val text = json.optString("text", "")
+        if (text.isEmpty()) return """{"found": false, "error": "text is required"}"""
+        val timeoutMs = json.optLong("timeout_ms", 5000)
+        val pollIntervalMs = json.optLong("poll_interval_ms", 500)
+        return AnthroidAccessibilityService.waitForElement(text, timeoutMs, pollIntervalMs)
+    }
+
+    /**
+     * Click element by text and then input text.
+     * Input: {"target": "Search", "text": "Hello world"}
+     */
+    private fun focusAndInput(input: String): String {
+        val json = JSONObject(input)
+        val target = json.optString("target", "")
+        val text = json.optString("text", "")
+        if (target.isEmpty()) return "Error: target is required"
+        if (text.isEmpty()) return "Error: text is required"
+        return AnthroidAccessibilityService.focusAndInput(target, text)
+    }
+
+    /**
+     * Get current foreground app package name.
+     */
+    private fun getCurrentApp(): String {
+        return AnthroidAccessibilityService.getCurrentApp()
     }
 }

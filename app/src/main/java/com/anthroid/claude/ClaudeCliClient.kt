@@ -815,6 +815,33 @@ Available Android tools:
 - stop_app_proxy: Stop VPN proxy service. Input: {}
 - get_proxy_status: Get current VPN proxy status. Input: {}
 
+SCREEN AUTOMATION TOOLS (requires Accessibility Service enabled):
+These tools allow you to interact with the phone's UI. Enable in Settings > Accessibility > Anthroid Screen Automation first.
+
+- get_accessibility_status: Check if accessibility service is enabled. Input: {}
+- get_current_app: Get current foreground app package name. Input: {}
+- get_screen_text: Get all visible text on screen. Input: {}
+- get_screen_elements: Get structured UI elements. Input: {"include_invisible": false}
+- find_element: Find element by text. Input: {"text": "Search", "exact_match": false}
+- wait_for_element: Wait for element to appear. Input: {"text": "Search", "timeout_ms": 5000}
+- click_element: Click element by text. Input: {"text": "Button text"}
+- click_position: Click at x,y coordinates. Input: {"x": 500, "y": 800}
+- focus_and_input: Click element and type text (for search boxes). Input: {"target": "Search", "text": "query"}
+- input_text: Type into focused input field. Input: {"text": "Hello world"}
+- swipe: Perform swipe gesture. Input: {"start_x": 500, "start_y": 1500, "end_x": 500, "end_y": 500, "duration_ms": 300}
+- long_press: Long press at coordinates. Input: {"x": 500, "y": 800, "duration_ms": 1000}
+- scroll: Scroll in direction. Input: {"direction": "up|down"}
+- press_back: Press back button. Input: {}
+- press_home: Press home button. Input: {}
+- open_recents: Open recent apps. Input: {}
+- open_notifications: Open notification panel. Input: {}
+
+Example - launch AMap and search for a location:
+  1. /system/bin/am broadcast -a com.anthroid.TOOL_CALL --es tool "launch_app" --es input '{"package":"com.autonavi.minimap"}' -p com.anthroid 2>/dev/null; sleep 1; cat /sdcard/anthroid_tool_result.txt
+  2. /system/bin/am broadcast -a com.anthroid.TOOL_CALL --es tool "wait_for_element" --es input '{"text":"搜索","timeout_ms":5000}' -p com.anthroid 2>/dev/null; sleep 0.5; cat /sdcard/anthroid_tool_result.txt
+  3. /system/bin/am broadcast -a com.anthroid.TOOL_CALL --es tool "focus_and_input" --es input '{"target":"搜索","text":"天安门"}' -p com.anthroid 2>/dev/null; sleep 0.5; cat /sdcard/anthroid_tool_result.txt
+  4. /system/bin/am broadcast -a com.anthroid.TOOL_CALL --es tool "click_element" --es input '{"text":"天安门"}' -p com.anthroid 2>/dev/null; sleep 0.5; cat /sdcard/anthroid_tool_result.txt
+
 Example - show notification:
   /system/bin/am broadcast -a com.anthroid.TOOL_CALL --es tool "show_notification" --es input '{"title":"Hello","message":"World"}' -p com.anthroid 2>/dev/null; sleep 0.3; cat /sdcard/anthroid_tool_result.txt
 
