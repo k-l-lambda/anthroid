@@ -60,6 +60,7 @@ class ScreenAutomationOverlay(private val context: Context) {
     private var overlayView: View? = null
     private var isShowing = false
     private var isActive = true
+    private var isCompleted = false  // true = completed successfully, false = interrupted
     private var onStopCallback: (() -> Unit)? = null
 
     private var overlayContainer: LinearLayout? = null
@@ -87,7 +88,7 @@ class ScreenAutomationOverlay(private val context: Context) {
 
                 isActive = true
                 onStopCallback = onStop
-                updateUI(operationText, isActive = true)
+                updateUI(operationText, isActive = true, isCompleted = false)
 
                 if (!isShowing) {
                     windowManager.addView(overlayView, createLayoutParams())
@@ -116,7 +117,8 @@ class ScreenAutomationOverlay(private val context: Context) {
     fun setInterrupted() {
         handler.post {
             isActive = false
-            updateUI("Operation interrupted", isActive = false)
+            isCompleted = false
+            updateUI("Operation interrupted", isActive = false, isCompleted = false)
             Log.i(TAG, "Overlay set to interrupted state")
         }
     }
@@ -128,7 +130,8 @@ class ScreenAutomationOverlay(private val context: Context) {
     fun setCompleted(resultText: String = "Operation completed") {
         handler.post {
             isActive = false
-            updateUI(resultText, isActive = false)
+            isCompleted = true
+            updateUI(resultText, isActive = false, isCompleted = true)
             // Don't auto-hide - the caller (ClaudeFragment/ViewModel) will hide when session ends
         }
     }
@@ -167,9 +170,10 @@ class ScreenAutomationOverlay(private val context: Context) {
             setInterrupted()
         }
 
-        // Close button click - hide overlay
+        // Close/OK button click - open Anthroid and hide overlay
         closeButton?.setOnClickListener {
-            Log.i(TAG, "Close button clicked")
+            Log.i(TAG, "Close/OK button clicked")
+            openAnthroid()
             hide()
         }
 
@@ -183,7 +187,7 @@ class ScreenAutomationOverlay(private val context: Context) {
         }
     }
 
-    private fun updateUI(text: String, isActive: Boolean) {
+    private fun updateUI(text: String, isActive: Boolean, isCompleted: Boolean = false) {
         overlayText?.text = text
 
         if (isActive) {
@@ -194,10 +198,12 @@ class ScreenAutomationOverlay(private val context: Context) {
             overlayContainer?.setBackgroundColor(0xE0424242.toInt()) // Dark gray
             overlayContainer?.isClickable = false
         } else {
-            // Inactive state: hide stop button, show close button, black eyes
+            // Inactive state: hide stop button, show close/OK button, black eyes
             overlayIcon?.setImageResource(R.drawable.ic_robot_inactive)
             stopButton?.visibility = View.GONE
             closeButton?.visibility = View.VISIBLE
+            // Show "OK" for completed, "✕" for interrupted
+            closeButton?.text = if (isCompleted) "OK" else "✕"
             overlayContainer?.setBackgroundColor(0xE0757575.toInt()) // Lighter gray
             overlayContainer?.isClickable = true
         }
