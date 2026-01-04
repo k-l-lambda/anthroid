@@ -104,6 +104,7 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
         private val contentText: TextView = itemView.findViewById(R.id.message_content)
         private val timestampText: TextView = itemView.findViewById(R.id.message_timestamp)
         private val streamingIndicator: ProgressBar? = itemView.findViewById(R.id.streaming_indicator)
+        private val interruptedIndicator: TextView? = itemView.findViewById(R.id.interrupted_indicator)
         private val imagesContainer: LinearLayout? = itemView.findViewById(R.id.images_container)
 
         private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
@@ -116,7 +117,7 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
         }
 
         fun bind(message: Message) {
-            Log.d(TAG, "bind: id=${message.id.take(8)}, len=${message.content.length}, streaming=${message.isStreaming}, images=${message.images.size}")
+            Log.d(TAG, "bind: id=${message.id.take(8)}, len=${message.content.length}, streaming=${message.isStreaming}, interrupted=${message.isInterrupted}, images=${message.images.size}")
             updateContent(message)
             updateImages(message)
             timestampText.text = timeFormat.format(Date(message.timestamp))
@@ -126,6 +127,7 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
             if (message.isStreaming && message.content.isEmpty()) {
                 contentText.text = "..."
                 streamingIndicator?.visibility = View.VISIBLE
+                interruptedIndicator?.visibility = View.GONE
                 if (isAssistant) contentText.setTextColor(Color.parseColor("#333333"))
             } else {
                 // Use Markwon for assistant messages, plain text for user messages
@@ -135,9 +137,12 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
                     contentText.text = message.content
                 }
                 streamingIndicator?.visibility = if (message.isStreaming) View.VISIBLE else View.GONE
+                interruptedIndicator?.visibility = if (message.isInterrupted) View.VISIBLE else View.GONE
                 // Show error messages in red
                 if (message.isError) {
                     contentText.setTextColor(Color.parseColor("#D32F2F"))
+                } else if (message.isInterrupted) {
+                    contentText.setTextColor(Color.parseColor("#757575"))
                 } else {
                     if (isAssistant) contentText.setTextColor(Color.parseColor("#333333"))
                 }
@@ -208,6 +213,7 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
             return oldItem.content == newItem.content &&
                    oldItem.isStreaming == newItem.isStreaming &&
                    oldItem.isError == newItem.isError &&
+                   oldItem.isInterrupted == newItem.isInterrupted &&
                    oldItem.role == newItem.role &&
                    oldItem.toolName == newItem.toolName &&
                    oldItem.toolInput == newItem.toolInput &&
@@ -215,7 +221,7 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
         }
 
         override fun getChangePayload(oldItem: Message, newItem: Message): Any? {
-            if (oldItem.content != newItem.content || oldItem.isStreaming != newItem.isStreaming) {
+            if (oldItem.content != newItem.content || oldItem.isStreaming != newItem.isStreaming || oldItem.isInterrupted != newItem.isInterrupted) {
                 return PAYLOAD_CONTENT_CHANGED
             }
             return null

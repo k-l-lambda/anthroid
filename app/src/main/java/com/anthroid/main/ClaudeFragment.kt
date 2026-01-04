@@ -14,6 +14,8 @@ import android.view.View
 import android.widget.EditText
 import androidx.appcompat.app.AlertDialog
 import android.view.ViewGroup
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.inputmethod.EditorInfo
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
@@ -70,6 +72,9 @@ class ClaudeFragment : Fragment() {
     private var isVoiceInitializing = false
     private var isLastInputFromVoice = false
     private var originalInputBackground: android.graphics.drawable.Drawable? = null
+
+    // Stop button state
+    private var isStopMode = false
 
     // History panel views
     private lateinit var historyPanelContainer: FrameLayout
@@ -146,8 +151,21 @@ class ClaudeFragment : Fragment() {
         pendingImagesContainer = view.findViewById(R.id.pending_images_container)
 
         sendButton.setOnClickListener {
-            sendMessage()
+            if (isStopMode) {
+                viewModel.cancelRequest()
+            } else {
+                sendMessage()
+            }
         }
+
+        // Watch for input text changes to toggle stop/send button
+        inputField.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                updateSendButtonState()
+            }
+        })
 
         inputField.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEND) {
@@ -157,6 +175,9 @@ class ClaudeFragment : Fragment() {
                 false
             }
         }
+
+        // Initialize button state (show send icon by default)
+        sendButton.setImageResource(android.R.drawable.ic_menu_send)
     }
 
     private fun setupHistoryPanel(view: View) {
@@ -371,9 +392,9 @@ class ClaudeFragment : Fragment() {
         }
 
         viewLifecycleOwner.lifecycleScope.launch {
-            viewModel.isProcessing.collectLatest { isProcessing ->
-                sendButton.isEnabled = !isProcessing
-                inputField.isEnabled = !isProcessing
+            viewModel.isProcessing.collectLatest { _ ->
+                // Keep input enabled so user can type next message while processing
+                updateSendButtonState()
             }
         }
 
@@ -390,6 +411,7 @@ class ClaudeFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.pendingImages.collect { images ->
                 updatePendingImagesView(images)
+                updateSendButtonState()
             }
         }
 
@@ -450,6 +472,28 @@ class ClaudeFragment : Fragment() {
             viewModel.sendMessage(message, isLastInputFromVoice)
             inputField.text.clear()
             isLastInputFromVoice = false
+        }
+    }
+
+    /**
+     * Update send button icon and state based on processing state and input text.
+     * Shows stop icon (square) when processing and input is empty.
+     * Shows send icon when not processing or input has text.
+     */
+    private fun updateSendButtonState() {
+        val isProcessing = viewModel.isProcessing.value
+        val inputEmpty = inputField.text.toString().trim().isEmpty()
+        val hasPendingImages = viewModel.pendingImages.value.isNotEmpty()
+
+        isStopMode = isProcessing && inputEmpty && !hasPendingImages
+
+        if (isStopMode) {
+            sendButton.setImageResource(R.drawable.ic_stop)
+            sendButton.isEnabled = true
+        } else {
+            sendButton.setImageResource(android.R.drawable.ic_menu_send)
+            // Enable send button only if there's content to send and not processing
+            sendButton.isEnabled = !isProcessing || (!inputEmpty || hasPendingImages)
         }
     }
 

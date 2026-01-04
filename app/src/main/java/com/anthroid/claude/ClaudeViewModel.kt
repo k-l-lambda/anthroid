@@ -668,6 +668,21 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         if (useCliMode) {
             cliClient.cancelCurrentRequest()
         }
+
+        // Mark the streaming message as interrupted
+        val msgId = streamingMessageId
+        if (msgId != null) {
+            _messages.value = _messages.value.map { msg ->
+                if (msg.id == msgId) {
+                    msg.copy(isStreaming = false, isInterrupted = true)
+                } else {
+                    msg
+                }
+            }
+            streamingMessageId = null
+            _currentResponse.value = ""
+        }
+
         _isProcessing.value = false
     }
 
@@ -767,6 +782,7 @@ data class Message(
     val timestamp: Long = System.currentTimeMillis(),
     val isStreaming: Boolean = false,
     val isError: Boolean = false,
+    val isInterrupted: Boolean = false,
     val toolName: String? = null,
     val toolInput: String? = null,
     val images: List<MessageImage> = emptyList()
