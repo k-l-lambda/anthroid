@@ -122,17 +122,14 @@ class ScreenAutomationOverlay(private val context: Context) {
     }
 
     /**
-     * Mark the overlay as completed and hide after delay.
+     * Mark the overlay as completed but keep it visible.
+     * Call hide() explicitly when the entire agent session is done.
      */
-    fun setCompleted(resultText: String = "Operation completed", hideDelay: Long = 2000) {
+    fun setCompleted(resultText: String = "Operation completed") {
         handler.post {
             isActive = false
             updateUI(resultText, isActive = false)
-
-            // Auto-hide after delay
-            handler.postDelayed({
-                hide()
-            }, hideDelay)
+            // Don't auto-hide - the caller (ClaudeFragment/ViewModel) will hide when session ends
         }
     }
 

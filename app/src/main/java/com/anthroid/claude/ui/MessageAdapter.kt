@@ -198,7 +198,11 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
         }
 
         fun updateContent(message: Message) {
-            toolName.text = message.toolName ?: "Tool"
+            // Strip MCP server prefixes from tool name for cleaner display
+            val displayName = (message.toolName ?: "Tool")
+                .removePrefix("mcp__anthroid__")
+                .removePrefix("mcp__")
+            toolName.text = displayName
             toolInput.text = message.toolInput ?: message.content
             streamingIndicator?.visibility = if (message.isStreaming) View.VISIBLE else View.GONE
         }

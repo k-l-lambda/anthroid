@@ -33,6 +33,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.anthroid.BuildConfig
+import com.anthroid.accessibility.ScreenAutomationOverlay
 import com.anthroid.R
 import com.anthroid.claude.ClaudeViewModel
 import com.anthroid.claude.MessageRole
@@ -392,9 +393,17 @@ class ClaudeFragment : Fragment() {
         }
 
         viewLifecycleOwner.lifecycleScope.launch {
-            viewModel.isProcessing.collectLatest { _ ->
+            viewModel.isProcessing.collectLatest { isProcessing ->
                 // Keep input enabled so user can type next message while processing
                 updateSendButtonState()
+                // Hide automation overlay when agent round completes
+                if (!isProcessing) {
+                    try {
+                        ScreenAutomationOverlay.getInstance(requireContext()).hide()
+                    } catch (e: Exception) {
+                        // Ignore if not attached
+                    }
+                }
             }
         }
 

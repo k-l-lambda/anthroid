@@ -54,6 +54,7 @@
                 android:textColor="@color/assistant_message_text"
                 android:textSize="15sp"
                 android:lineSpacingExtra="2dp"
+                android:textIsSelectable="true"
                 tools:text="Hello! I'm Claude, an AI assistant made by Anthropic." />
         </LinearLayout>
 

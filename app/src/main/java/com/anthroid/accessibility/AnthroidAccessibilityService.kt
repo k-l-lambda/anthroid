@@ -73,7 +73,7 @@ class AnthroidAccessibilityService : AccessibilityService() {
          * Complete the overlay with result.
          */
         private fun completeOverlay(resultText: String) {
-            overlay?.setCompleted(resultText, 1500)
+            overlay?.setCompleted(resultText)
         }
 
         /**

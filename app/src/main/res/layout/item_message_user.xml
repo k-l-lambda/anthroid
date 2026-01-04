@@ -38,6 +38,7 @@
             android:textColor="@color/user_message_text"
             android:textSize="15sp"
             android:lineSpacingExtra="2dp"
+            android:textIsSelectable="true"
             tools:text="Hello Claude! How are you today?" />
 
         <TextView
