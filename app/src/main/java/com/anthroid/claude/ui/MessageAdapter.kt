@@ -126,7 +126,7 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
             if (message.isStreaming && message.content.isEmpty()) {
                 contentText.text = "..."
                 streamingIndicator?.visibility = View.VISIBLE
-                contentText.setTextColor(Color.parseColor("#333333"))
+                if (isAssistant) contentText.setTextColor(Color.parseColor("#333333"))
             } else {
                 // Use Markwon for assistant messages, plain text for user messages
                 if (isAssistant && !message.isError && message.content.isNotEmpty()) {
@@ -139,7 +139,7 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
                 if (message.isError) {
                     contentText.setTextColor(Color.parseColor("#D32F2F"))
                 } else {
-                    contentText.setTextColor(Color.parseColor("#333333"))
+                    if (isAssistant) contentText.setTextColor(Color.parseColor("#333333"))
                 }
             }
             // Hide content text if empty and has images
