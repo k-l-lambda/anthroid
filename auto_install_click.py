@@ -11,6 +11,7 @@ logging.info(f"Connected to device: {d.info.get('productName', 'unknown')}")
 
 # Keywords - order matters: more specific first
 INSTALL_KEYS = [
+    "重新安装",      # "Reinstall"
     "继续安装",      # OPPO/ColorOS - "Continue Install"
     "仍要安装",      # "Install anyway"
     "安装完成",      # "Install complete"
