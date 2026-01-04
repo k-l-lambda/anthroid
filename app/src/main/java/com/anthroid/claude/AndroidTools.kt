@@ -19,7 +19,9 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.anthroid.R
+import com.anthroid.vpn.ProxyConfigManager
 import com.anthroid.vpn.ProxyVpnService
+import com.anthroid.vpn.models.ProxyServer
 import tun.proxy.service.Tun2HttpVpnService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -305,19 +307,29 @@ class AndroidTools(private val context: Context) {
      * Input: {"apps": ["com.example.app1"], "proxy_host": "10.121.196.2", "proxy_port": 1091, "proxy_type": "HTTP", "proxy_user": "user", "proxy_pass": "pass"}
      *
      * Note: VPN permission must be granted first via Settings > VPN Proxy.
+     * If apps is not specified or empty, uses the global app list from Proxy Settings.
+     * The proxy server will be saved to settings if not already present.
      * proxy_type: "SOCKS5" or "HTTP" (default SOCKS5)
      * proxy_user/proxy_pass: optional credentials for authenticated proxies
      */
-    private fun setAppProxy(input: String): String {
+    private suspend fun setAppProxy(input: String): String {
         val json = JSONObject(input)
         val appsArray = json.optJSONArray("apps")
-        if (appsArray == null || appsArray.length() == 0) {
-            return "Error: apps array is required (list of package names)"
-        }
+
+        val configManager = ProxyConfigManager.getInstance(context)
+        var config = configManager.loadConfig()
 
         val apps = ArrayList<String>()
-        for (i in 0 until appsArray.length()) {
-            apps.add(appsArray.getString(i))
+        if (appsArray != null && appsArray.length() > 0) {
+            for (i in 0 until appsArray.length()) {
+                apps.add(appsArray.getString(i))
+            }
+        } else {
+            // Use global app list from ProxyConfigManager
+            if (config.globalAppList.isEmpty()) {
+                return "Error: No apps specified and global app list is empty. Configure apps in Settings > VPN Proxy > Manage Proxy Servers."
+            }
+            apps.addAll(config.globalAppList)
         }
 
         val proxyHost = json.optString("proxy_host", "localhost")
@@ -331,6 +343,35 @@ class AndroidTools(private val context: Context) {
         if (prepareIntent != null) {
             return "Error: VPN permission not granted. User needs to enable VPN in Settings > VPN Proxy first."
         }
+
+        // Save proxy server to config if not already present
+        val serverType = if (proxyType == "HTTP") ProxyServer.ProxyType.HTTP else ProxyServer.ProxyType.SOCKS5
+        var existingServer = config.servers.find { it.host == proxyHost && it.port == proxyPort && it.type == serverType }
+
+        if (existingServer == null) {
+            // Add new server
+            val newServer = ProxyServer(
+                id = configManager.generateServerId(),
+                name = "$proxyHost:$proxyPort",
+                host = proxyHost,
+                port = proxyPort,
+                type = serverType,
+                username = proxyUser,
+                password = proxyPass,
+                enabled = true
+            )
+            config = configManager.addServer(newServer)
+            existingServer = newServer
+            Log.i(TAG, "Added new proxy server: ${newServer.name}")
+        } else if (proxyUser.isNotEmpty() && existingServer.username != proxyUser) {
+            // Update credentials if changed
+            val updatedServer = existingServer.copy(username = proxyUser, password = proxyPass)
+            config = configManager.updateServer(updatedServer)
+            existingServer = updatedServer
+        }
+
+        // Set as active server
+        configManager.setActiveServer(existingServer.id)
 
         // Use appropriate service based on proxy type
         if (proxyType == "HTTP") {
@@ -390,7 +431,16 @@ class AndroidTools(private val context: Context) {
             val apps = ProxyVpnService.getTargetApps()
             JSONObject()
                 .put("running", true)
+                .put("type", "SOCKS5")
                 .put("info", ProxyVpnService.getProxyInfo())
+                .put("target_apps", JSONArray(apps))
+                .toString(2)
+        } else if (Tun2HttpVpnService.isRunning()) {
+            val apps = Tun2HttpVpnService.getTargetApps()
+            JSONObject()
+                .put("running", true)
+                .put("type", "HTTP")
+                .put("info", Tun2HttpVpnService.getProxyInfo())
                 .put("target_apps", JSONArray(apps))
                 .toString(2)
         } else {

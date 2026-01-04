@@ -49,7 +49,22 @@ class ProxyVpnService : VpnService() {
         @Volatile
         private var currentProxyPort: Int = 0
 
-        fun isRunning(): Boolean = instance != null
+        fun isRunning(): Boolean {
+            // Check both instance AND actual VPN interface state
+            // Android can force-stop service without calling onDestroy()
+            val inst = instance ?: return false
+            if (!inst.isRunning.get()) return false
+            val vpn = inst.vpnInterface ?: run {
+                inst.isRunning.set(false)
+                return false
+            }
+            return try {
+                vpn.fd >= 0
+            } catch (e: Exception) {
+                inst.isRunning.set(false)
+                false
+            }
+        }
         fun getTargetApps(): List<String> = currentTargetApps
         fun getProxyInfo(): String {
             return if (isRunning()) {

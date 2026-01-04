@@ -77,7 +77,28 @@ public class Tun2HttpVpnService extends VpnService {
     }
 
     public static boolean isRunning() {
-        return instance != null && instance.isRunning;
+        // Check both instance flag AND actual VPN interface state
+        // Android can force-stop service without calling onDestroy()
+        if (instance == null || !instance.isRunning) {
+            return false;
+        }
+        // Verify VPN interface is still valid
+        if (instance.vpnInterface == null) {
+            instance.isRunning = false;
+            return false;
+        }
+        try {
+            // Check if file descriptor is still valid
+            int fd = instance.vpnInterface.getFd();
+            if (fd < 0) {
+                instance.isRunning = false;
+                return false;
+            }
+        } catch (Exception e) {
+            instance.isRunning = false;
+            return false;
+        }
+        return true;
     }
 
     public static List<String> getTargetApps() {

@@ -11,30 +11,10 @@
             app:persistent="false"/>
 
         <Preference
-            app:key="vpn_status"
-            app:title="VPN Status"
+            app:key="manage_proxies"
+            app:title="Manage Proxy Servers"
             app:summary="Not running"
-            app:selectable="false"/>
-
-        <EditTextPreference
-            app:key="vpn_proxy_host"
-            app:title="Default Proxy Server"
-            app:summary="Proxy server address"
-            app:defaultValue="localhost"/>
-
-        <EditTextPreference
-            app:key="vpn_proxy_port"
-            app:title="Default Proxy Port"
-            app:summary="Proxy server port"
-            app:defaultValue="1091"/>
-
-        <ListPreference
-            app:key="vpn_proxy_type"
-            app:title="Default Proxy Type"
-            app:summary="Select proxy protocol"
-            app:entries="@array/proxy_type_entries"
-            app:entryValues="@array/proxy_type_values"
-            app:defaultValue="SOCKS5"/>
+            app:persistent="false"/>
 
     </PreferenceCategory>
 

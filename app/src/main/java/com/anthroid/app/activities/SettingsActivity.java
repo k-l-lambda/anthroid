@@ -34,6 +34,7 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.preference.SwitchPreferenceCompat;
 import com.anthroid.vpn.ProxyVpnService;
 import com.anthroid.vpn.VpnSettingsHelper;
+import tun.proxy.service.Tun2HttpVpnService;
 import com.anthroid.R;
 import com.anthroid.shared.activities.ReportActivity;
 import com.anthroid.shared.file.FileUtils;
@@ -143,9 +144,18 @@ public class SettingsActivity extends AppCompatActivity {
                     return true;
                 });
             }
-            
+
             // VPN Status preference
             updateVpnStatus(context);
+
+            // Manage Proxies preference
+            Preference manageProxies = findPreference("manage_proxies");
+            if (manageProxies != null) {
+                manageProxies.setOnPreferenceClickListener(preference -> {
+                    context.startActivity(new Intent(context, ProxySettingsActivity.class));
+                    return true;
+                });
+            }
         }
         
         private void updateVpnPermissionSummary(@NonNull Context context, Preference pref) {
@@ -154,15 +164,21 @@ public class SettingsActivity extends AppCompatActivity {
         }
         
         private void updateVpnStatus(@NonNull Context context) {
-            Preference vpnStatus = findPreference("vpn_status");
-            if (vpnStatus != null) {
-                if (ProxyVpnService.Companion.isRunning()) {
-                    vpnStatus.setSummary(VpnSettingsHelper.INSTANCE.getStatusInfo());
+            // Update VPN status in manage_proxies summary
+            Preference manageProxies = findPreference("manage_proxies");
+            if (manageProxies != null) {
+                boolean socks5Running = ProxyVpnService.Companion.isRunning();
+                boolean httpRunning = Tun2HttpVpnService.isRunning();
+
+                if (socks5Running) {
+                    manageProxies.setSummary("Running: " + ProxyVpnService.Companion.getProxyInfo());
+                } else if (httpRunning) {
+                    manageProxies.setSummary("Running: " + Tun2HttpVpnService.getProxyInfo());
                 } else {
-                    vpnStatus.setSummary("Not running (use set_app_proxy tool to start)");
+                    manageProxies.setSummary("Not running");
                 }
             }
-            
+
             Preference vpnPermission = findPreference("vpn_permission");
             if (vpnPermission != null) {
                 updateVpnPermissionSummary(context, vpnPermission);
