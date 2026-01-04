@@ -20,6 +20,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.anthroid.R
 import com.anthroid.vpn.ProxyVpnService
+import tun.proxy.service.Tun2HttpVpnService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -301,10 +302,11 @@ class AndroidTools(private val context: Context) {
 
     /**
      * Set up VPN proxy for specified apps.
-     * Input: {"apps": ["com.example.app1", "com.example.app2"], "proxy_host": "localhost", "proxy_port": 1091, "proxy_type": "SOCKS5"}
+     * Input: {"apps": ["com.example.app1"], "proxy_host": "10.121.196.2", "proxy_port": 1091, "proxy_type": "HTTP", "proxy_user": "user", "proxy_pass": "pass"}
      *
      * Note: VPN permission must be granted first via Settings > VPN Proxy.
-     * TODO: Actual packet forwarding requires tun2socks integration.
+     * proxy_type: "SOCKS5" or "HTTP" (default SOCKS5)
+     * proxy_user/proxy_pass: optional credentials for authenticated proxies
      */
     private fun setAppProxy(input: String): String {
         val json = JSONObject(input)
@@ -320,7 +322,9 @@ class AndroidTools(private val context: Context) {
 
         val proxyHost = json.optString("proxy_host", "localhost")
         val proxyPort = json.optInt("proxy_port", 1091)
-        val proxyType = json.optString("proxy_type", "SOCKS5")
+        val proxyType = json.optString("proxy_type", "SOCKS5").uppercase()
+        val proxyUser = json.optString("proxy_user", "")
+        val proxyPass = json.optString("proxy_pass", "")
 
         // Check VPN permission
         val prepareIntent = ProxyVpnService.prepare(context)
@@ -328,33 +332,54 @@ class AndroidTools(private val context: Context) {
             return "Error: VPN permission not granted. User needs to enable VPN in Settings > VPN Proxy first."
         }
 
-        // Start VPN service
-        val intent = Intent(context, ProxyVpnService::class.java).apply {
-            action = ProxyVpnService.ACTION_START
-            putExtra(ProxyVpnService.EXTRA_PROXY_HOST, proxyHost)
-            putExtra(ProxyVpnService.EXTRA_PROXY_PORT, proxyPort)
-            putExtra(ProxyVpnService.EXTRA_PROXY_TYPE, proxyType)
-            putStringArrayListExtra(ProxyVpnService.EXTRA_TARGET_APPS, apps)
+        // Use appropriate service based on proxy type
+        if (proxyType == "HTTP") {
+            // Use Tun2HttpVpnService for HTTP proxy
+            val intent = Intent(context, Tun2HttpVpnService::class.java).apply {
+                action = Tun2HttpVpnService.ACTION_START
+                putExtra(Tun2HttpVpnService.EXTRA_PROXY_HOST, proxyHost)
+                putExtra(Tun2HttpVpnService.EXTRA_PROXY_PORT, proxyPort)
+                putExtra(Tun2HttpVpnService.EXTRA_PROXY_USER, proxyUser)
+                putExtra(Tun2HttpVpnService.EXTRA_PROXY_PASS, proxyPass)
+                putStringArrayListExtra(Tun2HttpVpnService.EXTRA_TARGET_APPS, apps)
+            }
+            context.startService(intent)
+        } else {
+            // Use ProxyVpnService for SOCKS5 proxy
+            val intent = Intent(context, ProxyVpnService::class.java).apply {
+                action = ProxyVpnService.ACTION_START
+                putExtra(ProxyVpnService.EXTRA_PROXY_HOST, proxyHost)
+                putExtra(ProxyVpnService.EXTRA_PROXY_PORT, proxyPort)
+                putExtra(ProxyVpnService.EXTRA_PROXY_TYPE, proxyType)
+                putStringArrayListExtra(ProxyVpnService.EXTRA_TARGET_APPS, apps)
+            }
+            context.startService(intent)
         }
-        context.startService(intent)
 
-        return "VPN proxy started: ${apps.joinToString(", ")} -> $proxyType $proxyHost:$proxyPort"
+        val authInfo = if (proxyUser.isNotEmpty()) " (with auth)" else ""
+        return "VPN proxy started: ${apps.joinToString(", ")} -> $proxyType $proxyHost:$proxyPort$authInfo"
     }
 
     /**
      * Stop VPN proxy service.
      */
     private fun stopAppProxy(): String {
-        if (!ProxyVpnService.isRunning()) {
-            return "VPN proxy is not running"
+        // Stop both services (whichever is running)
+        if (ProxyVpnService.isRunning()) {
+            val intent = Intent(context, ProxyVpnService::class.java).apply {
+                action = ProxyVpnService.ACTION_STOP
+            }
+            context.startService(intent)
+            return "SOCKS5 VPN proxy stopped"
         }
-
-        val intent = Intent(context, ProxyVpnService::class.java).apply {
-            action = ProxyVpnService.ACTION_STOP
+        if (Tun2HttpVpnService.isRunning()) {
+            val intent = Intent(context, Tun2HttpVpnService::class.java).apply {
+                action = Tun2HttpVpnService.ACTION_STOP
+            }
+            context.startService(intent)
+            return "HTTP VPN proxy stopped"
         }
-        context.startService(intent)
-
-        return "VPN proxy stopped"
+        return "VPN proxy is not running"
     }
 
     /**

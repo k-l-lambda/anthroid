@@ -16,6 +16,10 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 
+/**
+ * SOCKS5 proxy VPN service using hev-socks5-tunnel native library.
+ * For HTTP proxy, use tun.proxy.service.Tun2HttpVpnService instead.
+ */
 class ProxyVpnService : VpnService() {
 
     companion object {
@@ -32,7 +36,6 @@ class ProxyVpnService : VpnService() {
         const val EXTRA_TARGET_APPS = "target_apps"
 
         const val PROXY_TYPE_SOCKS5 = "SOCKS5"
-        const val PROXY_TYPE_HTTP = "HTTP"
 
         @Volatile
         private var instance: ProxyVpnService? = null
@@ -46,16 +49,13 @@ class ProxyVpnService : VpnService() {
         @Volatile
         private var currentProxyPort: Int = 0
 
-        @Volatile
-        private var currentProxyType: String = ""
-
         fun isRunning(): Boolean = instance != null
         fun getTargetApps(): List<String> = currentTargetApps
         fun getProxyInfo(): String {
             return if (isRunning()) {
-                "$currentProxyType proxy at $currentProxyHost:$currentProxyPort for ${currentTargetApps.joinToString(", ")}"
+                "SOCKS5 proxy at $currentProxyHost:$currentProxyPort for ${currentTargetApps.joinToString(", ")}"
             } else {
-                "VPN not running"
+                "SOCKS5 VPN not running"
             }
         }
         fun prepare(context: Context): Intent? = VpnService.prepare(context)
@@ -65,7 +65,6 @@ class ProxyVpnService : VpnService() {
     private val isRunning = AtomicBoolean(false)
     private var proxyHost: String = "localhost"
     private var proxyPort: Int = 1091
-    private var proxyType: String = PROXY_TYPE_SOCKS5
     private var targetApps: List<String> = emptyList()
 
     override fun onCreate() {
@@ -80,13 +79,11 @@ class ProxyVpnService : VpnService() {
             ACTION_START -> {
                 proxyHost = intent.getStringExtra(EXTRA_PROXY_HOST) ?: "localhost"
                 proxyPort = intent.getIntExtra(EXTRA_PROXY_PORT, 1091)
-                proxyType = intent.getStringExtra(EXTRA_PROXY_TYPE) ?: PROXY_TYPE_SOCKS5
                 targetApps = intent.getStringArrayListExtra(EXTRA_TARGET_APPS) ?: arrayListOf()
                 currentProxyHost = proxyHost
                 currentProxyPort = proxyPort
-                currentProxyType = proxyType
                 currentTargetApps = targetApps
-                Log.i(TAG, "Starting VPN: $proxyType proxy at $proxyHost:$proxyPort")
+                Log.i(TAG, "Starting SOCKS5 VPN: $proxyHost:$proxyPort")
                 startVpn()
             }
             ACTION_STOP -> {
@@ -140,7 +137,7 @@ class ProxyVpnService : VpnService() {
             Log.i(TAG, "Starting tun2socks fd=$fd")
             hev.sockstun.TProxyService.TProxyStartService(configFile.absolutePath, fd)
             isRunning.set(true)
-            Log.i(TAG, "VPN started")
+            Log.i(TAG, "SOCKS5 VPN started")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start VPN", e)
             stopVpn()
@@ -165,7 +162,7 @@ class ProxyVpnService : VpnService() {
     private fun establishVpn(): ParcelFileDescriptor? {
         return try {
             val builder = Builder()
-                .setSession("Anthroid VPN")
+                .setSession("Anthroid SOCKS5 VPN")
                 .setBlocking(false)
                 .setMtu(8500)
                 .addAddress("10.0.0.2", 24)
@@ -221,8 +218,8 @@ socks5:
     }
 
     private fun createNotificationChannel() {
-        val channel = NotificationChannel(CHANNEL_ID, "Anthroid VPN", NotificationManager.IMPORTANCE_LOW)
-        channel.description = "VPN proxy"
+        val channel = NotificationChannel(CHANNEL_ID, "Anthroid SOCKS5 VPN", NotificationManager.IMPORTANCE_LOW)
+        channel.description = "SOCKS5 VPN proxy"
         channel.setShowBadge(false)
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
@@ -232,8 +229,8 @@ socks5:
         val stopPendingIntent = PendingIntent.getService(this, 0, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val appNames = targetApps.mapNotNull { try { packageManager.getApplicationLabel(packageManager.getApplicationInfo(it, 0)).toString() } catch (e: Exception) { it } }
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("VPN Proxy Active")
-            .setContentText("${appNames.joinToString(", ")} -> $proxyType $proxyHost:$proxyPort")
+            .setContentTitle("SOCKS5 VPN Active")
+            .setContentText("${appNames.joinToString(", ")} -> SOCKS5 $proxyHost:$proxyPort")
             .setSmallIcon(R.drawable.ic_foreground)
             .setOngoing(true)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopPendingIntent)
