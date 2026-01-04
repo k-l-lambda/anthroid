@@ -16,6 +16,7 @@ import com.anthroid.shared.termux.shell.command.environment.TermuxShellEnvironme
 import com.anthroid.shared.termux.shell.am.TermuxAmSocketServer;
 import com.anthroid.shared.termux.shell.TermuxShellManager;
 import com.anthroid.shared.termux.theme.TermuxThemeUtils;
+import com.anthroid.mcp.McpServer;
 
 public class TermuxApplication extends Application {
 
@@ -78,6 +79,13 @@ public class TermuxApplication extends Application {
 
         if (isTermuxFilesDirectoryAccessible) {
             TermuxShellEnvironment.writeEnvironmentToFile(this);
+        }
+
+        // Start MCP server for Android tools
+        if (McpServer.Companion.startServer(context)) {
+            Logger.logInfo(LOG_TAG, "MCP server started on port " + McpServer.DEFAULT_PORT);
+        } else {
+            Logger.logError(LOG_TAG, "Failed to start MCP server");
         }
     }
 

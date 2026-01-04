@@ -74,6 +74,9 @@ android {
         // Sherpa-onnx for offline speech recognition
         implementation files('libs/sherpa-onnx-1.12.20.aar')
 
+        // NanoHTTPD for MCP server
+        implementation "org.nanohttpd:nanohttpd:2.3.1"
+
         implementation project(":terminal-view")
         implementation project(":termux-shared")
     }

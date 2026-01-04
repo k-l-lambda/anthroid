@@ -167,7 +167,8 @@ class ClaudeCliClient(private val context: Context) {
                 "--output-format", "stream-json",
                 "--verbose",
                 "--include-partial-messages",
-                "--dangerously-skip-permissions"
+                "--dangerously-skip-permissions",
+                "--mcp-config", getMcpConfig()
             )
 
             // Add conversation flag to resume previous session
@@ -317,6 +318,7 @@ class ClaudeCliClient(private val context: Context) {
                 "--include-partial-messages",
                 "--print",
                 "--dangerously-skip-permissions",
+                "--mcp-config", getMcpConfig()
                 // Note: CLI's built-in Bash tool is enabled for file operations
             )
             // Add image flags for each image path
@@ -550,7 +552,9 @@ class ClaudeCliClient(private val context: Context) {
         val env = buildEnvironment()
         val cmdArgs = mutableListOf(
             getClaudePath(),
-            "--output-format", "stream-json"
+            "--output-format", "stream-json",
+            "--dangerously-skip-permissions",
+            "--mcp-config", getMcpConfig()
         )
         conversationId?.let {
             cmdArgs.add("--resume")
@@ -788,69 +792,39 @@ AVAILABLE TOOLS:
 - Bash: Execute shell commands (USE THIS for file operations)
 - Write/Edit: Create or modify files (these work correctly)
 
-ANDROID FEATURES (use Bash with /system/bin/am broadcast to call Android tools):
-IMPORTANT: Always use /system/bin/am (full path), NOT just "am", because the termux am wrapper crashes.
-NOTE: The am command may output security warnings but the broadcast still works. Check the result file content, not the exit code.
+ANDROID TOOLS (via MCP server):
+Android-specific tools are available through the MCP server. They appear in your tool list with names like:
+- launch_app, open_url, show_notification
+- get_accessibility_status, get_screen_text, get_screen_elements
+- click_element, click_position, focus_and_input, input_text
+- swipe, scroll, press_back, press_home
+- set_app_proxy, stop_app_proxy, get_proxy_status
+- wait_for_element, get_current_app
 
-Call Android tools via broadcast, result written to /sdcard/anthroid_tool_result.txt:
-  /system/bin/am broadcast -a com.anthroid.TOOL_CALL --es tool "TOOL_NAME" --es input '{"key":"value"}' -p com.anthroid 2>/dev/null; sleep 0.3; cat /sdcard/anthroid_tool_result.txt
+SCREEN AUTOMATION:
+Screen automation tools require Accessibility Service enabled (Settings > Accessibility > Anthroid Screen Automation).
+Use get_accessibility_status to check if it's enabled before attempting screen automation.
 
-Available Android tools:
-- show_notification: Input: {"title": "...", "message": "..."}
-- open_url: Input: {"url": "https://..."}
-- launch_app: Input: {"package": "com.example.app"}
-- list_apps: Input: {"filter": "user|system|all", "limit": 50}
-- get_app_info: Input: {"package": "com.example.app"}
-- read_clipboard: Input: {} (no parameters needed)
-- write_clipboard: Input: {"text": "..."}
-- get_location: Input: {"provider": "network|gps"}
-- geocode: Input: {"address": "..."}
-- reverse_geocode: Input: {"latitude": 0.0, "longitude": 0.0}
-- query_calendar: Input: {"days_ahead": 7, "limit": 20}
-- add_calendar_event: Input: {"title": "...", "start_time": ms, "end_time": ms}
-- query_media: Input: {"type": "images|videos|audio", "limit": 20}
-- set_app_proxy: Set up VPN proxy for apps. Input: {"apps": ["pkg1", "pkg2"], "proxy_host": "localhost", "proxy_port": 1091, "proxy_type": "SOCKS5"}
-  NOTE: Requires VPN permission granted in Settings > VPN Proxy first
-  If "apps" is omitted or empty, uses the global app list configured in Settings > Manage Proxy Servers
-- stop_app_proxy: Stop VPN proxy service. Input: {}
-- get_proxy_status: Get current VPN proxy status. Input: {}
+Example workflow - search in AMap:
+1. Use launch_app with {"package": "com.autonavi.minimap"}
+2. Use wait_for_element with {"text": "搜索", "timeout_ms": 5000}
+3. Use focus_and_input with {"target": "搜索", "text": "天安门"}
+4. Use click_element with {"text": "天安门"}
 
-SCREEN AUTOMATION TOOLS (requires Accessibility Service enabled):
-These tools allow you to interact with the phone's UI. Enable in Settings > Accessibility > Anthroid Screen Automation first.
-
-- get_accessibility_status: Check if accessibility service is enabled. Input: {}
-- get_current_app: Get current foreground app package name. Input: {}
-- get_screen_text: Get all visible text on screen. Input: {}
-- get_screen_elements: Get structured UI elements. Input: {"include_invisible": false}
-- find_element: Find element by text. Input: {"text": "Search", "exact_match": false}
-- wait_for_element: Wait for element to appear. Input: {"text": "Search", "timeout_ms": 5000}
-- click_element: Click element by text. Input: {"text": "Button text"}
-- click_position: Click at x,y coordinates. Input: {"x": 500, "y": 800}
-- focus_and_input: Click element and type text (for search boxes). Input: {"target": "Search", "text": "query"}
-- input_text: Type into focused input field. Input: {"text": "Hello world"}
-- swipe: Perform swipe gesture. Input: {"start_x": 500, "start_y": 1500, "end_x": 500, "end_y": 500, "duration_ms": 300}
-- long_press: Long press at coordinates. Input: {"x": 500, "y": 800, "duration_ms": 1000}
-- scroll: Scroll in direction. Input: {"direction": "up|down"}
-- press_back: Press back button. Input: {}
-- press_home: Press home button. Input: {}
-- open_recents: Open recent apps. Input: {}
-- open_notifications: Open notification panel. Input: {}
-
-Example - launch AMap and search for a location:
-  1. /system/bin/am broadcast -a com.anthroid.TOOL_CALL --es tool "launch_app" --es input '{"package":"com.autonavi.minimap"}' -p com.anthroid 2>/dev/null; sleep 1; cat /sdcard/anthroid_tool_result.txt
-  2. /system/bin/am broadcast -a com.anthroid.TOOL_CALL --es tool "wait_for_element" --es input '{"text":"搜索","timeout_ms":5000}' -p com.anthroid 2>/dev/null; sleep 0.5; cat /sdcard/anthroid_tool_result.txt
-  3. /system/bin/am broadcast -a com.anthroid.TOOL_CALL --es tool "focus_and_input" --es input '{"target":"搜索","text":"天安门"}' -p com.anthroid 2>/dev/null; sleep 0.5; cat /sdcard/anthroid_tool_result.txt
-  4. /system/bin/am broadcast -a com.anthroid.TOOL_CALL --es tool "click_element" --es input '{"text":"天安门"}' -p com.anthroid 2>/dev/null; sleep 0.5; cat /sdcard/anthroid_tool_result.txt
-
-Example - show notification:
-  /system/bin/am broadcast -a com.anthroid.TOOL_CALL --es tool "show_notification" --es input '{"title":"Hello","message":"World"}' -p com.anthroid 2>/dev/null; sleep 0.3; cat /sdcard/anthroid_tool_result.txt
-
-Example - set up proxy using global app list:
-  /system/bin/am broadcast -a com.anthroid.TOOL_CALL --es tool "set_app_proxy" --es input '{"proxy_host":"localhost","proxy_port":1091}' -p com.anthroid 2>/dev/null; sleep 0.3; cat /sdcard/anthroid_tool_result.txt
+VPN PROXY:
+Use set_app_proxy to route specific apps through a proxy. If "apps" parameter is omitted, uses global app list from Settings.
+Requires VPN permission to be granted first.
 
 When the user asks about files, use Bash commands.
-When the user asks about Android features, use am broadcast with the tools above.
+When the user asks about Android features (notifications, apps, screen automation, proxy), use the MCP tools.
 """.trimIndent()
+    }
+
+    /**
+     * Get MCP config JSON for connecting to the local Anthroid MCP server.
+     */
+    private fun getMcpConfig(): String {
+        return """{"mcpServers":{"anthroid":{"url":"http://127.0.0.1:8765/mcp"}}}"""
     }
 }
 
