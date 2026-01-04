@@ -822,9 +822,10 @@ When the user asks about Android features (notifications, apps, screen automatio
 
     /**
      * Get MCP config JSON for connecting to the local Anthroid MCP server.
+     * Uses a Node.js bridge script to convert stdio to HTTP.
      */
     private fun getMcpConfig(): String {
-        return """{"mcpServers":{"anthroid":{"url":"http://127.0.0.1:8765/mcp"}}}"""
+        return """{"mcpServers":{"anthroid":{"command":"$PREFIX_PATH/bin/node","args":["$PREFIX_PATH/../home/mcp-http-bridge.js"]}}}"""
     }
 }
 
