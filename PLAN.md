@@ -384,13 +384,23 @@ Enable Claude to interact with phone screen - read content, take screenshots, cl
 - [x] Add accessibility_config.xml
 - [x] Register service in AndroidManifest.xml
 - [x] Add accessibility tools to AndroidTools.kt
+- [x] ScreenAutomationOverlay with robot icon (red eyes active, black eyes inactive)
+- [x] STOP button on overlay to interrupt operations
+- [x] wait_for_element, focus_and_input, get_current_app tools
+- [x] MCP server (NanoHTTPD) for tool access - bypasses am broadcast permission issue
+- [x] Node.js stdio-to-HTTP bridge for Claude CLI MCP integration
+- [x] Tool name cleanup in UI (strip "mcp__anthroid__" prefix)
+- [x] Selectable/copyable text in chat messages
+- [x] Persistent overlay until agent session ends
 
 **Pending:**
 - [ ] Add permission management UI in Settings
 - [ ] Create ScreenCaptureManager.kt for screenshots
+- [ ] Implement take_screenshot tool
 - [ ] Implement audio capture (API 29+)
+- [ ] Test cross-app automation thoroughly
 
-#### Available Tools (via am broadcast)
+#### Available Tools (via MCP Server on localhost:8765)
 
 | Tool | Input | Description |
 |------|-------|-------------|
@@ -518,6 +528,13 @@ User opens Anthroid Settings
 - [x] Add accessibility_config.xml
 - [x] Implement get_screen_text tool
 - [x] Implement click/input/swipe tools
+- [x] Add wait_for_element, focus_and_input, get_current_app tools
+- [x] Create ScreenAutomationOverlay.kt with robot icons
+- [x] Implement MCP server (McpServer.kt) for tool access
+- [x] Create mcp-http-bridge.js for Claude CLI integration
+- [x] Strip MCP prefix from tool names in UI
+- [x] Make chat messages selectable/copyable
+- [x] Persistent overlay until agent session ends
 - [ ] Create ScreenCaptureManager.kt
 - [ ] Implement take_screenshot tool
 - [ ] Add permission management UI in Settings
