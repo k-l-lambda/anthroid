@@ -203,7 +203,7 @@ class ScreenAutomationOverlay(private val context: Context) {
             stopButton?.visibility = View.GONE
             closeButton?.visibility = View.VISIBLE
             // Show "OK" for completed, "✕" for interrupted
-            closeButton?.text = if (isCompleted) "OK" else "✕"
+            closeButton?.text = if (isCompleted) "👌" else "✕"
             overlayContainer?.setBackgroundColor(0xE0757575.toInt()) // Lighter gray
             overlayContainer?.isClickable = true
         }
