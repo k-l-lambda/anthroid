@@ -46,6 +46,16 @@ Claude can execute tools on your device:
 | Launch App | Open installed apps |
 | Location | Get GPS coordinates |
 | Calendar | Query calendar events |
+| Screenshot | Capture device screen |
+| Screen Tap/Swipe | UI automation |
+
+### Screen Automation Overlay
+When Claude launches other apps or performs actions outside Anthroid:
+- **Floating banner** appears at the top of screen showing agent status
+- **Streaming text** displays what Claude is currently doing
+- **Stop button** to cancel the operation at any time
+- **Auto-hides** after task completion (tap to return to Anthroid)
+- Requires overlay permission (Draw over other apps)
 
 ### Terminal Environment
 Built-in Linux terminal for advanced users:
