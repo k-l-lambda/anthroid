@@ -441,7 +441,8 @@ class ClaudeFragment : Fragment() {
             }
         }
 
-        viewLifecycleOwner.lifecycleScope.launch {
+        // Use fragment's lifecycleScope (not viewLifecycleOwner) so this continues when fragment is paused
+        lifecycleScope.launch {
             viewModel.isProcessing.collectLatest { isProcessing ->
                 // Keep input enabled so user can type next message while processing
                 updateSendButtonState()
@@ -452,8 +453,10 @@ class ClaudeFragment : Fragment() {
                     try {
                         val overlay = ScreenAutomationOverlay.getInstance(requireContext())
                         overlay.setCompleted("Completed")
-                        // Don't reset lastToolCallTime here - onPause may not have been called yet
-                    } catch (e: Exception) { }
+                        Log.i(TAG, "Processing completed, overlay set to Completed")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to update overlay on processing complete", e)
+                    }
                 }
                 // Note: Overlay is shown in onPause() when switching away from app
             }
