@@ -33,3 +33,5 @@ Thumbs.db
 screenshot*.png
 screen*.png
 app/src/main/assets/sherpa-onnx-sensevoice/
+
+backup_*/
