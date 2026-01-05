@@ -815,6 +815,13 @@ VPN PROXY:
 Use set_app_proxy to route specific apps through a proxy. If "apps" parameter is omitted, uses global app list from Settings.
 Requires VPN permission to be granted first.
 
+SCREEN CAPTURE:
+Screen capture tools require MediaProjection permission (granted via Settings > Screen Capture).
+- take_screenshot: Take a screenshot, returns file path
+- start_audio_capture: Start recording system audio (API 29+), returns file path
+- stop_audio_capture: Stop recording and get the audio file path
+- get_capture_status: Check if screen capture service is running
+
 When the user asks about files, use Bash commands.
 When the user asks about Android features (notifications, apps, screen automation, proxy), use the MCP tools.
 """.trimIndent()

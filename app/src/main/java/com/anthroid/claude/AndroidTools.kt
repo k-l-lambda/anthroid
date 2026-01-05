@@ -20,6 +20,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.anthroid.R
 import com.anthroid.accessibility.AnthroidAccessibilityService
+import com.anthroid.capture.ScreenCaptureService
 import com.anthroid.vpn.ProxyConfigManager
 import com.anthroid.vpn.ProxyVpnService
 import com.anthroid.vpn.models.ProxyServer
@@ -86,6 +87,11 @@ class AndroidTools(private val context: Context) {
             "wait_for_element" -> waitForElement(input)
             "focus_and_input" -> focusAndInput(input)
             "get_current_app" -> getCurrentApp()
+            // Screen capture tools
+            "take_screenshot" -> takeScreenshot()
+            "start_audio_capture" -> startAudioCapture()
+            "stop_audio_capture" -> stopAudioCapture()
+            "get_capture_status" -> getCaptureStatus()
             else -> "Unknown tool: $name"
         }
     } catch (e: Exception) {
@@ -104,7 +110,8 @@ class AndroidTools(private val context: Context) {
         "click_element", "click_position", "input_text", "swipe",
         "long_press", "press_back", "press_home", "open_recents",
         "open_notifications", "scroll", "get_accessibility_status",
-        "wait_for_element", "focus_and_input", "get_current_app"
+        "wait_for_element", "focus_and_input", "get_current_app",
+        "take_screenshot", "start_audio_capture", "stop_audio_capture", "get_capture_status"
     )
 
     private fun openUrl(input: String): String {
@@ -655,4 +662,102 @@ class AndroidTools(private val context: Context) {
     private fun getCurrentApp(): String {
         return AnthroidAccessibilityService.getCurrentApp()
     }
+
+    // ==================== Screen Capture Tools ====================
+
+    /**
+     * Take a screenshot using MediaProjection.
+     * Input: {} (no parameters)
+     * Requires: MediaProjection permission (granted via Settings > Screen Capture)
+     * Returns: File path of the screenshot or error message
+     */
+    private fun takeScreenshot(): String {
+        if (!ScreenCaptureService.isRunning()) {
+            return JSONObject()
+                .put("success", false)
+                .put("error", "Screen capture service not running. Start it via Settings > Screen Capture.")
+                .toString(2)
+        }
+        val filePath = ScreenCaptureService.takeScreenshot(context)
+        return if (filePath != null) {
+            JSONObject()
+                .put("success", true)
+                .put("file_path", filePath)
+                .toString(2)
+        } else {
+            JSONObject()
+                .put("success", false)
+                .put("error", "Failed to take screenshot")
+                .toString(2)
+        }
+    }
+
+    /**
+     * Start audio capture using MediaProjection (API 29+).
+     * Input: {} (no parameters)
+     * Requires: MediaProjection permission and API 29+
+     * Returns: File path where audio will be saved
+     */
+    private fun startAudioCapture(): String {
+        if (!ScreenCaptureService.isRunning()) {
+            return JSONObject()
+                .put("success", false)
+                .put("error", "Screen capture service not running. Start it via Settings > Screen Capture.")
+                .toString(2)
+        }
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) {
+            return JSONObject()
+                .put("success", false)
+                .put("error", "Audio capture requires Android 10 (API 29) or higher")
+                .toString(2)
+        }
+        val filePath = ScreenCaptureService.startAudioCapture(context)
+        return if (filePath != null) {
+            JSONObject()
+                .put("success", true)
+                .put("file_path", filePath)
+                .put("message", "Audio recording started")
+                .toString(2)
+        } else {
+            JSONObject()
+                .put("success", false)
+                .put("error", "Failed to start audio capture")
+                .toString(2)
+        }
+    }
+
+    /**
+     * Stop audio capture and get the recorded file.
+     * Input: {} (no parameters)
+     * Returns: File path of the recorded audio
+     */
+    private fun stopAudioCapture(): String {
+        val filePath = ScreenCaptureService.stopAudioCapture()
+        return if (filePath != null) {
+            JSONObject()
+                .put("success", true)
+                .put("file_path", filePath)
+                .put("message", "Audio recording stopped")
+                .toString(2)
+        } else {
+            JSONObject()
+                .put("success", false)
+                .put("error", "No audio recording in progress")
+                .toString(2)
+        }
+    }
+
+    /**
+     * Get screen capture service status.
+     */
+    private fun getCaptureStatus(): String {
+        val isRunning = ScreenCaptureService.isRunning()
+        val isRecording = ScreenCaptureService.isRecordingAudio()
+        return JSONObject()
+            .put("service_running", isRunning)
+            .put("audio_recording", isRecording)
+            .put("message", if (isRunning) "Screen capture service is running" else "Screen capture service not running. Enable in Settings > Screen Capture.")
+            .toString(2)
+    }
+
 }

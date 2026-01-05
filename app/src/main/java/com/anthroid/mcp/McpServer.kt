@@ -269,7 +269,12 @@ class McpServer(
                 "text" to PropDef("string", "Text to wait for", true),
                 "timeout_ms" to PropDef("integer", "Timeout in milliseconds", false)
             )),
-            ToolDef("get_current_app", "Get current foreground app package", emptyMap())
+            ToolDef("get_current_app", "Get current foreground app package", emptyMap()),
+            // Screen capture tools
+            ToolDef("take_screenshot", "Take a screenshot of the current screen. Returns file path.", emptyMap()),
+            ToolDef("start_audio_capture", "Start recording system audio (API 29+). Returns file path.", emptyMap()),
+            ToolDef("stop_audio_capture", "Stop audio recording and get the recorded file path.", emptyMap()),
+            ToolDef("get_capture_status", "Get screen capture service status.", emptyMap())
         )
 
         for (tool in toolDefinitions) {
