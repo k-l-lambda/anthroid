@@ -435,6 +435,13 @@ final class TermuxInstaller {
     public static void ensureSetWrapperScript(Context context) {
         try {
             File binDir = new File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH);
+            
+            // Skip if bin directory doesn't exist (bootstrap not yet extracted)
+            if (!binDir.exists()) {
+                Logger.logInfo(LOG_TAG, "bin directory doesn't exist yet, skipping set_wrapper creation");
+                return;
+            }
+            
             File setWrapperFile = new File(binDir, "set_wrapper");
 
             // Skip if file already exists to preserve user configuration
