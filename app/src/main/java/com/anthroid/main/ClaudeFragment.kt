@@ -391,9 +391,19 @@ class ClaudeFragment : Fragment() {
         if (isProcessing || hasStreamingMessages || hasRecentToolCall) {
             try {
                 val overlay = ScreenAutomationOverlay.getInstance(requireContext())
-                Log.i(TAG, "Showing overlay on pause")
-                overlay.show("Agent working...") {
-                    viewModel.cancelRequest()
+                if (isProcessing || hasStreamingMessages) {
+                    // Still actively processing - show active overlay
+                    Log.i(TAG, "Showing active overlay on pause")
+                    overlay.show("Agent working...") {
+                        viewModel.cancelRequest()
+                    }
+                } else {
+                    // Agent finished but had recent tool call - show completed overlay
+                    Log.i(TAG, "Showing completed overlay on pause")
+                    overlay.show("Completed") {
+                        viewModel.cancelRequest()
+                    }
+                    overlay.setCompleted("Completed")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to show overlay on pause", e)
