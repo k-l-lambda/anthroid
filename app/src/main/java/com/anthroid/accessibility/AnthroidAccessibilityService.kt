@@ -70,10 +70,10 @@ class AnthroidAccessibilityService : AccessibilityService() {
         }
 
         /**
-         * Complete the overlay with result.
+         * Update overlay with result text (don't complete - ClaudeFragment controls completion).
          */
         private fun completeOverlay(resultText: String) {
-            overlay?.setCompleted(resultText)
+            overlay?.updateText(resultText)
         }
 
         /**

@@ -77,6 +77,9 @@ class ClaudeFragment : Fragment() {
     // Stop button state
     private var isStopMode = false
 
+    // Track recent tool calls for overlay timing
+    private var lastToolCallTime: Long = 0
+
     // History panel views
     private lateinit var historyPanelContainer: FrameLayout
     private lateinit var historyDimOverlay: View
@@ -378,12 +381,48 @@ class ClaudeFragment : Fragment() {
         isVoiceInputInitialized = false
     }
 
+    override fun onPause() {
+        super.onPause()
+        val isProcessing = viewModel.isProcessing.value
+        val hasStreamingMessages = viewModel.messages.value.any { it.isStreaming }
+        val hasRecentToolCall = (System.currentTimeMillis() - lastToolCallTime) < 10000 // 10 seconds
+        Log.i(TAG, "onPause called, isProcessing=$isProcessing, hasStreamingMessages=$hasStreamingMessages, hasRecentToolCall=$hasRecentToolCall")
+        // Show overlay when switching away from Anthroid while agent is processing, streaming, or recently called a tool
+        if (isProcessing || hasStreamingMessages || hasRecentToolCall) {
+            try {
+                val overlay = ScreenAutomationOverlay.getInstance(requireContext())
+                Log.i(TAG, "Showing overlay on pause")
+                overlay.show("Agent working...") {
+                    viewModel.cancelRequest()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to show overlay on pause", e)
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        Log.i(TAG, "onResume called")
+        // Hide overlay when returning to Anthroid (user can see the chat)
+        try {
+            val overlay = ScreenAutomationOverlay.getInstance(requireContext())
+            overlay.hide()
+        } catch (e: Exception) {
+            // Ignore
+        }
+    }
+
     private fun observeViewModel() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.messages.collect { messages ->
                 Log.d(TAG, "messages.collect: size=${messages.size}")
                 messages.forEachIndexed { i, m ->
                     Log.d(TAG, "  [$i] id=${m.id.take(8)}, contentLen=${m.content.length}, streaming=${m.isStreaming}")
+                }
+                // Track tool calls for overlay timing
+                if (messages.any { it.toolName != null }) {
+                    lastToolCallTime = System.currentTimeMillis()
                 }
                 messageAdapter.submitList(messages.toList())
                 if (messages.isNotEmpty()) {
@@ -396,13 +435,33 @@ class ClaudeFragment : Fragment() {
             viewModel.isProcessing.collectLatest { isProcessing ->
                 // Keep input enabled so user can type next message while processing
                 updateSendButtonState()
-                // Hide automation overlay when agent round completes
+
+                // When processing completes, update overlay text but don't hide
+                // (overlay will be hidden in onResume when user returns to Anthroid)
                 if (!isProcessing) {
                     try {
-                        ScreenAutomationOverlay.getInstance(requireContext()).hide()
-                    } catch (e: Exception) {
-                        // Ignore if not attached
-                    }
+                        val overlay = ScreenAutomationOverlay.getInstance(requireContext())
+                        overlay.setCompleted("Completed")
+                        // Don't reset lastToolCallTime here - onPause may not have been called yet
+                    } catch (e: Exception) { }
+                }
+                // Note: Overlay is shown in onPause() when switching away from app
+            }
+        }
+
+        // Observe streaming text to update overlay banner (only when overlay is visible)
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewModel.currentResponse.collectLatest { text ->
+                if (viewModel.isProcessing.value && text.isNotEmpty()) {
+                    try {
+                        val overlay = ScreenAutomationOverlay.getInstance(requireContext())
+                        val displayText = if (text.length > 80) {
+                            "..." + text.takeLast(77)
+                        } else {
+                            text
+                        }
+                        overlay.updateText(displayText.replace("\n", " "))
+                    } catch (e: Exception) { }
                 }
             }
         }

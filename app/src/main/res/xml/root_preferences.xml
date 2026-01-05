@@ -19,6 +19,18 @@
     </PreferenceCategory>
 
     <PreferenceCategory
+        app:title="Screen Capture (Agent Tool)"
+        app:key="screen_capture_category">
+
+        <Preference
+            app:key="screen_capture_permission"
+            app:title="Enable Screen Capture"
+            app:summary="Grant permission for screenshots and audio recording"
+            app:persistent="false"/>
+
+    </PreferenceCategory>
+
+    <PreferenceCategory
         app:title="Voice Input">
 
         <ListPreference

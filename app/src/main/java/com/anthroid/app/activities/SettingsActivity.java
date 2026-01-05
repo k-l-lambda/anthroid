@@ -34,6 +34,8 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.preference.SwitchPreferenceCompat;
 import com.anthroid.vpn.ProxyVpnService;
 import com.anthroid.vpn.VpnSettingsHelper;
+import com.anthroid.capture.ScreenCaptureService;
+import com.anthroid.capture.ScreenCapturePermissionActivity;
 import tun.proxy.service.Tun2HttpVpnService;
 import com.anthroid.R;
 import com.anthroid.shared.activities.ReportActivity;
@@ -112,6 +114,7 @@ public class SettingsActivity extends AppCompatActivity {
             // Configure ASR model preference on main thread
             configureAsrModelPreference(context);
             configureVpnProxyPreference(context);
+            configureScreenCapturePreference(context);
 
             new Thread() {
                 @Override
@@ -182,6 +185,33 @@ public class SettingsActivity extends AppCompatActivity {
             Preference vpnPermission = findPreference("vpn_permission");
             if (vpnPermission != null) {
                 updateVpnPermissionSummary(context, vpnPermission);
+            }
+        }
+
+        private void configureScreenCapturePreference(@NonNull Context context) {
+            Preference screenCapturePref = findPreference("screen_capture_permission");
+            if (screenCapturePref != null) {
+                updateScreenCaptureStatus(screenCapturePref);
+                screenCapturePref.setOnPreferenceClickListener(preference -> {
+                    if (ScreenCaptureService.Companion.isRunning()) {
+                        // Stop the service
+                        ScreenCaptureService.Companion.stop(context);
+                        Toast.makeText(context, "Screen capture disabled", Toast.LENGTH_SHORT).show();
+                        updateScreenCaptureStatus(preference);
+                    } else {
+                        // Launch permission activity
+                        ScreenCapturePermissionActivity.Companion.launch(context);
+                    }
+                    return true;
+                });
+            }
+        }
+
+        private void updateScreenCaptureStatus(Preference pref) {
+            if (ScreenCaptureService.Companion.isRunning()) {
+                pref.setSummary("Enabled - tap to disable");
+            } else {
+                pref.setSummary("Tap to enable screenshots and audio capture");
             }
         }
 

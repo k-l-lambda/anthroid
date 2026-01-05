@@ -338,6 +338,12 @@
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
 
+        <!-- Screen Capture Permission Activity -->
+        <activity
+            android:name=".capture.ScreenCapturePermissionActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.Translucent.NoTitleBar" />
+
         <!-- Accessibility Service for screen automation -->
         <service
             android:name=".accessibility.AnthroidAccessibilityService"
