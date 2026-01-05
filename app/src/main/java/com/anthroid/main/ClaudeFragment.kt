@@ -80,6 +80,10 @@ class ClaudeFragment : Fragment() {
     // Track recent tool calls for overlay timing
     private var lastToolCallTime: Long = 0
 
+    // Handler for auto-hide overlay
+    private val overlayHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var overlayHideRunnable: Runnable? = null
+
     // History panel views
     private lateinit var historyPanelContainer: FrameLayout
     private lateinit var historyDimOverlay: View
@@ -464,18 +468,28 @@ class ClaudeFragment : Fragment() {
                 // Keep input enabled so user can type next message while processing
                 updateSendButtonState()
 
-                // When processing completes, update overlay text but don't hide
-                // (overlay will be hidden in onResume when user returns to Anthroid)
-                if (!isProcessing) {
-                    try {
-                        val overlay = ScreenAutomationOverlay.getInstance(requireContext())
+                try {
+                    val overlay = ScreenAutomationOverlay.getInstance(requireContext())
+                    if (isProcessing) {
+                        // Cancel any pending hide operation
+                        overlayHideRunnable?.let { overlayHandler.removeCallbacks(it) }
+                        overlayHideRunnable = null
+                        // Show overlay immediately when processing starts
+                        overlay.show("Agent responding...") {
+                            viewModel.cancelRequest()
+                        }
+                        Log.i(TAG, "Processing started, overlay shown")
+                    } else {
+                        // When processing completes, update overlay text and auto-hide after delay
                         overlay.setCompleted("Completed")
                         Log.i(TAG, "Processing completed, overlay set to Completed")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to update overlay on processing complete", e)
+                        // Auto-hide overlay after 2 seconds when processing completes
+                        overlayHideRunnable = Runnable { overlay.hide() }
+                        overlayHandler.postDelayed(overlayHideRunnable!!, 2000)
                     }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to update overlay", e)
                 }
-                // Note: Overlay is shown in onPause() when switching away from app
             }
         }
 
@@ -491,8 +505,11 @@ class ClaudeFragment : Fragment() {
                         } else {
                             text
                         }
+                        Log.d(TAG, "currentResponse: ${displayText.take(50)}...")
                         overlay.updateText(displayText.replace("\n", " "))
-                    } catch (e: Exception) { }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to update overlay text", e)
+                    }
                 }
             }
         }
