@@ -107,7 +107,10 @@ class ScreenAutomationOverlay(private val context: Context) {
      */
     fun updateText(operationText: String) {
         handler.post {
-            overlayText?.text = operationText
+            if (isShowing) {
+                overlayText?.text = operationText
+                Log.d(TAG, "updateText: ${operationText.take(40)}...")
+            }
         }
     }
 

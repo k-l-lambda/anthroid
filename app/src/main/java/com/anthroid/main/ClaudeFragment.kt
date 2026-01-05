@@ -428,11 +428,28 @@ class ClaudeFragment : Fragment() {
             viewModel.messages.collect { messages ->
                 Log.d(TAG, "messages.collect: size=${messages.size}")
                 messages.forEachIndexed { i, m ->
-                    Log.d(TAG, "  [$i] id=${m.id.take(8)}, contentLen=${m.content.length}, streaming=${m.isStreaming}")
+                    Log.d(TAG, "  [$i] id=${m.id.take(8)}, tool=${m.toolName}, len=${m.content.length}, streaming=${m.isStreaming}")
                 }
                 // Track tool calls for overlay timing
                 if (messages.any { it.toolName != null }) {
                     lastToolCallTime = System.currentTimeMillis()
+                }
+                // Show overlay immediately when app-switching tools are detected
+                val appSwitchingTools = listOf("launch_app", "open_url")
+                val hasAppSwitchingTool = messages.any { msg ->
+                    val toolName = msg.toolName?.lowercase() ?: ""
+                    appSwitchingTools.any { tool -> toolName.endsWith(tool) }
+                }
+                if (hasAppSwitchingTool && viewModel.isProcessing.value) {
+                    try {
+                        val overlay = ScreenAutomationOverlay.getInstance(requireContext())
+                        overlay.show("Agent working...") {
+                            viewModel.cancelRequest()
+                        }
+                        Log.i(TAG, "Showing overlay for app-switching tool")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to show overlay for app-switching tool", e)
+                    }
                 }
                 messageAdapter.submitList(messages.toList())
                 if (messages.isNotEmpty()) {
@@ -466,7 +483,7 @@ class ClaudeFragment : Fragment() {
         // Use fragment's lifecycleScope so updates continue when fragment is paused (user outside app)
         lifecycleScope.launch {
             viewModel.currentResponse.collectLatest { text ->
-                if (viewModel.isProcessing.value && text.isNotEmpty()) {
+                if (text.isNotEmpty()) {
                     try {
                         val overlay = ScreenAutomationOverlay.getInstance(requireContext())
                         val displayText = if (text.length > 80) {
