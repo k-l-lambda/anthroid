@@ -66,16 +66,14 @@ class ScreenCaptureService : Service() {
         }
 
         /**
-         * Start the service and wait for initialization.
+         * Start the service. Returns true if service start was initiated.
+         * Check isRunning() after a short delay to confirm initialization.
          */
         fun start(context: Context): Boolean {
             if (pendingResultCode != Activity.RESULT_OK || pendingResultData == null) {
                 Log.e(TAG, "No valid projection result")
                 return false
             }
-
-            val latch = CountDownLatch(1)
-            initLatch.set(latch)
 
             val intent = Intent(context, ScreenCaptureService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -84,13 +82,8 @@ class ScreenCaptureService : Service() {
                 context.startService(intent)
             }
 
-            // Wait for service to initialize (max 5 seconds)
-            return try {
-                latch.await(5, TimeUnit.SECONDS) && isRunning()
-            } catch (e: InterruptedException) {
-                Log.e(TAG, "Interrupted waiting for service", e)
-                false
-            }
+            Log.i(TAG, "Service start initiated")
+            return true
         }
 
         fun stop(context: Context) {
@@ -237,17 +230,7 @@ class ScreenCaptureService : Service() {
         try {
             imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
 
-            virtualDisplay = projection.createVirtualDisplay(
-                "ScreenCapture",
-                width, height, density,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                imageReader!!.surface,
-                null, handler
-            )
-
-            // Wait a bit for the display to render
-            Thread.sleep(200)
-
+            // Set listener BEFORE creating VirtualDisplay to catch the first frame
             imageReader!!.setOnImageAvailableListener({ reader ->
                 var image: android.media.Image? = null
                 try {
@@ -295,6 +278,15 @@ class ScreenCaptureService : Service() {
                     latch.countDown()
                 }
             }, handler)
+
+            // Now create VirtualDisplay - listener is ready to catch the first frame
+            virtualDisplay = projection.createVirtualDisplay(
+                "ScreenCapture",
+                width, height, density,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                imageReader!!.surface,
+                null, handler
+            )
 
             // Wait for capture (max 3 seconds)
             latch.await(3, TimeUnit.SECONDS)
