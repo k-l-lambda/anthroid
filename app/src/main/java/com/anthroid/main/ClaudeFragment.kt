@@ -84,6 +84,9 @@ class ClaudeFragment : Fragment() {
     private val overlayHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var overlayHideRunnable: Runnable? = null
 
+    // Track whether processing has ever started (to avoid showing "Completed" at startup)
+    private var hasEverStartedProcessing = false
+
     // History panel views
     private lateinit var historyPanelContainer: FrameLayout
     private lateinit var historyDimOverlay: View
@@ -393,6 +396,9 @@ class ClaudeFragment : Fragment() {
         Log.i(TAG, "onPause called, isProcessing=$isProcessing, hasStreamingMessages=$hasStreamingMessages, hasRecentToolCall=$hasRecentToolCall")
         // Show overlay when switching away from Anthroid while agent is processing, streaming, or recently called a tool
         if (isProcessing || hasStreamingMessages || hasRecentToolCall) {
+            // Cancel any pending auto-hide (user left the app, keep overlay visible)
+            overlayHideRunnable?.let { overlayHandler.removeCallbacks(it) }
+            overlayHideRunnable = null
             try {
                 val overlay = ScreenAutomationOverlay.getInstance(requireContext())
                 if (isProcessing || hasStreamingMessages) {
@@ -475,12 +481,14 @@ class ClaudeFragment : Fragment() {
                         overlayHideRunnable?.let { overlayHandler.removeCallbacks(it) }
                         overlayHideRunnable = null
                         // Show overlay immediately when processing starts
+                        hasEverStartedProcessing = true
                         overlay.show("Agent responding...") {
                             viewModel.cancelRequest()
                         }
                         Log.i(TAG, "Processing started, overlay shown")
-                    } else {
-                        // When processing completes, update overlay text and auto-hide after delay
+                    } else if (hasEverStartedProcessing) {
+                        // Only show "Completed" if we've actually processed something
+                        // (avoids showing "Completed" at app startup)
                         overlay.setCompleted("Completed")
                         Log.i(TAG, "Processing completed, overlay set to Completed")
                         // Auto-hide overlay after 2 seconds when processing completes
