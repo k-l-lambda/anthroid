@@ -462,8 +462,9 @@ class ClaudeFragment : Fragment() {
             }
         }
 
-        // Observe streaming text to update overlay banner (only when overlay is visible)
-        viewLifecycleOwner.lifecycleScope.launch {
+        // Observe streaming text to update overlay banner
+        // Use fragment's lifecycleScope so updates continue when fragment is paused (user outside app)
+        lifecycleScope.launch {
             viewModel.currentResponse.collectLatest { text ->
                 if (viewModel.isProcessing.value && text.isNotEmpty()) {
                     try {
