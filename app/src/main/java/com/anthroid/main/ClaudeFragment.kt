@@ -440,26 +440,9 @@ class ClaudeFragment : Fragment() {
                 messages.forEachIndexed { i, m ->
                     Log.d(TAG, "  [$i] id=${m.id.take(8)}, tool=${m.toolName}, len=${m.content.length}, streaming=${m.isStreaming}")
                 }
-                // Track tool calls for overlay timing
+                // Track tool calls for overlay timing (used in onPause)
                 if (messages.any { it.toolName != null }) {
                     lastToolCallTime = System.currentTimeMillis()
-                }
-                // Show overlay immediately when app-switching tools are detected
-                val appSwitchingTools = listOf("launch_app", "open_url")
-                val hasAppSwitchingTool = messages.any { msg ->
-                    val toolName = msg.toolName?.lowercase() ?: ""
-                    appSwitchingTools.any { tool -> toolName.endsWith(tool) }
-                }
-                if (hasAppSwitchingTool && viewModel.isProcessing.value) {
-                    try {
-                        val overlay = ScreenAutomationOverlay.getInstance(requireContext())
-                        overlay.show("Agent working...") {
-                            viewModel.cancelRequest()
-                        }
-                        Log.i(TAG, "Showing overlay for app-switching tool")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to show overlay for app-switching tool", e)
-                    }
                 }
                 messageAdapter.submitList(messages.toList())
                 if (messages.isNotEmpty()) {
@@ -474,29 +457,25 @@ class ClaudeFragment : Fragment() {
                 // Keep input enabled so user can type next message while processing
                 updateSendButtonState()
 
-                try {
-                    val overlay = ScreenAutomationOverlay.getInstance(requireContext())
-                    if (isProcessing) {
-                        // Cancel any pending hide operation
-                        overlayHideRunnable?.let { overlayHandler.removeCallbacks(it) }
-                        overlayHideRunnable = null
-                        // Show overlay immediately when processing starts
-                        hasEverStartedProcessing = true
-                        overlay.show("Agent responding...") {
-                            viewModel.cancelRequest()
-                        }
-                        Log.i(TAG, "Processing started, overlay shown")
-                    } else if (hasEverStartedProcessing) {
-                        // Only show "Completed" if we've actually processed something
-                        // (avoids showing "Completed" at app startup)
+                if (isProcessing) {
+                    // Track that processing has started (for overlay logic in onPause)
+                    hasEverStartedProcessing = true
+                    // Cancel any pending hide operation
+                    overlayHideRunnable?.let { overlayHandler.removeCallbacks(it) }
+                    overlayHideRunnable = null
+                    Log.i(TAG, "Processing started")
+                } else if (hasEverStartedProcessing) {
+                    // Processing completed - update overlay if it's showing (user is outside app)
+                    try {
+                        val overlay = ScreenAutomationOverlay.getInstance(requireContext())
                         overlay.setCompleted("Completed")
                         Log.i(TAG, "Processing completed, overlay set to Completed")
                         // Auto-hide overlay after 2 seconds when processing completes
                         overlayHideRunnable = Runnable { overlay.hide() }
                         overlayHandler.postDelayed(overlayHideRunnable!!, 2000)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to update overlay", e)
                     }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to update overlay", e)
                 }
             }
         }
