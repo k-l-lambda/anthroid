@@ -87,6 +87,45 @@ public class TermuxApplication extends Application {
         } else {
             Logger.logError(LOG_TAG, "Failed to start MCP server");
         }
+
+        // Ensure MCP bridge script exists in home directory
+        ensureMcpBridgeScript(context);
+    }
+
+    /**
+     * Ensure the MCP stdio-to-HTTP bridge script exists in home directory.
+     * This is needed for Claude CLI to connect to the MCP server.
+     */
+    private void ensureMcpBridgeScript(Context context) {
+        try {
+            java.io.File homeDir = new java.io.File(TermuxConstants.TERMUX_HOME_DIR_PATH);
+            if (!homeDir.exists()) {
+                return; // Bootstrap not yet extracted
+            }
+
+            java.io.File bridgeScript = new java.io.File(homeDir, "mcp-http-bridge.js");
+            if (bridgeScript.exists()) {
+                return; // Already exists
+            }
+
+            // Copy from assets
+            java.io.InputStream is = context.getAssets().open("mcp-http-bridge.js");
+            java.io.FileOutputStream fos = new java.io.FileOutputStream(bridgeScript);
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = is.read(buffer)) != -1) {
+                fos.write(buffer, 0, read);
+            }
+            fos.close();
+            is.close();
+
+            // Make executable
+            bridgeScript.setExecutable(true, false);
+
+            Logger.logInfo(LOG_TAG, "Installed MCP bridge script to " + bridgeScript.getAbsolutePath());
+        } catch (Exception e) {
+            Logger.logWarn(LOG_TAG, "Failed to ensure MCP bridge script: " + e.getMessage());
+        }
     }
 
     public static void setLogConfig(Context context) {

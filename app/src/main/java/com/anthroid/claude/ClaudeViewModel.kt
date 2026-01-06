@@ -260,9 +260,10 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                     removeStreamingMessage()
                 } else {
                     // Finalize the streaming message with content
+                    // NOTE: Don't set isProcessing=false here - the session might continue
+                    // with more tool calls or messages. Only SessionEnded should stop processing.
                     Log.d(TAG, "MessageEnd: finalizing message with content")
                     finalizeStreamingMessage()
-                    _isProcessing.value = false
                 }
             }
 

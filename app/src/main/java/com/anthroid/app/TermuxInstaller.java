@@ -492,6 +492,24 @@ final class TermuxInstaller {
             fos.close();
             Os.chmod(claudeWrapper.getAbsolutePath(), 0755);
 
+            // Copy MCP bridge script to home directory
+            File homeDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH);
+            if (!homeDir.exists()) {
+                homeDir.mkdirs();
+            }
+            File bridgeScript = new File(homeDir, "mcp-http-bridge.js");
+            java.io.InputStream bridgeStream = assetManager.open("mcp-http-bridge.js");
+            FileOutputStream bridgeFos = new FileOutputStream(bridgeScript);
+            byte[] bridgeBuffer = new byte[8192];
+            int bridgeRead;
+            while ((bridgeRead = bridgeStream.read(bridgeBuffer)) != -1) {
+                bridgeFos.write(bridgeBuffer, 0, bridgeRead);
+            }
+            bridgeFos.close();
+            bridgeStream.close();
+            Os.chmod(bridgeScript.getAbsolutePath(), 0755);
+            Logger.logInfo(LOG_TAG, "Installed MCP bridge script to " + bridgeScript.getAbsolutePath());
+
             Logger.logInfo(LOG_TAG, "Installed Claude Code CLI to " + claudeCodeDir);
         } catch (Exception e) {
             Logger.logWarn(LOG_TAG, "Failed to install Claude Code CLI: " + e.getMessage());
