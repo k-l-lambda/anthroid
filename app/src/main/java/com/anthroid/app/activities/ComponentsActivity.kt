@@ -43,10 +43,10 @@ class ComponentsActivity : AppCompatActivity() {
         fun makeInstallCommand(pkgName: String, binaryName: String = pkgName): String {
             return "cd ~ && apt-get download $pkgName && " +
                 "mkdir -p $PREFIX/tmp/extract_$pkgName && " +
-                "dpkg-deb -x `${pkgName}_*.deb $PREFIX/tmp/extract_$pkgName && " +
+                "dpkg-deb -x ${pkgName}_*.deb $PREFIX/tmp/extract_$pkgName && " +
                 "cp $PREFIX/tmp/extract_$pkgName/data/data/com.termux/files/usr/bin/$binaryName $PREFIX/bin/ && " +
                 "chmod 755 $PREFIX/bin/$binaryName && " +
-                "rm -rf $PREFIX/tmp/extract_$pkgName `${pkgName}_*.deb && " +
+                "rm -rf $PREFIX/tmp/extract_$pkgName ${pkgName}_*.deb && " +
                 "echo 'Installed $binaryName successfully'"
         }
     }
