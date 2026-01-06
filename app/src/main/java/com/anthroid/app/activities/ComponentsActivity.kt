@@ -37,16 +37,21 @@ class ComponentsActivity : AppCompatActivity() {
         private val FILES_DIR = "/data/data/com.anthroid/files"
 
         /**
-         * Generate install command that downloads .deb and extracts binary manually.
-         * This bypasses broken install scripts that have hardcoded com.termux paths.
+         * Generate install command that downloads .deb directly from packages.termux.dev.
+         * This bypasses apt sources which may not be configured on fresh install.
          */
         fun makeInstallCommand(pkgName: String, binaryName: String = pkgName): String {
-            return "cd ~ && apt-get download $pkgName && " +
+            val mirror = "https://packages.termux.dev/apt/termux-main"
+            val arch = "aarch64"
+            return "cd ~ && " +
+                "DEBFILE=\$(curl -sL '$mirror/dists/stable/main/binary-$arch/Packages' | grep -A20 '^Package: $pkgName\$' | grep '^Filename:' | head -1 | cut -d' ' -f2) && " +
+                "echo \"Downloading \$DEBFILE\" && " +
+                "curl -sL '$mirror/'\$DEBFILE -o $pkgName.deb && " +
                 "mkdir -p $PREFIX/tmp/extract_$pkgName && " +
-                "dpkg-deb -x ${pkgName}_*.deb $PREFIX/tmp/extract_$pkgName && " +
+                "dpkg-deb -x $pkgName.deb $PREFIX/tmp/extract_$pkgName && " +
                 "cp $PREFIX/tmp/extract_$pkgName/data/data/com.termux/files/usr/bin/$binaryName $PREFIX/bin/ && " +
                 "chmod 755 $PREFIX/bin/$binaryName && " +
-                "rm -rf $PREFIX/tmp/extract_$pkgName ${pkgName}_*.deb && " +
+                "rm -rf $PREFIX/tmp/extract_$pkgName $pkgName.deb && " +
                 "echo 'Installed $binaryName successfully'"
         }
     }
