@@ -564,8 +564,8 @@ final class TermuxInstaller {
             sb.append("\n");
             sb.append("echo 'Installing default packages (download method)...'\n");
             sb.append("\n");
-            sb.append("# Install git and its key dependencies\n");
-            sb.append("for pkg in zlib openssl libnghttp2 libnghttp3 libc-ares curl pcre2 git; do\n");
+            sb.append("# Install git, sshpass and their key dependencies\n");
+            sb.append("for pkg in zlib openssl libnghttp2 libnghttp3 libc-ares curl pcre2 git sshpass; do\n");
             sb.append("    download_and_install $pkg\n");
             sb.append("done\n");
             sb.append("\n");

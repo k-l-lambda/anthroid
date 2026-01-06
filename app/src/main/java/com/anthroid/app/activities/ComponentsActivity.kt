@@ -93,7 +93,7 @@ class ComponentsActivity : AppCompatActivity() {
             name = "Git",
             description = "Version control system",
             checkCommand = "git --version",
-            installCommand = "pkg install git -y",
+            installCommand = makeInstallCommand("git"),
             binaryPath = "$PREFIX/bin/git"
         ),
         Component(
@@ -156,6 +156,13 @@ class ComponentsActivity : AppCompatActivity() {
     override fun onDestroy() {
         unbindTermuxService()
         super.onDestroy()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Re-check component status when returning to this screen
+        // This handles the case where install finished while in terminal
+        checkComponentStatus()
     }
 
     override fun onSupportNavigateUp(): Boolean {
