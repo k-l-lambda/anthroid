@@ -532,19 +532,45 @@ final class TermuxInstaller {
             File homeDir = new File(TermuxConstants.TERMUX_HOME_DIR_PATH);
             File firstBootScript = new File(homeDir, ".first_boot.sh");
 
-            // Create the first-boot script using pkg (handles keyring automatically)
+            // Create the first-boot script that downloads and installs packages locally
+            // instead of using pkg which has unreliable mirrors
             StringBuilder sb = new StringBuilder();
             sb.append("#!/data/data/com.anthroid/files/usr/bin/bash\n");
-            sb.append("# First-boot script - installs default packages\n");
+            sb.append("# First-boot script - downloads and installs packages locally\n");
             sb.append("# This script runs once and deletes itself\n");
             sb.append("\n");
             sb.append("export PREFIX=/data/data/com.anthroid/files/usr\n");
             sb.append("export PATH=$PREFIX/bin:$PATH\n");
             sb.append("export HOME=/data/data/com.anthroid/files/home\n");
+            sb.append("export TMPDIR=$HOME/tmp\n");
+            sb.append("mkdir -p $TMPDIR\n");
             sb.append("\n");
-            sb.append("echo 'Installing default packages...'\n");
-            sb.append("yes | pkg update\n");
-            sb.append("pkg install -y openssh\n");
+            sb.append("MIRROR=\"https://packages.termux.dev/apt/termux-main\"\n");
+            sb.append("ARCH=\"aarch64\"\n");
+            sb.append("\n");
+            sb.append("download_and_install() {\n");
+            sb.append("    local pkg=$1\n");
+            sb.append("    echo \"Downloading $pkg...\"\n");
+            sb.append("    # Get package info from Packages file\n");
+            sb.append("    local debfile=$(curl -sL \"$MIRROR/dists/stable/main/binary-$ARCH/Packages\" | grep -A20 \"^Package: $pkg\\$\" | grep \"^Filename:\" | head -1 | cut -d' ' -f2)\n");
+            sb.append("    if [ -n \"$debfile\" ]; then\n");
+            sb.append("        curl -sL \"$MIRROR/$debfile\" -o \"$TMPDIR/$pkg.deb\"\n");
+            sb.append("        dpkg -i \"$TMPDIR/$pkg.deb\" 2>/dev/null || true\n");
+            sb.append("        rm -f \"$TMPDIR/$pkg.deb\"\n");
+            sb.append("    else\n");
+            sb.append("        echo \"Package $pkg not found\"\n");
+            sb.append("    fi\n");
+            sb.append("}\n");
+            sb.append("\n");
+            sb.append("echo 'Installing default packages (download method)...'\n");
+            sb.append("\n");
+            sb.append("# Install git and its key dependencies\n");
+            sb.append("for pkg in zlib openssl libnghttp2 libnghttp3 libc-ares curl pcre2 git; do\n");
+            sb.append("    download_and_install $pkg\n");
+            sb.append("done\n");
+            sb.append("\n");
+            sb.append("# Clean up\n");
+            sb.append("rm -rf $TMPDIR/*.deb\n");
             sb.append("\n");
             sb.append("# Remove this script after execution\n");
             sb.append("rm -f ~/.first_boot.sh\n");
