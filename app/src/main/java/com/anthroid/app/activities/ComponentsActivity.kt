@@ -23,6 +23,7 @@ import com.anthroid.shared.activity.media.AppCompatActivityUtils
 import com.anthroid.shared.theme.NightMode
 import com.anthroid.terminal.TerminalSession
 import java.io.File
+import android.widget.Toast
 
 /**
  * Activity for managing Claude-related components (packages).
@@ -175,6 +176,18 @@ class ComponentsActivity : AppCompatActivity() {
     }
 
     private fun checkComponentStatus() {
+        // Check if bootstrap is extracted
+        val prefixDir = File(PREFIX)
+        if (!prefixDir.exists() || (prefixDir.listFiles()?.size ?: 0) < 5) {
+            runOnUiThread {
+                Toast.makeText(this, "Bootstrap not yet installed. Please open Terminal first.", Toast.LENGTH_LONG).show()
+            }
+            // Set all components to NOT_INSTALLED and return
+            components.forEach { it.status = ComponentStatus.NOT_INSTALLED }
+            runOnUiThread { adapter.notifyDataSetChanged() }
+            return
+        }
+        
         Thread {
             components.forEach { component ->
                 val installed = File(component.binaryPath).exists()
