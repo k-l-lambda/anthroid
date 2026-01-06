@@ -106,8 +106,15 @@ final class TermuxInstaller {
 
         // If prefix directory exists, even if its a symlink to a valid directory and symlink is not broken/dangling
         if (FileUtils.directoryFileExists(TERMUX_PREFIX_DIR_PATH, true)) {
+            // Also check if bin directory exists with essential binaries - if not, force re-extraction
+            File binDir = new File(TERMUX_PREFIX_DIR_PATH, "bin");
+            File bashBinary = new File(binDir, "bash");
+            boolean hasBinaries = binDir.exists() && bashBinary.exists();
+
             if (TermuxFileUtils.isTermuxPrefixDirectoryEmpty()) {
                 Logger.logInfo(LOG_TAG, "The termux prefix directory \"" + TERMUX_PREFIX_DIR_PATH + "\" exists but is empty or only contains specific unimportant files.");
+            } else if (!hasBinaries) {
+                Logger.logInfo(LOG_TAG, "The termux prefix directory exists but bin directory is missing or incomplete. Will re-extract bootstrap.");
             } else {
                 whenDone.run();
                 return;

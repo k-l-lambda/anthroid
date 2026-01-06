@@ -152,6 +152,17 @@ class MainPagerActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Check if bootstrap is needed - redirect to Terminal if so
+        val binDir = java.io.File("/data/data/com.anthroid/files/usr/bin")
+        val bashBinary = java.io.File(binDir, "bash")
+        if (!binDir.exists() || !bashBinary.exists()) {
+            Log.d(TAG, "Bootstrap not complete, redirecting to Terminal")
+            startActivity(Intent(this, TermuxActivity::class.java))
+            finish()
+            return
+        }
+
         setContentView(R.layout.activity_main_pager)
         
         // Check and request required permissions for Android tools
