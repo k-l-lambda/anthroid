@@ -4,6 +4,8 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.ProgressDialog;
 import android.content.Context;
+import android.content.res.AssetManager;
+import android.content.res.AssetManager;
 import android.os.Build;
 import android.os.Environment;
 import android.system.Os;
@@ -269,6 +271,9 @@ final class TermuxInstaller {
                     // Create set_wrapper utility script for easy Claude CLI configuration
                     ensureSetWrapperScript(activity);
 
+                    // Install Claude Code CLI from assets
+                    installClaudeCode(activity);
+
                     // Create first-boot script to install default packages (openssh, etc.)
                     createFirstBootScript();
 
@@ -432,6 +437,60 @@ final class TermuxInstaller {
      * Only creates if it doesn't already exist to preserve user configuration.
      * Usage: set_wrapper <base_url> <auth_token> <model>
      */
+
+    /**
+     * Installs Claude Code CLI from bundled assets to the correct location.
+     * Creates the node_modules directory structure and copies cli.js, etc.
+     */
+    public static void installClaudeCode(Context context) {
+        try {
+            String claudeCodeDir = TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/lib/node_modules/@anthropic-ai/claude-code";
+            File targetDir = new File(claudeCodeDir);
+
+            // Create directory structure
+            if (!targetDir.exists()) {
+                targetDir.mkdirs();
+            }
+
+            // Copy files from assets
+            AssetManager assetManager = context.getAssets();
+            String[] files = assetManager.list("claude-code");
+            if (files != null) {
+                for (String filename : files) {
+                    java.io.InputStream is = assetManager.open("claude-code/" + filename);
+                    File outFile = new File(targetDir, filename);
+                    FileOutputStream fos = new FileOutputStream(outFile);
+                    byte[] buffer = new byte[8192];
+                    int read;
+                    while ((read = is.read(buffer)) != -1) {
+                        fos.write(buffer, 0, read);
+                    }
+                    fos.close();
+                    is.close();
+
+                    // Make cli.js executable
+                    if (filename.equals("cli.js")) {
+                        Os.chmod(outFile.getAbsolutePath(), 0755);
+                    }
+                }
+            }
+
+            // Create claude wrapper script in bin
+            File binDir = new File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH);
+            File claudeWrapper = new File(binDir, "claude");
+            String wrapperContent = "#!/data/data/com.anthroid/files/usr/bin/bash\n" +
+                "exec /data/data/com.anthroid/files/usr/bin/node /data/data/com.anthroid/files/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js \"$@\"\n";
+            FileOutputStream fos = new FileOutputStream(claudeWrapper);
+            fos.write(wrapperContent.getBytes("UTF-8"));
+            fos.close();
+            Os.chmod(claudeWrapper.getAbsolutePath(), 0755);
+
+            Logger.logInfo(LOG_TAG, "Installed Claude Code CLI to " + claudeCodeDir);
+        } catch (Exception e) {
+            Logger.logWarn(LOG_TAG, "Failed to install Claude Code CLI: " + e.getMessage());
+        }
+    }
+
     public static void ensureSetWrapperScript(Context context) {
         try {
             File binDir = new File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH);
