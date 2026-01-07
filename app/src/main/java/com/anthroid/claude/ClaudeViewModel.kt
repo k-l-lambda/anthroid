@@ -50,6 +50,10 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
     private val _pendingImages = MutableStateFlow<List<MessageImage>>(emptyList())
     val pendingImages: StateFlow<List<MessageImage>> = _pendingImages.asStateFlow()
 
+    // Current tool being executed (for overlay display)
+    private val _currentTool = MutableStateFlow<String?>(null)
+    val currentTool: StateFlow<String?> = _currentTool.asStateFlow()
+
     // Use CLI or API
     private var useCliMode = false
 
@@ -90,6 +94,8 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                         }
                     }
                 }
+                // Clear current tool after MCP completion
+                _currentTool.value = null
             }
         }
     }
@@ -441,6 +447,9 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         )
         _messages.value = _messages.value + toolMessage
 
+        // Set current tool for overlay display
+        _currentTool.value = event.name
+
         // MCP tools (mcp__*) are handled by the MCP server via HTTP callback
         // Don't execute them locally - just show streaming state until callback updates it
         if (event.name.startsWith("mcp__")) {
@@ -485,6 +494,9 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 )
                 else msg
             }
+
+            // Clear current tool after completion
+            _currentTool.value = null
 
             // Send tool result back to Claude
             if (useCliMode) {

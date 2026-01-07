@@ -92,6 +92,7 @@ class MainPagerActivity : AppCompatActivity() {
             permissions.add(Manifest.permission.READ_MEDIA_AUDIO)
         } else {
             permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
 
         return permissions.toTypedArray()

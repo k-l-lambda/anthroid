@@ -36,6 +36,7 @@ import com.anthroid.vpn.ProxyVpnService;
 import com.anthroid.vpn.VpnSettingsHelper;
 import com.anthroid.capture.ScreenCaptureService;
 import com.anthroid.capture.ScreenCapturePermissionActivity;
+import com.anthroid.accessibility.ScreenAutomationOverlay;
 import tun.proxy.service.Tun2HttpVpnService;
 import com.anthroid.R;
 import com.anthroid.shared.activities.ReportActivity;
@@ -115,6 +116,7 @@ public class SettingsActivity extends AppCompatActivity {
             configureAsrModelPreference(context);
             configureVpnProxyPreference(context);
             configureScreenCapturePreference(context);
+            configureOverlayPreference(context);
 
             new Thread() {
                 @Override
@@ -212,6 +214,24 @@ public class SettingsActivity extends AppCompatActivity {
                 pref.setSummary("Enabled - tap to disable");
             } else {
                 pref.setSummary("Tap to enable screenshots and audio capture");
+            }
+        }
+        private void configureOverlayPreference(@NonNull Context context) {
+            Preference overlayPref = findPreference("overlay_permission");
+            if (overlayPref != null) {
+                updateOverlayStatus(overlayPref);
+                overlayPref.setOnPreferenceClickListener(preference -> {
+                    ScreenAutomationOverlay.Companion.requestOverlayPermission(context);
+                    return true;
+                });
+            }
+        }
+
+        private void updateOverlayStatus(Preference pref) {
+            if (ScreenAutomationOverlay.Companion.hasOverlayPermission(getContext())) {
+                pref.setSummary("Enabled");
+            } else {
+                pref.setSummary("Tap to enable automation status banner");
             }
         }
 

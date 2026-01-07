@@ -28,6 +28,12 @@
             app:summary="Grant permission for screenshots and audio recording"
             app:persistent="false"/>
 
+        <Preference
+            app:key="overlay_permission"
+            app:title="Display Over Other Apps"
+            app:summary="Show automation status banner when agent works in other apps"
+            app:persistent="false"/>
+
     </PreferenceCategory>
 
     <PreferenceCategory
