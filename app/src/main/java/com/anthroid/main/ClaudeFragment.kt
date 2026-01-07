@@ -403,8 +403,16 @@ class ClaudeFragment : Fragment() {
                 val overlay = ScreenAutomationOverlay.getInstance(requireContext())
                 if (isProcessing || hasStreamingMessages) {
                     // Still actively processing - show active overlay
-                    Log.i(TAG, "Showing active overlay on pause")
-                    overlay.show("Agent working...") {
+                    // Use current tool name if available, otherwise generic message
+                    val currentTool = viewModel.currentTool.value
+                    val displayText = if (currentTool != null) {
+                        val toolName = currentTool.replace("mcp__anthroid__", "").replace("mcp__", "")
+                        "🔧 $toolName"
+                    } else {
+                        "Agent working..."
+                    }
+                    Log.i(TAG, "Showing active overlay on pause: $displayText")
+                    overlay.show(displayText) {
                         viewModel.cancelRequest()
                     }
                 } else {
@@ -496,6 +504,27 @@ class ClaudeFragment : Fragment() {
                         overlay.updateText(displayText.replace("\n", " "))
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to update overlay text", e)
+                    }
+                }
+            }
+        }
+
+        // Observe current tool to update overlay banner with tool name
+        lifecycleScope.launch {
+            viewModel.currentTool.collectLatest { toolName ->
+                if (toolName != null) {
+                    try {
+                        val overlay = ScreenAutomationOverlay.getInstance(requireContext())
+                        // Strip MCP prefixes for cleaner display
+                        val displayName = toolName.replace("mcp__anthroid__", "")
+                            .replace("mcp__", "")
+                        Log.d(TAG, "currentTool: $displayName")
+                        // Use show() instead of updateText() to ensure overlay is visible
+                        overlay.show("🔧 $displayName") {
+                            viewModel.cancelRequest()
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to update overlay with tool name", e)
                     }
                 }
             }
