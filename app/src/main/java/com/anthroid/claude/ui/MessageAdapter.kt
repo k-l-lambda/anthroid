@@ -214,19 +214,16 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
                 message.isStreaming -> {
                     // Running: light blue
                     toolBubble.setBackgroundResource(R.drawable.bg_message_tool_running)
-                    toolIcon.setTextColor(context.getColor(R.color.tool_running_icon))
                     toolName.setTextColor(context.getColor(R.color.tool_running_name))
                 }
                 message.isError -> {
                     // Error: red
                     toolBubble.setBackgroundResource(R.drawable.bg_message_tool_error)
-                    toolIcon.setTextColor(context.getColor(R.color.tool_error_icon))
                     toolName.setTextColor(context.getColor(R.color.tool_error_name))
                 }
                 else -> {
                     // Success: green
                     toolBubble.setBackgroundResource(R.drawable.bg_message_tool)
-                    toolIcon.setTextColor(context.getColor(R.color.tool_icon_color))
                     toolName.setTextColor(context.getColor(R.color.tool_name_color))
                 }
             }

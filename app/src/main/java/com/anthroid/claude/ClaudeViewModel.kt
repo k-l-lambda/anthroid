@@ -430,6 +430,13 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         )
         _messages.value = _messages.value + toolMessage
 
+        // MCP tools (mcp__*) are handled by the MCP server via HTTP callback
+        // Don't execute them locally - just show streaming state until callback updates it
+        if (event.name.startsWith("mcp__")) {
+            Log.d(TAG, "MCP tool \${event.name} - waiting for server callback")
+            return
+        }
+
         viewModelScope.launch {
             // In CLI mode, tool execution happens but CLI doesn't receive results
             // because CLI uses MCP protocol which we haven't implemented
@@ -437,16 +444,26 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 Log.w(TAG, "Tool '${event.name}' called in CLI mode - results may not be sent back to Claude")
             }
 
-            val result = when {
-                event.name.lowercase() == "run_termux" -> executeRunTermuxTool(event.input)
-                event.name.lowercase() == "bash" -> executeBashTool(event.input)
-                event.name.lowercase() == "read" -> executeReadTool(event.input)
-                event.name.lowercase() == "write" -> executeWriteTool(event.input)
-                event.name.lowercase() == "read_terminal" -> executeReadTerminalTool(event.input)
-                event.name.lowercase() == "read_clipboard" -> executeReadClipboardTool()
-                event.name.lowercase() == "write_clipboard" -> executeWriteClipboardTool(event.input)
-                androidTools.isAndroidTool(event.name) -> androidTools.executeTool(event.name, event.input)
-                else -> "Tool '${event.name}' not supported"
+            // Check if we can execute this tool locally
+            val toolName = event.name.lowercase()
+            val isLocalTool = toolName in listOf("run_termux", "bash", "read", "write", "read_terminal", "read_clipboard", "write_clipboard") ||
+                              androidTools.isAndroidTool(event.name)
+            
+            // For unknown/CLI-handled tools, just keep streaming and return
+            if (!isLocalTool) {
+                Log.d(TAG, "CLI-handled tool ${event.name} - keeping streaming state")
+                return@launch
+            }
+            
+            val result = when (toolName) {
+                "run_termux" -> executeRunTermuxTool(event.input)
+                "bash" -> executeBashTool(event.input)
+                "read" -> executeReadTool(event.input)
+                "write" -> executeWriteTool(event.input)
+                "read_terminal" -> executeReadTerminalTool(event.input)
+                "read_clipboard" -> executeReadClipboardTool()
+                "write_clipboard" -> executeWriteClipboardTool(event.input)
+                else -> androidTools.executeTool(event.name, event.input)
             }
 
             // Update tool message to show completed with result

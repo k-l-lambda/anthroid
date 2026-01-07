@@ -23,15 +23,14 @@
         app:layout_constraintWidth_max="wrap"
         app:layout_constraintHorizontal_bias="0.0">
 
-        <!-- Tool icon circle -->
+        <!-- Tool icon -->
         <TextView
             android:id="@+id/tool_icon"
             android:layout_width="24dp"
             android:layout_height="24dp"
             android:gravity="center"
-            android:text="○"
-            android:textColor="@color/tool_icon_color"
-            android:textSize="18sp" />
+            android:text="🔧"
+            android:textSize="16sp" />
 
         <!-- Tool name -->
         <TextView
