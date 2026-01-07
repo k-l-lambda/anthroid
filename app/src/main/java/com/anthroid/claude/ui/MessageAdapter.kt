@@ -188,12 +188,14 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
     }
 
     class ToolViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        private val toolBubble: View = itemView.findViewById(R.id.tool_bubble)
+        private val toolIcon: TextView = itemView.findViewById(R.id.tool_icon)
         private val toolName: TextView = itemView.findViewById(R.id.tool_name)
         private val toolInput: TextView = itemView.findViewById(R.id.tool_input)
         private val streamingIndicator: ProgressBar? = itemView.findViewById(R.id.streaming_indicator)
 
         fun bind(message: Message) {
-            Log.d(TAG, "bind tool: id=${message.id.take(8)}, name=${message.toolName}, streaming=${message.isStreaming}")
+            Log.d(TAG, "bind tool: id=${message.id.take(8)}, name=${message.toolName}, streaming=${message.isStreaming}, error=${message.isError}")
             updateContent(message)
         }
 
@@ -205,6 +207,29 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
             toolName.text = displayName
             toolInput.text = message.toolInput ?: message.content
             streamingIndicator?.visibility = if (message.isStreaming) View.VISIBLE else View.GONE
+
+            // Update colors based on state
+            val context = itemView.context
+            when {
+                message.isStreaming -> {
+                    // Running: light blue
+                    toolBubble.setBackgroundResource(R.drawable.bg_message_tool_running)
+                    toolIcon.setTextColor(context.getColor(R.color.tool_running_icon))
+                    toolName.setTextColor(context.getColor(R.color.tool_running_name))
+                }
+                message.isError -> {
+                    // Error: red
+                    toolBubble.setBackgroundResource(R.drawable.bg_message_tool_error)
+                    toolIcon.setTextColor(context.getColor(R.color.tool_error_icon))
+                    toolName.setTextColor(context.getColor(R.color.tool_error_name))
+                }
+                else -> {
+                    // Success: green
+                    toolBubble.setBackgroundResource(R.drawable.bg_message_tool)
+                    toolIcon.setTextColor(context.getColor(R.color.tool_icon_color))
+                    toolName.setTextColor(context.getColor(R.color.tool_name_color))
+                }
+            }
         }
     }
 

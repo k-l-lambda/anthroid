@@ -28,4 +28,14 @@
     <color name="tool_icon_color">#22C55E</color>
     <color name="tool_name_color">#166534</color>
     <color name="tool_input_color">#374151</color>
+    <!-- Tool message colors - Running (light blue) -->
+    <color name="tool_running_bg">#EFF6FF</color>
+    <color name="tool_running_border">#93C5FD</color>
+    <color name="tool_running_icon">#3B82F6</color>
+    <color name="tool_running_name">#1E40AF</color>
+    <!-- Tool message colors - Error (red) -->
+    <color name="tool_error_bg">#FEF2F2</color>
+    <color name="tool_error_border">#FCA5A5</color>
+    <color name="tool_error_icon">#EF4444</color>
+    <color name="tool_error_name">#991B1B</color>
 </resources>
