@@ -30,6 +30,9 @@ class McpServer(
         @Volatile
         private var instance: McpServer? = null
 
+        // Callback for tool completion events
+        var onToolComplete: ((toolName: String, isError: Boolean) -> Unit)? = null
+
         fun getInstance(context: Context): McpServer {
             return instance ?: synchronized(this) {
                 instance ?: McpServer(context.applicationContext).also { instance = it }
@@ -315,6 +318,9 @@ class McpServer(
         val isError = result.startsWith("Error:") ||
                       result.startsWith("Unknown tool:") ||
                       (result.startsWith("{") && result.contains("\"success\": false"))
+
+        // Notify listener about tool completion
+        onToolComplete?.invoke(toolName, isError)
 
         return JSONObject().apply {
             put("content", JSONArray().put(JSONObject().apply {

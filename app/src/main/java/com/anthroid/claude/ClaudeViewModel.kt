@@ -9,6 +9,7 @@ import com.anthroid.BuildConfig
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import com.anthroid.mcp.McpServer
 
 /**
  * ViewModel for Claude chat interface.
@@ -60,6 +61,37 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
 
     init {
         checkClaudeInstallation()
+
+        // Set up MCP server callback to handle tool completion events
+        McpServer.onToolComplete = { toolName, isError ->
+            Log.d(TAG, "MCP onToolComplete: tool=$toolName, isError=$isError")
+            viewModelScope.launch {
+                if (isError) {
+                    // Update the most recent tool message with this name to show error
+                    _messages.value = _messages.value.map { msg ->
+                        if (msg.role == MessageRole.TOOL &&
+                            msg.toolName?.contains(toolName) == true &&
+                            !msg.isError) {
+                            Log.d(TAG, "Setting isError=true for tool message: ${msg.id}")
+                            msg.copy(isStreaming = false, isError = true)
+                        } else {
+                            msg
+                        }
+                    }
+                } else {
+                    // Mark streaming tool as complete (success)
+                    _messages.value = _messages.value.map { msg ->
+                        if (msg.role == MessageRole.TOOL &&
+                            msg.toolName?.contains(toolName) == true &&
+                            msg.isStreaming) {
+                            msg.copy(isStreaming = false)
+                        } else {
+                            msg
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /**
