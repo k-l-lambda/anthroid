@@ -394,7 +394,7 @@ Enable Claude to interact with phone screen - read content, take screenshots, cl
 - [x] Persistent overlay until agent session ends
 
 **Pending:**
-- [ ] Add permission management UI in Settings
+- [x] Add permission management UI in Settings (overlay permission, Jan 2026)
 - [ ] Create ScreenCaptureManager.kt for screenshots
 - [ ] Implement take_screenshot tool
 - [ ] Implement audio capture (API 29+)
@@ -537,7 +537,7 @@ User opens Anthroid Settings
 - [x] Persistent overlay until agent session ends
 - [ ] Create ScreenCaptureManager.kt
 - [ ] Implement take_screenshot tool
-- [ ] Add permission management UI in Settings
+- [x] Add permission management UI in Settings (overlay permission, Jan 2026)
 - [ ] Implement audio capture (API 29+)
 - [ ] Test cross-app automation
 
@@ -585,6 +585,8 @@ app/src/main/java/com/anthroid/
 | M8 | ⏳ | Production-ready release |
 | M9 | ✅ Done | Per-app VPN proxy tool |
 | M10 | 🚧 In Progress | Screen automation tools |
+| M11 | ✅ Done | Custom WebSearch/WebFetch |
+| M12 | ⏳ Planned | AskUserQuestion tool |
 
 ---
 
@@ -599,7 +601,7 @@ app/src/main/java/com/anthroid/
 
 ---
 
-### Phase 11: Custom WebSearch and Proxy Fetch (In Progress)
+### Phase 11: Custom WebSearch and Proxy Fetch (Complete)
 
 Re-implement server-side tools for third-party API compatibility.
 
@@ -631,10 +633,10 @@ When using custom base URL (e.g., proxy API), WebSearch fails because the server
 
 #### Tasks
 
-- [ ] Implement WebSearch with SerpAPI in cli.js
-- [ ] Add proxy parameter to WebFetch tool
-- [ ] Copy updated cli.js to assets
-- [ ] Test with custom base URL
+- [x] Implement WebSearch with SerpAPI in cli.js
+- [x] Add proxy parameter to WebFetch tool
+- [x] Copy updated cli.js to assets
+- [x] Test with custom base URL
 
 #### SerpAPI Integration
 
@@ -678,3 +680,142 @@ async call(input) {
 const agent = proxy ? new HttpsProxyAgent(proxy) : undefined;
 const response = await fetch(url, { agent });
 ```
+
+---
+
+### Phase 12: AskUserQuestion Tool (Planned)
+
+Enable Claude to ask the user multiple-choice questions for clarification, preferences, and decisions.
+
+#### Background
+
+Claude Code CLI has an `AskUserQuestion` tool that lets Claude gather information from users via multiple-choice questions. This is essential for:
+- Clarifying ambiguous instructions
+- Getting user preferences on implementation choices
+- Making decisions during task execution
+- Offering choices about direction
+
+Currently not supported in Anthroid because the CLI tool requires terminal-based UI interaction.
+
+#### Schema (from claude-code/cli.js)
+
+```kotlin
+data class AskUserQuestionInput(
+    val questions: List<Question>,      // 1-4 questions
+    val answers: Map<String, String>?   // Optional, filled by UI
+)
+
+data class Question(
+    val question: String,       // Full question text, e.g. "Which auth method?"
+    val header: String,         // Short label (max 12 chars), e.g. "Auth method"
+    val options: List<Option>,  // 2-4 options
+    val multiSelect: Boolean    // Allow multiple selections
+)
+
+data class Option(
+    val label: String,          // Display text (1-5 words)
+    val description: String     // Explanation of what option means
+)
+```
+
+#### Tool Result Format
+
+```
+"User has answered your questions: "${q1}"="${a1}", "${q2}"="${a2}"..."
+```
+
+#### Implementation Plan (Option A: Dialog-based UI)
+
+**1. Create AskUserQuestionActivity.kt**
+```kotlin
+class AskUserQuestionActivity : AppCompatActivity() {
+    // Display questions one at a time in a ViewPager or scroll view
+    // Each question shows:
+    //   - Header as chip/tag
+    //   - Question text
+    //   - RadioGroup (single select) or CheckboxGroup (multi select)
+    //   - "Other" option with EditText for custom input
+    //   - Next/Previous buttons
+    //   - Submit button on last question
+    
+    companion object {
+        const val EXTRA_QUESTIONS = "questions"  // JSON serialized
+        const val EXTRA_ANSWERS = "answers"      // Result JSON
+    }
+}
+```
+
+**2. Layout: activity_ask_user_question.xml**
+```xml
+<!-- ViewPager2 or NestedScrollView for questions -->
+<!-- Each question card:
+     - MaterialChip for header
+     - TextView for question
+     - RadioGroup/CheckboxGroup for options
+     - TextInputEditText for "Other"
+     - Navigation buttons -->
+```
+
+**3. Update ClaudeViewModel.kt**
+- Add `_pendingQuestion` StateFlow for question UI trigger
+- Handle `ask_user_question` tool call
+- Launch AskUserQuestionActivity via ActivityResultLauncher
+- Send answers back to Claude API
+
+**4. Update ClaudeApiClient.kt**
+- Add `ask_user_question` tool definition with schema
+- Handle tool result with user answers
+
+**5. Integration Flow**
+```
+Claude sends AskUserQuestion tool
+    │
+    ▼
+ClaudeViewModel receives ToolUse event
+    │
+    ▼
+Launch AskUserQuestionActivity with questions JSON
+    │
+    ▼
+User answers questions (radio/checkbox/text)
+    │
+    ▼
+Activity returns answers map
+    │
+    ▼
+ClaudeViewModel sends tool result to API
+    │
+    ▼
+Claude continues with user's answers
+```
+
+#### Files to Create
+
+| File | Description |
+|------|-------------|
+| `AskUserQuestionActivity.kt` | Question display and answer collection UI |
+| `activity_ask_user_question.xml` | Layout with ViewPager/scroll |
+| `item_question.xml` | Single question card layout |
+
+#### Files to Modify
+
+| File | Change |
+|------|--------|
+| `ClaudeViewModel.kt` | Handle ask_user_question tool, launch activity |
+| `ClaudeApiClient.kt` | Add tool definition |
+| `ClaudeFragment.kt` | Register ActivityResultLauncher |
+| `AndroidManifest.xml` | Register AskUserQuestionActivity |
+
+#### Tasks
+
+- [ ] Create AskUserQuestionActivity.kt skeleton
+- [ ] Create activity_ask_user_question.xml layout
+- [ ] Create item_question.xml for question cards
+- [ ] Implement single question display with options
+- [ ] Implement "Other" text input option
+- [ ] Implement multi-select support (checkboxes)
+- [ ] Add navigation between questions
+- [ ] Add tool definition to ClaudeApiClient.kt
+- [ ] Handle tool call in ClaudeViewModel.kt
+- [ ] Register ActivityResultLauncher in ClaudeFragment.kt
+- [ ] Test with Claude asking questions
