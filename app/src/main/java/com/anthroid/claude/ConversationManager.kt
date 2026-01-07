@@ -42,7 +42,8 @@ class ConversationManager(private val context: Context) {
         val content: String,
         val timestamp: Long,
         val toolName: String? = null,
-        val toolInput: String? = null
+        val toolInput: String? = null,
+        val isError: Boolean = false
     )
 
     /**
@@ -205,6 +206,40 @@ class ConversationManager(private val context: Context) {
             return@withContext emptyList()
         }
 
+        // First pass: collect tool_result error status by tool_use_id
+        // tool_result is in user messages, tool_use is in assistant messages
+        val toolErrorMap = mutableMapOf<String, Boolean>()
+
+        file.useLines { lines ->
+            for (line in lines) {
+                if (line.isBlank()) continue
+                try {
+                    val json = JSONObject(line)
+                    val message = json.optJSONObject("message")
+                    val contentArray = message?.optJSONArray("content")
+                    if (contentArray != null) {
+                        for (i in 0 until contentArray.length()) {
+                            val item = contentArray.optJSONObject(i)
+                            val itemType = item?.optString("type") ?: ""
+                            if (itemType == "tool_result") {
+                                val toolUseId = item.optString("tool_use_id", "")
+                                val isError = item.optBoolean("is_error", false)
+                                if (toolUseId.isNotEmpty()) {
+                                    toolErrorMap[toolUseId] = isError
+                                    Log.d(TAG, "Found tool_result: id=$toolUseId, isError=$isError")
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Ignore parse errors in first pass
+                }
+            }
+        }
+
+        Log.d(TAG, "Collected ${toolErrorMap.size} tool results")
+
+        // Second pass: build messages, matching tool_use with tool_result
         file.useLines { lines ->
             for (line in lines) {
                 if (line.isBlank()) continue
@@ -223,16 +258,25 @@ class ConversationManager(private val context: Context) {
 
                     var toolName: String? = null
                     var toolInput: String? = null
+                    var toolUseId: String? = null
+                    var isError = false
+
                     if (message != null) {
                         val contentArray = message.optJSONArray("content")
                         if (contentArray != null) {
                             for (i in 0 until contentArray.length()) {
                                 val item = contentArray.optJSONObject(i)
-                                if (item?.optString("type") == "tool_use") {
+                                val itemType = item?.optString("type") ?: ""
+                                if (itemType == "tool_use") {
                                     toolName = item.optString("name", "")
+                                    toolUseId = item.optString("id", "")
                                     val input = item.optJSONObject("input")
                                     toolInput = input?.toString()
-                                    break
+                                    // Look up error status from tool_result
+                                    if (toolUseId != null && toolUseId.isNotEmpty()) {
+                                        isError = toolErrorMap[toolUseId] ?: false
+                                        Log.d(TAG, "Tool $toolName (id=$toolUseId) isError=$isError")
+                                    }
                                 }
                             }
                         }
@@ -245,7 +289,8 @@ class ConversationManager(private val context: Context) {
                             content = content,
                             timestamp = timestamp,
                             toolName = toolName,
-                            toolInput = toolInput
+                            toolInput = toolInput,
+                            isError = isError
                         ))
                     }
                 } catch (e: Exception) {

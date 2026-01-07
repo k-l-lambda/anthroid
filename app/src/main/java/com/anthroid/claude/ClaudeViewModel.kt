@@ -779,12 +779,18 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                         timestamp = msg.timestamp
                     )
                     "assistant" -> if (msg.toolName != null) {
+                        // Use isError from ConversationManager (parsed from tool_result)
+                        val isToolError = msg.isError ||
+                                          msg.content.contains("\"success\": false") ||
+                                          msg.content.contains("\"success\":false") ||
+                                          msg.content.startsWith("Error:")
                         Message(
                             role = MessageRole.TOOL,
                             content = msg.content,
                             timestamp = msg.timestamp,
                             toolName = msg.toolName,
-                            toolInput = msg.toolInput
+                            toolInput = msg.toolInput,
+                            isError = isToolError
                         )
                     } else if (msg.content.isNotEmpty()) {
                         Message(
