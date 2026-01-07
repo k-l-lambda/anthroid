@@ -261,6 +261,17 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
 
             is ClaudeEvent.TextDelta -> {
                 Log.d(TAG, "TextDelta received: ${event.content.take(50)}")
+
+                // Mark any streaming tool messages as timed out/error
+                // If agent is outputting text, previous tools should have completed
+                _messages.value = _messages.value.map { msg ->
+                    if (msg.role == MessageRole.TOOL && msg.isStreaming) {
+                        Log.d(TAG, "Marking tool as timed out: ${msg.toolName}")
+                        msg.copy(isStreaming = false, isError = true)
+                    } else {
+                        msg
+                    }
+                }
                 // If streamingMessageId is null (e.g., after tool use), create new streaming message
                 if (streamingMessageId == null) {
                     Log.d(TAG, "Creating new streaming message for post-tool response")
