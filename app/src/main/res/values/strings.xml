@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 
 <!DOCTYPE resources [
     <!ENTITY TERMUX_PACKAGE_NAME "com.anthroid">
@@ -139,8 +139,8 @@
     <string name="title_activity_termux_settings">&TERMUX_APP_NAME; Settings</string>
 
     <!-- Termux App Preferences -->
-    <string name="termux_preferences_title">&TERMUX_APP_NAME;</string>
-    <string name="termux_preferences_summary">Preferences for &TERMUX_APP_NAME; app</string>
+    <string name="termux_preferences_title">Termux</string>
+    <string name="termux_preferences_summary">Terminal preferences for &TERMUX_APP_NAME; app</string>
 
         <!-- Debugging Preferences -->
         <string name="termux_debugging_preferences_title">Debugging</string>
