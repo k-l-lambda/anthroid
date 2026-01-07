@@ -293,5 +293,20 @@ task downloadBootstraps() {
 afterEvaluate {
     android.applicationVariants.all { variant ->
         variant.javaCompileProvider.get().dependsOn(downloadBootstraps)
+        // Make mergeAssets depend on copyClaudeCode
+        def mergeAssetsTask = tasks.findByName("merge${variant.name.capitalize()}Assets")
+        if (mergeAssetsTask) {
+            mergeAssetsTask.dependsOn(copyClaudeCode)
+        }
     }
+}
+
+// Copy claude-code files from root to assets during build
+task copyClaudeCode(type: Copy) {
+    from "${rootProject.projectDir}/claude-code"
+    into "${projectDir}/src/main/assets/claude-code"
+    include "cli.js"
+    include "anthroid-config.js"
+    include "package.json"
+    include "resvg.wasm"
 }

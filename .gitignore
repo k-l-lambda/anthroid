@@ -19,6 +19,9 @@ captures/
 # Bootstrap zips (downloaded during build)
 app/src/main/cpp/bootstrap-*.zip
 
+# Claude Code assets (copied from root during build)
+app/src/main/assets/claude-code/
+
 # Keystore (keep testkey, ignore real release keys)
 *.jks
 !app/testkey_untrusted.jks

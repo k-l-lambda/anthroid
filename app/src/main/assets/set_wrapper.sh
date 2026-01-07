@@ -21,6 +21,7 @@ export LD_LIBRARY_PATH=/data/data/com.anthroid/files/usr/lib
 export ANTHROPIC_BASE_URL="$BASE_URL"
 export ANTHROPIC_AUTH_TOKEN="$AUTH_TOKEN"
 export ANTHROPIC_MODEL="$MODEL"
+export ANTHROPIC_SMALL_FAST_MODEL="$MODEL"
 exec node \$PREFIX/lib/node_modules/@anthropic-ai/claude-code/cli.js "\$@"
 WRAPPER_EOF
 
