@@ -109,6 +109,7 @@ android {
         externalNativeBuild {
             ndkBuild {
                 cFlags "-std=c11", "-Wall", "-Wextra", "-Werror", "-Os", "-fno-stack-protector", "-Wl,--gc-sections"
+                abiFilters 'arm64-v8a'
             }
         }
 
@@ -297,6 +298,11 @@ afterEvaluate {
         def mergeAssetsTask = tasks.findByName("merge${variant.name.capitalize()}Assets")
         if (mergeAssetsTask) {
             mergeAssetsTask.dependsOn(copyClaudeCode)
+        }
+        // Make lint tasks depend on copyClaudeCode
+        def lintAnalyzeTask = tasks.findByName("lintVitalAnalyze${variant.name.capitalize()}")
+        if (lintAnalyzeTask) {
+            lintAnalyzeTask.dependsOn(copyClaudeCode)
         }
     }
 }
