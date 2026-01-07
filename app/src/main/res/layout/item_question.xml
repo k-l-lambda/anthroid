@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="16dp"
+    app:cardElevation="2dp"
+    app:cardCornerRadius="8dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <!-- Header chip -->
+        <TextView
+            android:id="@+id/question_header"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_chip"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="4dp"
+            android:textSize="12sp"
+            android:textColor="@android:color/white"
+            android:visibility="gone"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Question text -->
+        <TextView
+            android:id="@+id/question_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="16sp"
+            android:textColor="@android:color/black"
+            android:textStyle="bold"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Options container (populated programmatically) -->
+        <LinearLayout
+            android:id="@+id/options_container"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+        <!-- "Other" radio button for single select -->
+        <RadioButton
+            android:id="@+id/other_radio"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Other"
+            android:visibility="gone" />
+
+        <!-- "Other" checkbox for multi-select -->
+        <CheckBox
+            android:id="@+id/other_check"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Other"
+            android:visibility="gone" />
+
+        <!-- "Other" text input -->
+        <EditText
+            android:id="@+id/other_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Please specify..."
+            android:inputType="text"
+            android:visibility="gone"
+            android:layout_marginTop="8dp"
+            android:layout_marginStart="32dp" />
+
+    </LinearLayout>
+
+</androidx.cardview.widget.CardView>

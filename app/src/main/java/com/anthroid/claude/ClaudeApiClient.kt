@@ -404,7 +404,67 @@ class ClaudeApiClient(private val context: Context) {
         tools.put(createTool("read_terminal", "Read the full text content from the terminal session", mapOf("session_id" to "string:Terminal session ID", "max_lines" to "integer:Maximum number of lines to return (0 for all)")))
         tools.put(createTool("read_clipboard", "Read text from the device clipboard", mapOf()))
         tools.put(createTool("write_clipboard", "Write text to the device clipboard", mapOf("text" to "string:Text to copy to clipboard"), listOf("text")))
+        tools.put(createAskUserQuestionTool())
         return tools
+    }
+
+    private fun createAskUserQuestionTool(): JSONObject {
+        return JSONObject().apply {
+            put("name", "ask_user_question")
+            put("description", "Ask the user multiple-choice questions for clarification, preferences, and decisions. Use this to gather information, clarify ambiguous instructions, or get user preferences on implementation choices.")
+            put("input_schema", JSONObject().apply {
+                put("type", "object")
+                put("properties", JSONObject().apply {
+                    put("questions", JSONObject().apply {
+                        put("type", "array")
+                        put("description", "1-4 questions to ask the user")
+                        put("minItems", 1)
+                        put("maxItems", 4)
+                        put("items", JSONObject().apply {
+                            put("type", "object")
+                            put("properties", JSONObject().apply {
+                                put("question", JSONObject().apply {
+                                    put("type", "string")
+                                    put("description", "The complete question to ask the user")
+                                })
+                                put("header", JSONObject().apply {
+                                    put("type", "string")
+                                    put("description", "Short label displayed as a chip (max 12 chars)")
+                                    put("maxLength", 12)
+                                })
+                                put("options", JSONObject().apply {
+                                    put("type", "array")
+                                    put("description", "2-4 options for the user to choose from")
+                                    put("minItems", 2)
+                                    put("maxItems", 4)
+                                    put("items", JSONObject().apply {
+                                        put("type", "object")
+                                        put("properties", JSONObject().apply {
+                                            put("label", JSONObject().apply {
+                                                put("type", "string")
+                                                put("description", "Display text for this option (1-5 words)")
+                                            })
+                                            put("description", JSONObject().apply {
+                                                put("type", "string")
+                                                put("description", "Explanation of what this option means")
+                                            })
+                                        })
+                                        put("required", JSONArray().apply { put("label"); put("description") })
+                                    })
+                                })
+                                put("multiSelect", JSONObject().apply {
+                                    put("type", "boolean")
+                                    put("description", "Allow multiple selections (default: false)")
+                                    put("default", false)
+                                })
+                            })
+                            put("required", JSONArray().apply { put("question"); put("header"); put("options"); put("multiSelect") })
+                        })
+                    })
+                })
+                put("required", JSONArray().apply { put("questions") })
+            })
+        }
     }
 
     private fun createTool(name: String, description: String, properties: Map<String, String>, required: List<String> = emptyList()): JSONObject {

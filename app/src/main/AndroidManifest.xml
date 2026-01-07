@@ -169,6 +169,12 @@
             android:label="Take Photo"
             android:theme="@style/Theme.TermuxApp.DayNight.DarkActionBar" />
 
+        <activity
+            android:name=".claude.AskUserQuestionActivity"
+            android:exported="false"
+            android:label="Claude has a question"
+            android:theme="@style/Theme.TermuxApp.DayNight.DarkActionBar" />
+
         <activity-alias
             android:name=".app.api.file.FileShareReceiverActivity"
             android:exported="true"

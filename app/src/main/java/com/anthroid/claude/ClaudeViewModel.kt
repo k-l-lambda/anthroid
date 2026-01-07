@@ -12,6 +12,15 @@ import kotlinx.coroutines.launch
 import com.anthroid.mcp.McpServer
 
 /**
+ * Data class for pending ask_user_question tool call.
+ */
+data class PendingQuestion(
+    val toolId: String,
+    val toolName: String,
+    val questionsJson: String
+)
+
+/**
  * ViewModel for Claude chat interface.
  * Manages chat state and communication with ClaudeCliClient or ClaudeApiClient.
  */
@@ -49,6 +58,10 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
     // Pending images for next message
     private val _pendingImages = MutableStateFlow<List<MessageImage>>(emptyList())
     val pendingImages: StateFlow<List<MessageImage>> = _pendingImages.asStateFlow()
+
+    // Pending question for ask_user_question tool
+    private val _pendingQuestion = MutableStateFlow<PendingQuestion?>(null)
+    val pendingQuestion: StateFlow<PendingQuestion?> = _pendingQuestion.asStateFlow()
 
     // Current tool being executed (for overlay display)
     private val _currentTool = MutableStateFlow<String?>(null)
@@ -145,6 +158,92 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
      */
     fun clearPendingImages() {
         _pendingImages.value = emptyList()
+    }
+
+    /**
+     * Send user's answers to pending question back to Claude.
+     */
+    fun sendQuestionAnswer(answersJson: String) {
+        val pending = _pendingQuestion.value ?: return
+        _pendingQuestion.value = null
+
+        Log.i(TAG, "Sending question answers: $answersJson")
+
+        // Format the result as expected by Claude
+        // "User has answered your questions: "${q1}"="${a1}", "${q2}"="${a2}"..."
+        val resultBuilder = StringBuilder("User has answered your questions: ")
+        try {
+            val answers = org.json.JSONObject(answersJson)
+            val keys = answers.keys()
+            var first = true
+            while (keys.hasNext()) {
+                val key = keys.next()
+                val value = answers.getString(key)
+                if (!first) resultBuilder.append(", ")
+                resultBuilder.append("\"$key\"=\"$value\"")
+                first = false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to format answers", e)
+            resultBuilder.append(answersJson)
+        }
+
+        val result = resultBuilder.toString()
+
+        // Update tool message to show completed
+        _messages.value = _messages.value.map { msg ->
+            if (msg.role == MessageRole.TOOL && msg.toolName == pending.toolName && msg.isStreaming) {
+                msg.copy(isStreaming = false, content = "📝 Questions answered")
+            } else {
+                msg
+            }
+        }
+
+        // Clear current tool
+        _currentTool.value = null
+
+        // Send result to Claude
+        viewModelScope.launch {
+            if (useCliMode) {
+                cliClient.sendToolResponse(pending.toolId, result)
+            } else {
+                apiClient.sendToolResult(pending.toolId, pending.toolName, result)
+                    .collect { responseEvent -> handleEvent(responseEvent) }
+            }
+        }
+    }
+
+    /**
+     * Cancel pending question (user dismissed dialog).
+     */
+    fun cancelQuestion() {
+        val pending = _pendingQuestion.value ?: return
+        _pendingQuestion.value = null
+
+        Log.i(TAG, "Question cancelled by user")
+
+        // Update tool message to show cancelled
+        _messages.value = _messages.value.map { msg ->
+            if (msg.role == MessageRole.TOOL && msg.toolName == pending.toolName && msg.isStreaming) {
+                msg.copy(isStreaming = false, content = "❌ Question cancelled", isError = true)
+            } else {
+                msg
+            }
+        }
+
+        // Clear current tool
+        _currentTool.value = null
+
+        // Send cancellation result to Claude
+        viewModelScope.launch {
+            val result = "User cancelled the question dialog without answering."
+            if (useCliMode) {
+                cliClient.sendToolResponse(pending.toolId, result)
+            } else {
+                apiClient.sendToolResult(pending.toolId, pending.toolName, result)
+                    .collect { responseEvent -> handleEvent(responseEvent) }
+            }
+        }
     }
 
     /**
@@ -449,6 +548,33 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
 
         // Set current tool for overlay display
         _currentTool.value = event.name
+
+        // Handle ask_user_question tool - requires UI interaction
+        if (event.name == "ask_user_question") {
+            Log.i(TAG, "ask_user_question tool called - triggering UI")
+            try {
+                val inputJson = org.json.JSONObject(event.input)
+                val questionsArray = inputJson.getJSONArray("questions")
+                _pendingQuestion.value = PendingQuestion(
+                    toolId = event.id,
+                    toolName = event.name,
+                    questionsJson = questionsArray.toString()
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to parse ask_user_question input", e)
+                // Send error result
+                viewModelScope.launch {
+                    val errorResult = "Error parsing questions: ${e.message}"
+                    if (useCliMode) {
+                        cliClient.sendToolResponse(event.id, errorResult)
+                    } else {
+                        apiClient.sendToolResult(event.id, event.name, errorResult)
+                            .collect { responseEvent -> handleEvent(responseEvent) }
+                    }
+                }
+            }
+            return
+        }
 
         // MCP tools (mcp__*) are handled by the MCP server via HTTP callback
         // Don't execute them locally - just show streaming state until callback updates it

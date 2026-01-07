@@ -46,6 +46,7 @@ import kotlinx.coroutines.launch
 import com.anthroid.claude.DebugReceiver
 import com.anthroid.claude.ConversationManager
 import com.anthroid.claude.ui.ConversationAdapter
+import com.anthroid.claude.AskUserQuestionActivity
 
 /**
  * Fragment for Claude AI chat interface.
@@ -112,6 +113,22 @@ class ClaudeFragment : Fragment() {
             initializeVoiceInput()
         } else {
             Toast.makeText(requireContext(), "Microphone permission required for voice input", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Launcher for AskUserQuestion activity
+    private val askUserQuestionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val answersJson = result.data?.getStringExtra(AskUserQuestionActivity.EXTRA_ANSWERS_JSON)
+            if (answersJson != null) {
+                Log.i(TAG, "User answered questions: $answersJson")
+                viewModel.sendQuestionAnswer(answersJson)
+            }
+        } else {
+            Log.i(TAG, "User cancelled question dialog")
+            viewModel.cancelQuestion()
         }
     }
 
@@ -544,6 +561,20 @@ class ClaudeFragment : Fragment() {
             viewModel.pendingImages.collect { images ->
                 updatePendingImagesView(images)
                 updateSendButtonState()
+            }
+        }
+
+        // Observe pending question for ask_user_question tool
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewModel.pendingQuestion.collectLatest { pending ->
+                if (pending != null) {
+                    Log.i(TAG, "Pending question received, launching AskUserQuestionActivity")
+                    val intent = android.content.Intent(requireContext(), AskUserQuestionActivity::class.java).apply {
+                        putExtra(AskUserQuestionActivity.EXTRA_QUESTIONS_JSON, pending.questionsJson)
+                        putExtra(AskUserQuestionActivity.EXTRA_TOOL_ID, pending.toolId)
+                    }
+                    askUserQuestionLauncher.launch(intent)
+                }
             }
         }
 
