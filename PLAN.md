@@ -596,3 +596,85 @@ app/src/main/java/com/anthroid/
 - [ML Kit Barcode Scanning](https://developers.google.com/ml-kit/vision/barcode-scanning)
 - [Android SpeechRecognizer](https://developer.android.com/reference/android/speech/SpeechRecognizer)
 - [Android TextToSpeech](https://developer.android.com/reference/android/speech/tts/TextToSpeech)
+
+---
+
+### Phase 11: Custom WebSearch and Proxy Fetch (In Progress)
+
+Re-implement server-side tools for third-party API compatibility.
+
+#### Background
+
+Original Claude Code CLI tools:
+- **WebSearch** - Server-side API tool (`web_search_20250305`), only works with Anthropic's official API
+- **WebFetch** - Client-side tool, no proxy support
+
+When using custom base URL (e.g., proxy API), WebSearch fails because the server doesn't implement `web_search_20250305`.
+
+#### Implementation Plan (Jan 2026)
+
+**1. WebSearch with SerpAPI:**
+- Replace server-side implementation with client-side SerpAPI call
+- Input: `{query, allowed_domains?, blocked_domains?}`
+- Uses `SERPAPI_API_KEY` environment variable
+- Fallback to error message if API key not set
+
+**2. WebFetch with Proxy Support:**
+- Add optional `proxy` parameter to input schema
+- Format: `http://host:port` or `http://user:pass@host:port`
+- Uses `https-proxy-agent` or axios proxy config
+
+#### Files Modified
+
+- `claude-code/cli.js` - WebSearch and WebFetch tool implementations
+- `app/src/main/assets/claude-code/cli.js` - Copy updated file
+
+#### Tasks
+
+- [ ] Implement WebSearch with SerpAPI in cli.js
+- [ ] Add proxy parameter to WebFetch tool
+- [ ] Copy updated cli.js to assets
+- [ ] Test with custom base URL
+
+#### SerpAPI Integration
+
+```javascript
+// WebSearch call() implementation
+async call(input) {
+    const { query, allowed_domains, blocked_domains } = input;
+    const apiKey = process.env.SERPAPI_API_KEY;
+    if (!apiKey) {
+        return { error: "SERPAPI_API_KEY not set" };
+    }
+
+    const params = new URLSearchParams({
+        q: query,
+        api_key: apiKey,
+        engine: "google"
+    });
+
+    const response = await fetch(`https://serpapi.com/search?${params}`);
+    const data = await response.json();
+
+    // Parse organic_results into {title, url} format
+    return { results: data.organic_results.map(r => ({
+        title: r.title,
+        url: r.link
+    })) };
+}
+```
+
+#### WebFetch Proxy Parameter
+
+```javascript
+// Input schema update
+{
+    url: string,
+    prompt: string,
+    proxy?: string  // Optional: "http://host:port" or "http://user:pass@host:port"
+}
+
+// Fetch with proxy
+const agent = proxy ? new HttpsProxyAgent(proxy) : undefined;
+const response = await fetch(url, { agent });
+```
