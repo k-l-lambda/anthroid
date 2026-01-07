@@ -311,7 +311,7 @@ class McpServer(
             }
         }
 
-        val isError = result.startsWith("Error:")
+        val isError = result.startsWith("Error:") || result.startsWith("Unknown tool:")
 
         return JSONObject().apply {
             put("content", JSONArray().put(JSONObject().apply {

@@ -87,6 +87,8 @@ class AndroidTools(private val context: Context) {
             "wait_for_element" -> waitForElement(input)
             "focus_and_input" -> focusAndInput(input)
             "get_current_app" -> getCurrentApp()
+            // Device info
+            "get_device_info" -> getDeviceInfo()
             // Screen capture tools
             "take_screenshot" -> takeScreenshot()
             "start_audio_capture" -> startAudioCapture()
@@ -111,7 +113,8 @@ class AndroidTools(private val context: Context) {
         "long_press", "press_back", "press_home", "open_recents",
         "open_notifications", "scroll", "get_accessibility_status",
         "wait_for_element", "focus_and_input", "get_current_app",
-        "take_screenshot", "start_audio_capture", "stop_audio_capture", "get_capture_status"
+        "take_screenshot", "start_audio_capture", "stop_audio_capture", "get_capture_status",
+        "get_device_info"
     )
 
     private fun openUrl(input: String): String {
@@ -760,4 +763,22 @@ class AndroidTools(private val context: Context) {
             .toString(2)
     }
 
+
+    private fun getDeviceInfo(): String {
+        return try {
+            val json = JSONObject()
+            json.put("manufacturer", Build.MANUFACTURER)
+            json.put("model", Build.MODEL)
+            json.put("device", Build.DEVICE)
+            json.put("brand", Build.BRAND)
+            json.put("product", Build.PRODUCT)
+            json.put("android_version", Build.VERSION.RELEASE)
+            json.put("sdk_int", Build.VERSION.SDK_INT)
+            json.put("hardware", Build.HARDWARE)
+            json.put("board", Build.BOARD)
+            json.toString(2)
+        } catch (e: Exception) {
+            "Error: " + e.message
+        }
+    }
 }
