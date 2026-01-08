@@ -47,6 +47,7 @@ import com.anthroid.claude.DebugReceiver
 import com.anthroid.claude.ConversationManager
 import com.anthroid.claude.ui.ConversationAdapter
 import com.anthroid.claude.AskUserQuestionActivity
+import com.anthroid.mcp.McpServer
 
 /**
  * Fragment for Claude AI chat interface.
@@ -120,15 +121,26 @@ class ClaudeFragment : Fragment() {
     private val askUserQuestionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
+        val isMcpMode = result.data?.getBooleanExtra("IS_MCP_MODE", false) ?: false
         if (result.resultCode == android.app.Activity.RESULT_OK) {
             val answersJson = result.data?.getStringExtra(AskUserQuestionActivity.EXTRA_ANSWERS_JSON)
             if (answersJson != null) {
-                Log.i(TAG, "User answered questions: $answersJson")
-                viewModel.sendQuestionAnswer(answersJson)
+                Log.i(TAG, "User answered questions: $answersJson (MCP mode: $isMcpMode)")
+                if (isMcpMode || McpServer.pendingQuestion != null) {
+                    // MCP mode - answer through McpServer
+                    McpServer.answerQuestion(answersJson)
+                } else {
+                    // API mode - answer through ViewModel
+                    viewModel.sendQuestionAnswer(answersJson)
+                }
             }
         } else {
-            Log.i(TAG, "User cancelled question dialog")
-            viewModel.cancelQuestion()
+            Log.i(TAG, "User cancelled question dialog (MCP mode: $isMcpMode)")
+            if (isMcpMode || McpServer.pendingQuestion != null) {
+                McpServer.cancelQuestion()
+            } else {
+                viewModel.cancelQuestion()
+            }
         }
     }
 
@@ -155,6 +167,7 @@ class ClaudeFragment : Fragment() {
         setupRecyclerView()
         setupVoiceInput()
         observeViewModel()
+        setupMcpQuestionCallback()
     }
 
     private fun configureApiFromPrefs() {
@@ -455,6 +468,32 @@ class ClaudeFragment : Fragment() {
             overlay.hide()
         } catch (e: Exception) {
             // Ignore
+        }
+    }
+
+
+    /**
+     * Setup MCP server callback for ask_user_question tool in CLI mode.
+     * This allows the MCP server to trigger the question dialog.
+     */
+    private fun setupMcpQuestionCallback() {
+        val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+        McpServer.onAskUserQuestion = { pending ->
+            Log.i(TAG, "MCP ask_user_question callback triggered")
+            // Post to main thread to launch activity
+            mainHandler.post {
+                try {
+                    val intent = android.content.Intent(requireContext(), AskUserQuestionActivity::class.java).apply {
+                        putExtra(AskUserQuestionActivity.EXTRA_QUESTIONS_JSON, pending.questionsJson)
+                        putExtra(AskUserQuestionActivity.EXTRA_TOOL_ID, pending.toolId)
+                        putExtra("IS_MCP_MODE", true)
+                    }
+                    askUserQuestionLauncher.launch(intent)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to launch AskUserQuestionActivity from MCP", e)
+                    McpServer.cancelQuestion()
+                }
+            }
         }
     }
 

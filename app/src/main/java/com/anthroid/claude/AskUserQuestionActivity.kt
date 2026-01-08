@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
@@ -182,11 +183,26 @@ class AskUserQuestionActivity : AppCompatActivity() {
                     orientation = RadioGroup.VERTICAL
                 }
 
+                // Track all radio buttons for manual unchecking (needed for nested layouts)
+                val allRadioButtons = mutableListOf<RadioButton>()
+
                 question.options.forEachIndexed { optIndex, option ->
                     val radioButton = RadioButton(this).apply {
                         id = View.generateViewId()
                         text = option.label
                         tag = option.label
+                    }
+                    allRadioButtons.add(radioButton)
+
+                    // Add click listener to handle nested RadioButtons
+                    radioButton.setOnClickListener {
+                        // Uncheck other radios
+                        allRadioButtons.forEach { rb -> if (rb != radioButton) rb.isChecked = false }
+                        otherRadio.isChecked = false
+                        otherInput.visibility = View.GONE
+                        // Update answer directly
+                        answers[question.question] = option.label
+                        Log.d(TAG, "Radio clicked: Q$index = ${option.label}")
                     }
 
                     if (option.description.isNotEmpty()) {
@@ -212,6 +228,17 @@ class AskUserQuestionActivity : AppCompatActivity() {
                 otherRadio.id = View.generateViewId()
                 otherRadio.visibility = View.VISIBLE
                 otherCheck.visibility = View.GONE
+                (otherRadio.parent as? ViewGroup)?.removeView(otherRadio)
+                otherRadio.setOnClickListener {
+                    // Uncheck all other radios
+                    allRadioButtons.forEach { rb -> rb.isChecked = false }
+                    otherRadio.isChecked = true
+                    otherInput.visibility = View.VISIBLE
+                    // Update answer
+                    val otherText = otherInput.text.toString().ifBlank { "Other" }
+                    answers[question.question] = otherText
+                    Log.d(TAG, "Other clicked: Q$index = $otherText")
+                }
                 radioGroup.addView(otherRadio)
 
                 radioGroup.setOnCheckedChangeListener { _, checkedId ->

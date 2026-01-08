@@ -4,10 +4,22 @@ import android.content.Context
 import android.util.Log
 import com.anthroid.claude.AndroidTools
 import fi.iki.elonen.NanoHTTPD
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
+
+/**
+ * Data class for pending ask_user_question call.
+ */
+data class McpPendingQuestion(
+    val toolId: String,
+    val questionsJson: String,
+    val deferred: CompletableDeferred<String>
+)
 
 /**
  * MCP (Model Context Protocol) Server for exposing Android tools to Claude CLI.
@@ -26,12 +38,20 @@ class McpServer(
         private const val LOCALHOST = "127.0.0.1"
         const val DEFAULT_PORT = 8765
         private const val PROTOCOL_VERSION = "2024-11-05"
+        private const val QUESTION_TIMEOUT_MS = 120000L // 2 minutes timeout for user response
 
         @Volatile
         private var instance: McpServer? = null
 
         // Callback for tool completion events
         var onToolComplete: ((toolName: String, isError: Boolean) -> Unit)? = null
+
+        // Callback for ask_user_question tool - UI should observe this
+        var onAskUserQuestion: ((McpPendingQuestion) -> Unit)? = null
+
+        // Current pending question (for answering)
+        @Volatile
+        var pendingQuestion: McpPendingQuestion? = null
 
         fun getInstance(context: Context): McpServer {
             return instance ?: synchronized(this) {
@@ -57,6 +77,33 @@ class McpServer(
             instance?.stop()
             instance = null
             Log.i(TAG, "MCP server stopped")
+        }
+
+        /**
+         * Answer the pending question from UI.
+         * @param answersJson JSON string with answers
+         */
+        fun answerQuestion(answersJson: String) {
+            val pending = pendingQuestion
+            if (pending != null) {
+                Log.i(TAG, "Question answered: $answersJson")
+                pending.deferred.complete(answersJson)
+                pendingQuestion = null
+            } else {
+                Log.w(TAG, "answerQuestion called but no pending question")
+            }
+        }
+
+        /**
+         * Cancel the pending question (user dismissed).
+         */
+        fun cancelQuestion() {
+            val pending = pendingQuestion
+            if (pending != null) {
+                Log.i(TAG, "Question cancelled by user")
+                pending.deferred.complete("__CANCELLED__")
+                pendingQuestion = null
+            }
         }
     }
 
@@ -284,8 +331,84 @@ class McpServer(
             tools.put(tool.toJson())
         }
 
+        // Add ask_user_question tool with complex nested schema
+        tools.put(createAskUserQuestionToolDef())
+
+        Log.i(TAG, "handleToolsList: total tools = ${tools.length()}")
+
         return JSONObject().apply {
             put("tools", tools)
+        }
+    }
+
+    /**
+     * Create the ask_user_question tool definition with nested schema.
+     */
+    private fun createAskUserQuestionToolDef(): JSONObject {
+        return JSONObject().apply {
+            put("name", "ask_user_question")
+            put("description", "Ask the user multiple-choice questions to gather preferences, clarify requirements, or get decisions. Each question has a header tag, question text, and 2-4 options with labels and descriptions. Use this when you need user input before proceeding.")
+            put("inputSchema", JSONObject().apply {
+                put("type", "object")
+                put("properties", JSONObject().apply {
+                    put("questions", JSONObject().apply {
+                        put("type", "array")
+                        put("description", "Array of 1-4 questions to ask the user")
+                        put("minItems", 1)
+                        put("maxItems", 4)
+                        put("items", JSONObject().apply {
+                            put("type", "object")
+                            put("properties", JSONObject().apply {
+                                put("question", JSONObject().apply {
+                                    put("type", "string")
+                                    put("description", "The question to ask")
+                                })
+                                put("header", JSONObject().apply {
+                                    put("type", "string")
+                                    put("description", "Short label/tag for the question (max 12 chars)")
+                                    put("maxLength", 12)
+                                })
+                                put("options", JSONObject().apply {
+                                    put("type", "array")
+                                    put("description", "2-4 answer options")
+                                    put("minItems", 2)
+                                    put("maxItems", 4)
+                                    put("items", JSONObject().apply {
+                                        put("type", "object")
+                                        put("properties", JSONObject().apply {
+                                            put("label", JSONObject().apply {
+                                                put("type", "string")
+                                                put("description", "Short label for the option")
+                                            })
+                                            put("description", JSONObject().apply {
+                                                put("type", "string")
+                                                put("description", "Explanation of what this option means")
+                                            })
+                                        })
+                                        put("required", JSONArray().apply {
+                                            put("label")
+                                            put("description")
+                                        })
+                                    })
+                                })
+                                put("multiSelect", JSONObject().apply {
+                                    put("type", "boolean")
+                                    put("description", "Allow multiple selections (default: false)")
+                                    put("default", false)
+                                })
+                            })
+                            put("required", JSONArray().apply {
+                                put("question")
+                                put("header")
+                                put("options")
+                            })
+                        })
+                    })
+                })
+                put("required", JSONArray().apply {
+                    put("questions")
+                })
+            })
         }
     }
 
@@ -303,6 +426,11 @@ class McpServer(
                 }))
                 put("isError", true)
             }
+        }
+
+        // Handle ask_user_question specially - requires UI interaction
+        if (toolName == "ask_user_question") {
+            return handleAskUserQuestion(arguments)
         }
 
         // Execute tool
@@ -328,6 +456,112 @@ class McpServer(
                 put("text", result)
             }))
             put("isError", isError)
+        }
+    }
+
+    /**
+     * Handle ask_user_question tool call.
+     * Blocks until user answers or timeout.
+     */
+    private fun handleAskUserQuestion(arguments: JSONObject): JSONObject {
+        val questionsArray = arguments.optJSONArray("questions")
+        if (questionsArray == null || questionsArray.length() == 0) {
+            return JSONObject().apply {
+                put("content", JSONArray().put(JSONObject().apply {
+                    put("type", "text")
+                    put("text", "Error: questions array is required")
+                }))
+                put("isError", true)
+            }
+        }
+
+        Log.i(TAG, "ask_user_question: ${questionsArray.length()} questions")
+
+        // Create deferred for blocking until user responds
+        val deferred = CompletableDeferred<String>()
+        val toolId = UUID.randomUUID().toString()
+        val pending = McpPendingQuestion(
+            toolId = toolId,
+            questionsJson = questionsArray.toString(),
+            deferred = deferred
+        )
+
+        // Store pending question
+        pendingQuestion = pending
+
+        // Notify UI to show question dialog
+        onAskUserQuestion?.invoke(pending)
+
+        // Block and wait for user response
+        val result = runBlocking {
+            try {
+                withTimeout(QUESTION_TIMEOUT_MS) {
+                    deferred.await()
+                }
+            } catch (e: TimeoutCancellationException) {
+                Log.w(TAG, "ask_user_question timed out")
+                pendingQuestion = null
+                "__TIMEOUT__"
+            }
+        }
+
+        // Clear pending question
+        pendingQuestion = null
+
+        // Handle special results
+        val isError: Boolean
+        val resultText: String
+        when (result) {
+            "__CANCELLED__" -> {
+                isError = false
+                resultText = "User cancelled the question dialog without answering."
+            }
+            "__TIMEOUT__" -> {
+                isError = true
+                resultText = "Error: User did not respond within 2 minutes."
+            }
+            else -> {
+                isError = false
+                // Format the result: "User has answered your questions: \"q1\"=\"a1\", ..."
+                resultText = formatAnswersResult(questionsArray, result)
+            }
+        }
+
+        // Notify tool completion
+        onToolComplete?.invoke("ask_user_question", isError)
+
+        return JSONObject().apply {
+            put("content", JSONArray().put(JSONObject().apply {
+                put("type", "text")
+                put("text", resultText)
+            }))
+            put("isError", isError)
+        }
+    }
+
+    /**
+     * Format the answers JSON into a readable result string.
+     */
+    private fun formatAnswersResult(questionsArray: JSONArray, answersJson: String): String {
+        return try {
+            val answers = JSONObject(answersJson)
+            val resultBuilder = StringBuilder("User has answered your questions: ")
+            var first = true
+
+            for (i in 0 until questionsArray.length()) {
+                val question = questionsArray.getJSONObject(i)
+                val questionText = question.optString("question", "Question $i")
+                val answer = answers.optString(questionText, "")
+
+                if (!first) resultBuilder.append(", ")
+                resultBuilder.append("\"$questionText\"=\"$answer\"")
+                first = false
+            }
+
+            resultBuilder.toString()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to format answers", e)
+            "User answered: $answersJson"
         }
     }
 
