@@ -586,7 +586,8 @@ app/src/main/java/com/anthroid/
 | M9 | ✅ Done | Per-app VPN proxy tool |
 | M10 | 🚧 In Progress | Screen automation tools |
 | M11 | ✅ Done | Custom WebSearch/WebFetch |
-| M12 | ⏳ Planned | AskUserQuestion tool |
+| M12 | ✅ Done | AskUserQuestion tool |
+| M13 | ⏸️ Deferred | TodoWrite UI (low priority for mobile) |
 
 ---
 
@@ -683,7 +684,7 @@ const response = await fetch(url, { agent });
 
 ---
 
-### Phase 12: AskUserQuestion Tool (Planned)
+### Phase 12: AskUserQuestion Tool (Complete)
 
 Enable Claude to ask the user multiple-choice questions for clarification, preferences, and decisions.
 
@@ -808,14 +809,83 @@ Claude continues with user's answers
 
 #### Tasks
 
-- [ ] Create AskUserQuestionActivity.kt skeleton
-- [ ] Create activity_ask_user_question.xml layout
-- [ ] Create item_question.xml for question cards
-- [ ] Implement single question display with options
-- [ ] Implement "Other" text input option
-- [ ] Implement multi-select support (checkboxes)
-- [ ] Add navigation between questions
-- [ ] Add tool definition to ClaudeApiClient.kt
-- [ ] Handle tool call in ClaudeViewModel.kt
-- [ ] Register ActivityResultLauncher in ClaudeFragment.kt
-- [ ] Test with Claude asking questions
+- [x] Create AskUserQuestionActivity.kt skeleton
+- [x] Create activity_ask_user_question.xml layout
+- [x] Create item_question.xml for question cards
+- [x] Implement single question display with options
+- [x] Implement "Other" text input option
+- [x] Implement multi-select support (checkboxes)
+- [x] Add navigation between questions (scroll view)
+- [x] Add tool definition to McpServer.kt (CLI mode)
+- [x] Handle tool call in ClaudeViewModel.kt
+- [x] Register ActivityResultLauncher in ClaudeFragment.kt
+- [x] Test with Claude asking questions
+
+#### Implementation Summary (Jan 2026)
+
+**CLI Mode (MCP Server):**
+- Added `ask_user_question` tool to McpServer.kt
+- Tool blocks until user responds using CompletableDeferred
+- McpServer.onAskUserQuestion callback triggers ClaudeFragment to launch AskUserQuestionActivity
+- Answer key uses question text (not indexed like "q0")
+
+**Bug Fixes:**
+- Fixed crash "specified child already has parent" when adding otherRadio to radioGroup
+- Fixed RadioButton tracking for nested layouts (options with descriptions)
+- Fixed answer key mismatch in formatAnswersResult()
+
+**Commit:** `7246252 Fix ask_user_question tool for CLI mode (MCP)`
+
+---
+
+### Phase 13: TodoWrite UI (Deferred)
+
+Display Claude's task progress in native Android UI.
+
+**Status:** Deferred - Mobile Anthroid is a lightweight agent where complex multi-step tasks are less common. TodoWrite UI may be reconsidered if usage patterns show demand.
+
+#### Background
+
+Claude Code CLI has a `TodoWrite` tool that displays task progress in the terminal. In Android, this needs a native UI representation to show:
+- Task list with status (pending/in_progress/completed)
+- Active task indicator
+- Progress tracking
+
+#### Claude Code Native Tools Status
+
+| Tool | Status | Notes |
+|------|--------|-------|
+| Bash | ✅ Works | CLI built-in |
+| Read/Write/Edit | ✅ Works | CLI built-in |
+| Glob/Grep | ✅ Works | CLI built-in |
+| Agent (Task) | ✅ Works | CLI built-in |
+| TaskOutput | ✅ Works | CLI built-in |
+| KillShell | ✅ Works | CLI built-in |
+| WebSearch | ✅ Re-implemented | Phase 11 - SerpAPI |
+| WebFetch | ✅ Re-implemented | Phase 11 - proxy support |
+| AskUserQuestion | ✅ Re-implemented | Phase 12 - MCP server |
+| TodoWrite | ⏸️ Deferred | Low priority for lightweight mobile agent |
+| NotebookEdit | ❌ Not needed | Jupyter not relevant for mobile |
+| ListMcpResources | ✅ Works | Via MCP server |
+| ReadMcpResource | ✅ Works | Via MCP server |
+
+#### Implementation Plan
+
+**Option A: Floating Overlay**
+- Show task list as floating overlay on screen automation
+- Update in real-time as tasks change
+- Minimal UI impact
+
+**Option B: Chat Integration**
+- Show task list as special message type in chat
+- Update existing message as tasks change
+- Integrated with conversation flow
+
+#### Tasks
+
+- [ ] Design TodoWrite UI approach (overlay vs chat)
+- [ ] Create TodoListView.kt component
+- [ ] Handle TodoWrite tool events from CLI
+- [ ] Update UI in real-time
+- [ ] Test with multi-step tasks
+
