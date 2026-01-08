@@ -61,6 +61,29 @@
     </PreferenceCategory>
 
     <PreferenceCategory
+        app:title="Basic Tools">
+
+        <Preference
+            app:key="restore_scripts"
+            app:title="Restore Scripts"
+            app:summary="Restore set_wrapper and set_renv to bin"
+            app:persistent="false"/>
+
+        <Preference
+            app:key="backup_tools"
+            app:title="Backup Configuration"
+            app:summary="Backup wrapper and CLAUDE.md"
+            app:persistent="false"/>
+
+        <Preference
+            app:key="re_bootstrap"
+            app:title="Re-Bootstrap"
+            app:summary="Delete usr directory and reinstall packages"
+            app:persistent="false"/>
+
+    </PreferenceCategory>
+
+    <PreferenceCategory
         app:title="Terminal">
 
         <Preference

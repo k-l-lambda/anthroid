@@ -128,6 +128,7 @@ public class SettingsActivity extends AppCompatActivity {
                     configureAboutPreference(context);
                     configureDonatePreference(context);
                     configureComponentsPreference(context);
+                    configureBasicToolsPreference(context);
                 }
             }.start();
         }
@@ -324,6 +325,173 @@ public class SettingsActivity extends AppCompatActivity {
         }
 
         private static final String TAG = "SettingsActivity";
+
+        // === Basic Tools Settings ===
+
+        private void configureBasicToolsPreference(@NonNull Context context) {
+            // Restore Scripts preference
+            Preference restoreScripts = findPreference("restore_scripts");
+            if (restoreScripts != null) {
+                restoreScripts.setOnPreferenceClickListener(preference -> {
+                    restoreScripts(context);
+                    return true;
+                });
+            }
+
+            // Backup Tools preference
+            Preference backupTools = findPreference("backup_tools");
+            if (backupTools != null) {
+                backupTools.setOnPreferenceClickListener(preference -> {
+                    backupTools(context);
+                    return true;
+                });
+            }
+
+            // Re-Bootstrap preference
+            Preference reBootstrap = findPreference("re_bootstrap");
+            if (reBootstrap != null) {
+                reBootstrap.setOnPreferenceClickListener(preference -> {
+                    showReBootstrapWarning(context);
+                    return true;
+                });
+            }
+        }
+
+        private void restoreScripts(@NonNull Context context) {
+            new Thread(() -> {
+                try {
+                    File binDir = new File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH);
+                    if (!binDir.exists()) {
+                        new Handler(Looper.getMainLooper()).post(() -> 
+                            Toast.makeText(context, "bin directory not found. Bootstrap first.", Toast.LENGTH_LONG).show());
+                        return;
+                    }
+
+                    // Copy set_wrapper
+                    copyAssetToFile(context, "set_wrapper.sh", new File(binDir, "set_wrapper"));
+                    // Copy set_renv
+                    copyAssetToFile(context, "set_renv.sh", new File(binDir, "set_renv"));
+
+                    new Handler(Looper.getMainLooper()).post(() -> 
+                        Toast.makeText(context, "Scripts restored: set_wrapper, set_renv", Toast.LENGTH_SHORT).show());
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to restore scripts", e);
+                    new Handler(Looper.getMainLooper()).post(() -> 
+                        Toast.makeText(context, "Failed: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                }
+            }).start();
+        }
+
+        private void copyAssetToFile(Context context, String assetName, File destFile) throws Exception {
+            InputStream is = context.getAssets().open(assetName);
+            FileOutputStream fos = new FileOutputStream(destFile);
+            byte[] buffer = new byte[4096];
+            int len;
+            while ((len = is.read(buffer)) != -1) {
+                fos.write(buffer, 0, len);
+            }
+            fos.close();
+            is.close();
+            destFile.setExecutable(true, false);
+        }
+
+        private void backupTools(@NonNull Context context) {
+            new Thread(() -> {
+                try {
+                    File backupDir = new File(context.getFilesDir(), "backup");
+                    backupDir.mkdirs();
+
+                    int backed = 0;
+
+                    // Backup wrapper
+                    File wrapperFile = new File(TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH, "claude");
+                    if (wrapperFile.exists()) {
+                        copyFile(wrapperFile, new File(backupDir, "claude.bak"));
+                        backed++;
+                    }
+
+                    // Backup CLAUDE.md
+                    File claudeMdFile = new File(context.getFilesDir(), "CLAUDE.md");
+                    if (claudeMdFile.exists()) {
+                        copyFile(claudeMdFile, new File(backupDir, "CLAUDE.md.bak"));
+                        backed++;
+                    }
+
+                    final int count = backed;
+                    new Handler(Looper.getMainLooper()).post(() -> {
+                        if (count > 0) {
+                            Toast.makeText(context, count + " file(s) backed up to: " + backupDir.getPath(), Toast.LENGTH_LONG).show();
+                        } else {
+                            Toast.makeText(context, "No files to backup (wrapper or CLAUDE.md not found)", Toast.LENGTH_LONG).show();
+                        }
+                    });
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to backup", e);
+                    new Handler(Looper.getMainLooper()).post(() -> 
+                        Toast.makeText(context, "Backup failed: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                }
+            }).start();
+        }
+
+        private void copyFile(File src, File dst) throws Exception {
+            FileInputStream fis = new FileInputStream(src);
+            FileOutputStream fos = new FileOutputStream(dst);
+            byte[] buffer = new byte[4096];
+            int len;
+            while ((len = fis.read(buffer)) != -1) {
+                fos.write(buffer, 0, len);
+            }
+            fos.close();
+            fis.close();
+        }
+
+        private void showReBootstrapWarning(@NonNull Context context) {
+            new AlertDialog.Builder(context)
+                .setTitle("Re-Bootstrap Warning")
+                .setMessage("This will delete all installed packages in /usr directory.\n\n" +
+                            "You will need to re-install Node.js, Claude Code, and other components.\n\n" +
+                            "Continue?")
+                .setPositiveButton("Continue", (d, w) -> showReBootstrapConfirm(context))
+                .setNegativeButton("Cancel", null)
+                .show();
+        }
+
+        private void showReBootstrapConfirm(@NonNull Context context) {
+            new AlertDialog.Builder(context)
+                .setTitle("Confirm Delete")
+                .setMessage("Are you sure you want to delete the usr directory?\n\n" +
+                            "This action cannot be undone.")
+                .setPositiveButton("Delete", (d, w) -> performReBootstrap(context))
+                .setNegativeButton("Cancel", null)
+                .show();
+        }
+
+        private void performReBootstrap(@NonNull Context context) {
+            new Thread(() -> {
+                File usrDir = new File(TermuxConstants.TERMUX_PREFIX_DIR_PATH);
+                boolean success = deleteRecursively(usrDir);
+
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    if (success) {
+                        Toast.makeText(context, "usr directory deleted. Please restart app to re-bootstrap.", Toast.LENGTH_LONG).show();
+                    } else {
+                        Toast.makeText(context, "Failed to delete usr directory", Toast.LENGTH_SHORT).show();
+                    }
+                });
+            }).start();
+        }
+
+        private boolean deleteRecursively(File file) {
+            if (file.isDirectory()) {
+                File[] children = file.listFiles();
+                if (children != null) {
+                    for (File child : children) {
+                        deleteRecursively(child);
+                    }
+                }
+            }
+            return file.delete();
+        }
         private static final String ASR_MODEL_URL = "https://github.com/k-l-lambda/anthroid/releases/download/models/sherpa-onnx-sensevoice.tar.bz2";
         private static final String MODEL_DIR_NAME = "sherpa-onnx-sensevoice";
         private ProgressDialog progressDialog;
