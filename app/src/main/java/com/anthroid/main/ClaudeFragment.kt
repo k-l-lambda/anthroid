@@ -508,9 +508,10 @@ class ClaudeFragment : Fragment() {
                 if (messages.any { it.toolName != null }) {
                     lastToolCallTime = System.currentTimeMillis()
                 }
-                messageAdapter.submitList(messages.toList())
-                if (messages.isNotEmpty()) {
-                    recyclerView.scrollToPosition(messages.size - 1)
+                messageAdapter.submitList(messages.toList()) {
+                    if (messages.isNotEmpty()) {
+                        recyclerView.scrollToPosition(messages.size - 1)
+                    }
                 }
             }
         }
