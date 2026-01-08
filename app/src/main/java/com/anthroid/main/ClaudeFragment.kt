@@ -420,6 +420,8 @@ class ClaudeFragment : Fragment() {
 
     override fun onPause() {
         super.onPause()
+        // Set foreground flag false BEFORE showing overlay (fragment onPause runs before activity onPause)
+        ScreenAutomationOverlay.isAppInForeground = false
         val isProcessing = viewModel.isProcessing.value
         val hasStreamingMessages = viewModel.messages.value.any { it.isStreaming }
         val hasRecentToolCall = (System.currentTimeMillis() - lastToolCallTime) < 10000 // 10 seconds
@@ -461,6 +463,8 @@ class ClaudeFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
+        // Set foreground flag true (fragment onResume runs after activity onResume)
+        ScreenAutomationOverlay.isAppInForeground = true
         Log.i(TAG, "onResume called")
         // Hide overlay when returning to Anthroid (user can see the chat)
         try {

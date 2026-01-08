@@ -1,6 +1,7 @@
 package com.anthroid.mcp
 
 import android.content.Context
+import com.anthroid.accessibility.ScreenAutomationOverlay
 import android.util.Log
 import com.anthroid.claude.AndroidTools
 import fi.iki.elonen.NanoHTTPD
@@ -491,6 +492,13 @@ class McpServer(
 
         // Notify UI to show question dialog
         onAskUserQuestion?.invoke(pending)
+
+        // Update overlay to show question mode
+        try {
+            ScreenAutomationOverlay.getInstance(context).setAskingQuestion()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to update overlay for question", e)
+        }
 
         // Block and wait for user response
         val result = runBlocking {

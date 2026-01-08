@@ -25,7 +25,7 @@
         android:layout_weight="1"
         android:text="Screen automation running..."
         android:textColor="#FFFFFF"
-        android:textSize="14sp"
+        android:textSize="22sp"
         android:maxLines="2"
         android:ellipsize="end" />
 
@@ -34,10 +34,10 @@
         android:id="@+id/overlay_stop_button"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="STOP"
-        android:textColor="#FF5252"
-        android:textSize="14sp"
-        android:textStyle="bold"
+        android:text="🛑"
+        
+        android:textSize="22sp"
+        
         android:padding="8dp"
         android:background="?android:attr/selectableItemBackground"
         android:visibility="visible" />

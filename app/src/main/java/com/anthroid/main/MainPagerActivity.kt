@@ -18,6 +18,7 @@ import android.view.MenuItem
 import androidx.appcompat.app.AppCompatActivity
 import com.anthroid.R
 import com.anthroid.app.TermuxActivity
+import com.anthroid.accessibility.ScreenAutomationOverlay
 import com.anthroid.app.TermuxService
 import com.anthroid.app.activities.SettingsActivity
 import com.anthroid.claude.CameraCaptureActivity
@@ -186,6 +187,16 @@ class MainPagerActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        ScreenAutomationOverlay.isAppInForeground = true
+    }
+
+    override fun onPause() {
+        super.onPause()
+        ScreenAutomationOverlay.isAppInForeground = false
     }
     
     override fun onDestroy() {

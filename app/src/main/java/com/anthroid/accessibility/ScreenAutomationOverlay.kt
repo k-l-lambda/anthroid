@@ -30,6 +30,10 @@ class ScreenAutomationOverlay(private val context: Context) {
         @Volatile
         private var instance: ScreenAutomationOverlay? = null
 
+        // Track if Anthroid app is in foreground - don't show overlay when in foreground
+        @Volatile
+        var isAppInForeground = false
+
         fun getInstance(context: Context): ScreenAutomationOverlay {
             return instance ?: synchronized(this) {
                 instance ?: ScreenAutomationOverlay(context.applicationContext).also { instance = it }
@@ -77,6 +81,13 @@ class ScreenAutomationOverlay(private val context: Context) {
     fun show(operationText: String, onStop: (() -> Unit)? = null) {
         if (!hasOverlayPermission(context)) {
             Log.w(TAG, "No overlay permission, cannot show overlay")
+            return
+        }
+
+        // Don't show overlay when Anthroid is in foreground
+        if (isAppInForeground) {
+            Log.d(TAG, "App in foreground, hiding overlay if showing")
+            hide()
             return
         }
 
@@ -136,6 +147,19 @@ class ScreenAutomationOverlay(private val context: Context) {
             isCompleted = true
             updateUI(resultText, isActive = false, isCompleted = true)
             // Don't auto-hide - the caller (ClaudeFragment/ViewModel) will hide when session ends
+        }
+    }
+
+    /**
+     * Show question mode - waiting for user answer.
+     */
+    fun setAskingQuestion(questionText: String = "Waiting for your answer...") {
+        handler.post {
+            if (isShowing) {
+                overlayText?.text = questionText
+                stopButton?.text = "❓"
+                Log.i(TAG, "Overlay set to question mode")
+            }
         }
     }
 
