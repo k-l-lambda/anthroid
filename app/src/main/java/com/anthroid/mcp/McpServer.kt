@@ -4,6 +4,7 @@ import android.content.Context
 import com.anthroid.accessibility.ScreenAutomationOverlay
 import android.util.Log
 import com.anthroid.claude.AndroidTools
+import com.anthroid.claude.TerminalCommandBridge
 import fi.iki.elonen.NanoHTTPD
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.TimeoutCancellationException
@@ -325,7 +326,12 @@ class McpServer(
             ToolDef("take_screenshot", "Take a screenshot of the current screen. Returns file path.", emptyMap()),
             ToolDef("start_audio_capture", "Start recording system audio (API 29+). Returns file path.", emptyMap()),
             ToolDef("stop_audio_capture", "Stop audio recording and get the recorded file path.", emptyMap()),
-            ToolDef("get_capture_status", "Get screen capture service status.", emptyMap())
+            ToolDef("get_capture_status", "Get screen capture service status.", emptyMap()),
+            // Terminal tools
+            ToolDef("read_terminal", "Read text from the terminal session. Use this to see terminal output.", mapOf(
+                "max_lines" to PropDef("integer", "Maximum number of lines to return (0 = unlimited, default: 500)", false),
+                "session_id" to PropDef("string", "Target session ID (default: current session)", false)
+            ))
         )
 
         for (tool in toolDefinitions) {
@@ -429,6 +435,11 @@ class McpServer(
             }
         }
 
+        // Handle read_terminal - requires TerminalCommandBridge
+        if (toolName == "read_terminal") {
+            return handleReadTerminal(arguments)
+        }
+
         // Handle ask_user_question specially - requires UI interaction
         if (toolName == "ask_user_question") {
             return handleAskUserQuestion(arguments)
@@ -455,6 +466,47 @@ class McpServer(
             put("content", JSONArray().put(JSONObject().apply {
                 put("type", "text")
                 put("text", result)
+            }))
+            put("isError", isError)
+        }
+    }
+
+    /**
+     * Handle read_terminal tool call.
+     * Reads text from terminal session using TerminalCommandBridge.
+     */
+    private fun handleReadTerminal(arguments: JSONObject): JSONObject {
+        val maxLines = arguments.optInt("max_lines", 500)
+        val sessionIdParam = arguments.optString("session_id", "")
+
+        if (!TerminalCommandBridge.isAvailable()) {
+            return JSONObject().apply {
+                put("content", JSONArray().put(JSONObject().apply {
+                    put("type", "text")
+                    put("text", "Error: Terminal bridge not available. Please open the terminal first.")
+                }))
+                put("isError", true)
+            }
+        }
+
+        val result = runBlocking {
+            try {
+                TerminalCommandBridge.readTerminalSession(
+                    sessionId = sessionIdParam.takeIf { it.isNotEmpty() },
+                    maxLines = maxLines
+                )
+            } catch (e: Exception) {
+                TerminalCommandBridge.CommandResult.error("Error: ${e.message}")
+            }
+        }
+
+        val isError = !result.success
+        onToolComplete?.invoke("read_terminal", isError)
+
+        return JSONObject().apply {
+            put("content", JSONArray().put(JSONObject().apply {
+                put("type", "text")
+                put("text", if (result.success) result.output else "Error: ${result.output}")
             }))
             put("isError", isError)
         }
