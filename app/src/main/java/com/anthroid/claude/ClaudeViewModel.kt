@@ -579,28 +579,30 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         // MCP tools (mcp__*) are handled by the MCP server via HTTP callback
         // Don't execute them locally - just show streaming state until callback updates it
         if (event.name.startsWith("mcp__")) {
-            Log.d(TAG, "MCP tool \${event.name} - waiting for server callback")
+            Log.d(TAG, "MCP tool ${event.name} - waiting for server callback")
+            return
+        }
+
+        // In CLI mode, ALL tools are handled by MCP server - don't execute locally!
+        // CLI uses mcp-http-bridge.js which routes all tool calls to McpServer.
+        // Executing here would cause DUPLICATE execution.
+        if (useCliMode) {
+            Log.d(TAG, "CLI mode: tool '${event.name}' handled by MCP server, skipping local execution")
             return
         }
 
         viewModelScope.launch {
-            // In CLI mode, tool execution happens but CLI doesn't receive results
-            // because CLI uses MCP protocol which we haven't implemented
-            if (useCliMode) {
-                Log.w(TAG, "Tool '${event.name}' called in CLI mode - results may not be sent back to Claude")
-            }
-
-            // Check if we can execute this tool locally
+            // Check if we can execute this tool locally (API mode only)
             val toolName = event.name.lowercase()
             val isLocalTool = toolName in listOf("run_termux", "bash", "read", "write", "read_terminal", "read_clipboard", "write_clipboard") ||
                               androidTools.isAndroidTool(event.name)
-            
-            // For unknown/CLI-handled tools, just keep streaming and return
+
+            // For unknown tools in API mode, just keep streaming and return
             if (!isLocalTool) {
-                Log.d(TAG, "CLI-handled tool ${event.name} - keeping streaming state")
+                Log.d(TAG, "Unknown tool ${event.name} - keeping streaming state")
                 return@launch
             }
-            
+
             val result = when (toolName) {
                 "run_termux" -> executeRunTermuxTool(event.input)
                 "bash" -> executeBashTool(event.input)
