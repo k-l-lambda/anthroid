@@ -233,6 +233,163 @@ class ClaudeApiClient(private val context: Context) {
     }
 
     /**
+     * Get conversation history size (message count).
+     */
+    fun getHistorySize(): Int = conversationHistory.size
+
+    /**
+     * Compact conversation history by summarizing it.
+     * Returns a Flow that emits progress events and the final summary.
+     */
+    fun compactConversation(): Flow<ClaudeEvent> = channelFlow {
+        if (!isConfigured()) {
+            send(ClaudeEvent.Error("API key not configured"))
+            return@channelFlow
+        }
+
+        if (conversationHistory.isEmpty()) {
+            send(ClaudeEvent.Error("No conversation history to compact"))
+            return@channelFlow
+        }
+
+        withContext(Dispatchers.IO) {
+            try {
+                // Build conversation text for summarization
+                val conversationText = StringBuilder()
+                for (msg in conversationHistory) {
+                    val role = msg.optString("role", "unknown")
+                    val content = msg.opt("content")
+                    val textContent = when (content) {
+                        is String -> content
+                        is JSONArray -> {
+                            // Extract text from content blocks
+                            val texts = mutableListOf<String>()
+                            for (i in 0 until content.length()) {
+                                val block = content.optJSONObject(i)
+                                when (block?.optString("type")) {
+                                    "text" -> texts.add(block.optString("text", ""))
+                                    "tool_use" -> texts.add("[Tool: ${block.optString("name")}]")
+                                    "tool_result" -> texts.add("[Tool Result]")
+                                }
+                            }
+                            texts.joinToString("\n")
+                        }
+                        else -> content?.toString() ?: ""
+                    }
+                    if (textContent.isNotBlank()) {
+                        conversationText.append("[$role]: $textContent\n\n")
+                    }
+                }
+
+                Log.i(TAG, "Compacting conversation with ${conversationHistory.size} messages")
+
+                // Create summarization request
+                val url = URL("$baseUrl/v1/messages")
+                val connection = url.openConnection() as HttpURLConnection
+                connection.requestMethod = "POST"
+                connection.setRequestProperty("Content-Type", "application/json")
+                connection.setRequestProperty("x-api-key", apiKey)
+                connection.setRequestProperty("anthropic-version", "2023-06-01")
+                connection.doOutput = true
+                connection.doInput = true
+
+                val summaryPrompt = """Please provide a concise summary of this conversation. Focus on:
+1. Key topics discussed
+2. Important decisions or conclusions
+3. Any pending tasks or questions
+4. Essential context needed to continue the conversation
+
+Conversation:
+$conversationText
+
+Provide the summary in a structured format."""
+
+                val messagesArray = JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("role", "user")
+                        put("content", summaryPrompt)
+                    })
+                }
+
+                val requestBody = JSONObject().apply {
+                    put("model", model)
+                    put("max_tokens", 2048)
+                    put("stream", true)
+                    put("messages", messagesArray)
+                }
+
+                connection.outputStream.write(requestBody.toString().toByteArray())
+                connection.outputStream.flush()
+
+                val responseCode = connection.responseCode
+                if (responseCode != 200) {
+                    val errorStream = connection.errorStream ?: connection.inputStream
+                    val error = errorStream.bufferedReader().readText()
+                    Log.e(TAG, "Compact API error: $error")
+                    send(ClaudeEvent.Error("Compact failed ($responseCode): $error"))
+                    return@withContext
+                }
+
+                // Process SSE stream
+                val reader = BufferedReader(InputStreamReader(connection.inputStream))
+                val summaryBuilder = StringBuilder()
+                var line: String?
+
+                send(ClaudeEvent.MessageStart("compact"))
+
+                while (reader.readLine().also { line = it } != null) {
+                    if (line!!.startsWith("data: ")) {
+                        val data = line!!.substring(6)
+                        if (data == "[DONE]") break
+
+                        try {
+                            val event = JSONObject(data)
+                            val type = event.optString("type")
+
+                            if (type == "content_block_delta") {
+                                val delta = event.optJSONObject("delta")
+                                val text = delta?.optString("text", "") ?: ""
+                                if (text.isNotEmpty()) {
+                                    summaryBuilder.append(text)
+                                    send(ClaudeEvent.TextDelta(text))
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to parse compact event: $data", e)
+                        }
+                    }
+                }
+
+                reader.close()
+                connection.disconnect()
+
+                val summary = summaryBuilder.toString()
+                if (summary.isNotBlank()) {
+                    // Replace history with summary as a system context
+                    val oldSize = conversationHistory.size
+                    conversationHistory.clear()
+                    conversationHistory.add(JSONObject().apply {
+                        put("role", "user")
+                        put("content", "[Previous conversation summary]\n$summary")
+                    })
+                    conversationHistory.add(JSONObject().apply {
+                        put("role", "assistant")
+                        put("content", "I understand. I have the context from our previous conversation. How can I help you continue?")
+                    })
+                    Log.i(TAG, "Conversation compacted: $oldSize messages -> 2 messages")
+                }
+
+                send(ClaudeEvent.MessageEnd)
+                send(ClaudeEvent.SessionEnded(0))
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Compact failed", e)
+                send(ClaudeEvent.Error("Compact failed: ${e.message}"))
+            }
+        }
+    }
+
+    /**
      * Send tool result and get Claude's response.
      */
     fun sendToolResult(toolUseId: String, toolName: String, result: String): Flow<ClaudeEvent> = channelFlow {

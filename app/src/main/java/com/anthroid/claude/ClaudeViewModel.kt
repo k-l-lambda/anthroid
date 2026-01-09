@@ -254,6 +254,12 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         val images = _pendingImages.value.toList()
         if (content.isBlank() && images.isEmpty()) return
 
+        // Handle /compact command
+        if (content.trim().lowercase().startsWith("/compact")) {
+            compactConversation()
+            return
+        }
+
         // Add voice input note for Claude if from ASR
         val messageContent = if (isFromVoice && content.isNotBlank()) {
             "$content\n[Note: This message was transcribed from voice input using speech recognition. Please be tolerant of potential transcription errors.]"
@@ -972,6 +978,85 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         _currentResponse.value = ""
         apiClient.clearHistory()
         cliClient.clearConversation()
+    }
+
+    /**
+     * Compact conversation history by summarizing it.
+     * Only works in API mode.
+     */
+    fun compactConversation() {
+        if (useCliMode) {
+            Log.w(TAG, "Compact not supported in CLI mode")
+            _error.value = "Compact not supported in CLI mode. Use API mode."
+            return
+        }
+
+        val historySize = apiClient.getHistorySize()
+        if (historySize == 0) {
+            Log.w(TAG, "No conversation history to compact")
+            _error.value = "No conversation history to compact"
+            return
+        }
+
+        Log.i(TAG, "Starting conversation compact (history size: $historySize)")
+
+        // Add system message showing compact in progress
+        val compactMessage = Message(
+            role = MessageRole.SYSTEM,
+            content = "📦 Compacting conversation ($historySize messages)...",
+            isStreaming = true
+        )
+        streamingMessageId = compactMessage.id
+        _messages.value = _messages.value + compactMessage
+
+        _isProcessing.value = true
+        _currentResponse.value = ""
+
+        sessionJob?.cancel()
+        sessionJob = viewModelScope.launch {
+            try {
+                apiClient.compactConversation()
+                    .collect { event ->
+                        when (event) {
+                            is ClaudeEvent.TextDelta -> {
+                                _currentResponse.value += event.content
+                                updateStreamingMessage("📦 Compacting...\n\n${_currentResponse.value}")
+                            }
+                            is ClaudeEvent.MessageEnd -> {
+                                // Update message to show completion
+                                val msgId = streamingMessageId
+                                if (msgId != null) {
+                                    _messages.value = _messages.value.map { msg ->
+                                        if (msg.id == msgId) {
+                                            msg.copy(
+                                                content = "📦 Conversation compacted!\n\n**Summary:**\n${_currentResponse.value}",
+                                                isStreaming = false
+                                            )
+                                        } else msg
+                                    }
+                                }
+                                streamingMessageId = null
+                                _currentResponse.value = ""
+                            }
+                            is ClaudeEvent.SessionEnded -> {
+                                _isProcessing.value = false
+                                // Clear UI messages since history is compacted
+                                // Keep only the compact summary message
+                                val compactMsg = _messages.value.lastOrNull { it.role == MessageRole.SYSTEM }
+                                _messages.value = if (compactMsg != null) listOf(compactMsg) else emptyList()
+                            }
+                            is ClaudeEvent.Error -> {
+                                Log.e(TAG, "Compact error: ${event.message}")
+                                showErrorMessage("Compact failed: ${event.message}")
+                            }
+                            else -> {}
+                        }
+                    }
+            } catch (e: Exception) {
+                Log.e(TAG, "Compact failed", e)
+                showErrorMessage("Compact failed: ${e.message}")
+            }
+        }
     }
 
     override fun onCleared() {
