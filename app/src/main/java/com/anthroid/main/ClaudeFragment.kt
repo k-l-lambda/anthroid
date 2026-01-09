@@ -479,7 +479,9 @@ class ClaudeFragment : Fragment() {
 
     /**
      * Update mic button visibility based on current settings.
+     * Also sets up touch listener if model becomes available.
      */
+    @SuppressLint("ClickableViewAccessibility")
     private fun updateMicButtonVisibility() {
         val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(requireContext())
         val asrModel = prefs.getString("asr_model", "none") ?: "none"
@@ -488,6 +490,23 @@ class ClaudeFragment : Fragment() {
         val shouldShow = asrModel != "none" && modelInstalled
         micButton.visibility = if (shouldShow) View.VISIBLE else View.GONE
         micContainer?.visibility = if (shouldShow) View.VISIBLE else View.GONE
+        
+        // Set up touch listener if showing (in case it wasn't set up during onCreate)
+        if (shouldShow) {
+            micButton.setOnTouchListener { _, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        startVoiceRecording()
+                        true
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        stopVoiceRecording()
+                        true
+                    }
+                    else -> false
+                }
+            }
+        }
     }
 
     /**
