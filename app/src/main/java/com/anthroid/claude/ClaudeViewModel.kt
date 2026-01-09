@@ -367,12 +367,13 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             is ClaudeEvent.TextDelta -> {
                 Log.d(TAG, "TextDelta received: ${event.content.take(50)}")
 
-                // Mark any streaming tool messages as timed out/error
+                // Mark any streaming tool messages as complete
                 // If agent is outputting text, previous tools should have completed
+                // Note: Don't set isError=true here - MCP server's onToolComplete will set the correct status
                 _messages.value = _messages.value.map { msg ->
                     if (msg.role == MessageRole.TOOL && msg.isStreaming) {
-                        Log.d(TAG, "Marking tool as timed out: ${msg.toolName}")
-                        msg.copy(isStreaming = false, isError = true)
+                        Log.d(TAG, "Marking tool as complete (text started): ${msg.toolName}")
+                        msg.copy(isStreaming = false)
                     } else {
                         msg
                     }
