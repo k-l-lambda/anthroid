@@ -130,15 +130,29 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
 
     /**
      * Check if Claude CLI is installed or API is configured.
+     * Respects user's claude_mode preference setting.
      */
     fun checkClaudeInstallation() {
         val cliAvailable = cliClient.isClaudeInstalled()
         val apiConfigured = apiClient.isConfigured()
-        // Prefer API mode when configured, as it has proper tool support
-        // CLI mode uses MCP which doesn't support our custom Android tools
-        useCliMode = cliAvailable && !apiConfigured
-        _isClaudeInstalled.value = useCliMode || apiConfigured
-        Log.i(TAG, "Claude CLI installed: $cliAvailable, API configured: $apiConfigured, using CLI mode: $useCliMode")
+        
+        // Read user preference for claude mode
+        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(getApplication())
+        val claudeMode = prefs.getString("claude_mode", "auto") ?: "auto"
+        
+        useCliMode = when (claudeMode) {
+            "cli" -> cliAvailable  // Force CLI if available
+            "api" -> false         // Force API mode
+            else -> cliAvailable && !apiConfigured  // Auto: prefer API when configured
+        }
+        
+        _isClaudeInstalled.value = when (claudeMode) {
+            "cli" -> cliAvailable
+            "api" -> apiConfigured
+            else -> cliAvailable || apiConfigured
+        }
+        
+        Log.i(TAG, "Claude CLI: $cliAvailable, API: $apiConfigured, mode: $claudeMode, useCliMode: $useCliMode")
     }
 
     /**

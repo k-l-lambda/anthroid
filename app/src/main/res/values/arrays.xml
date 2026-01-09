@@ -9,6 +9,17 @@
         <item>sensevoice</item>
     </string-array>
 
+    <string-array name="claude_mode_entries">
+        <item>Auto</item>
+        <item>CLI Mode</item>
+        <item>API Mode (Experimental)</item>
+    </string-array>
+    <string-array name="claude_mode_values">
+        <item>auto</item>
+        <item>cli</item>
+        <item>api</item>
+    </string-array>
+
     <string-array name="proxy_type_entries">
         <item>SOCKS5</item>
         <item>HTTP</item>

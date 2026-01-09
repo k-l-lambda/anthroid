@@ -50,6 +50,19 @@
     </PreferenceCategory>
 
     <PreferenceCategory
+        app:title="Claude Mode">
+
+        <ListPreference
+            app:key="claude_mode"
+            app:title="Agent Mode"
+            app:summary="Auto: prefer API when configured, fallback to CLI"
+            app:entries="@array/claude_mode_entries"
+            app:entryValues="@array/claude_mode_values"
+            app:defaultValue="auto"/>
+
+    </PreferenceCategory>
+
+    <PreferenceCategory
         app:title="Packages">
 
         <Preference
