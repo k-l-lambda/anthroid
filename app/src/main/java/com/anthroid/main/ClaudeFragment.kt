@@ -466,6 +466,8 @@ class ClaudeFragment : Fragment() {
         // Set foreground flag true (fragment onResume runs after activity onResume)
         ScreenAutomationOverlay.isAppInForeground = true
         Log.i(TAG, "onResume called")
+        // Refresh mic button visibility (in case settings changed)
+        updateMicButtonVisibility()
         // Hide overlay when returning to Anthroid (user can see the chat)
         try {
             val overlay = ScreenAutomationOverlay.getInstance(requireContext())
@@ -475,6 +477,18 @@ class ClaudeFragment : Fragment() {
         }
     }
 
+    /**
+     * Update mic button visibility based on current settings.
+     */
+    private fun updateMicButtonVisibility() {
+        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(requireContext())
+        val asrModel = prefs.getString("asr_model", "none") ?: "none"
+        val modelInstalled = SherpaOnnxManager.isModelInstalled(requireContext())
+        val micContainer = micButton.parent as? View
+        val shouldShow = asrModel != "none" && modelInstalled
+        micButton.visibility = if (shouldShow) View.VISIBLE else View.GONE
+        micContainer?.visibility = if (shouldShow) View.VISIBLE else View.GONE
+    }
 
     /**
      * Setup MCP server callback for ask_user_question tool in CLI mode.

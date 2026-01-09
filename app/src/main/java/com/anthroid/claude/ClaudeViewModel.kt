@@ -266,19 +266,12 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
 
-        // Add voice input note for Claude if from ASR
-        val messageContent = if (isFromVoice && content.isNotBlank()) {
-            "$content\n[Note: This message was transcribed from voice input using speech recognition. Please be tolerant of potential transcription errors.]"
-        } else {
-            content
-        }
-
         Log.i(TAG, "Sending message: ${content.take(50)}... with ${images.size} images (useCliMode=$useCliMode, isFromVoice=$isFromVoice)")
 
         // Add user message with images
         val userMessage = Message(
             role = MessageRole.USER,
-            content = messageContent,
+            content = content,
             images = images
         )
 
