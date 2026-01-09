@@ -889,3 +889,38 @@ Claude Code CLI has a `TodoWrite` tool that displays task progress in the termin
 - [ ] Update UI in real-time
 - [ ] Test with multi-step tasks
 
+
+---
+
+### Phase 14: Edit Agent Session Title (Planned)
+
+Allow users to edit the title of agent conversation sessions.
+
+#### Background
+
+Currently, session titles are auto-generated based on the first message or conversation content. Users should be able to customize session titles for better organization and quick identification.
+
+#### Requirements
+
+- Long-press or tap on session title to edit
+- Show edit dialog with current title pre-filled
+- Save title to session storage
+- Update UI immediately after edit
+- Persist across app restarts
+
+#### Files to Modify
+
+| File | Change |
+|------|--------|
+| `ClaudeFragment.kt` | Add title click/long-press listener |
+| `ClaudeViewModel.kt` | Add updateSessionTitle() method |
+| Session storage | Store custom title field |
+
+#### Tasks
+
+- [ ] Design title edit UI (inline edit vs dialog)
+- [ ] Add click listener to session title view
+- [ ] Create edit dialog layout
+- [ ] Implement title update in ViewModel
+- [ ] Persist title to session storage
+- [ ] Test title persistence across restarts
