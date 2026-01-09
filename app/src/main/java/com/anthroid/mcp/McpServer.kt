@@ -265,6 +265,50 @@ class McpServer(
                 "message" to PropDef("string", "Notification message", true)
             )),
             ToolDef("get_device_info", "Get device information", emptyMap()),
+            // App tools
+            ToolDef("list_apps", "List installed apps on device", mapOf(
+                "filter" to PropDef("string", "Filter: all, system, or user (default: user)", false),
+                "limit" to PropDef("integer", "Max apps to return (default: 50)", false)
+            )),
+            ToolDef("get_app_info", "Get detailed info about an app", mapOf(
+                "package" to PropDef("string", "Package name of the app", true)
+            )),
+            ToolDef("send_intent", "Send an Android Intent action", mapOf(
+                "action" to PropDef("string", "Intent action (e.g. android.intent.action.VIEW)", true),
+                "data" to PropDef("string", "URI data for the intent", false),
+                "type" to PropDef("string", "MIME type", false)
+            )),
+            // Clipboard tools
+            ToolDef("read_clipboard", "Read text from Android clipboard", emptyMap()),
+            ToolDef("write_clipboard", "Write text to Android clipboard", mapOf(
+                "text" to PropDef("string", "Text to copy to clipboard", true)
+            )),
+            // Location tools
+            ToolDef("geocode", "Convert address to coordinates", mapOf(
+                "address" to PropDef("string", "Address to geocode", true)
+            )),
+            ToolDef("reverse_geocode", "Convert coordinates to address", mapOf(
+                "latitude" to PropDef("number", "Latitude", true),
+                "longitude" to PropDef("number", "Longitude", true)
+            )),
+            ToolDef("get_location", "Get current device location", emptyMap()),
+            // Calendar tools
+            ToolDef("query_calendar", "Query calendar events", mapOf(
+                "days" to PropDef("integer", "Number of days to query (default: 7)", false),
+                "limit" to PropDef("integer", "Max events to return (default: 20)", false)
+            )),
+            ToolDef("add_calendar_event", "Add a calendar event", mapOf(
+                "title" to PropDef("string", "Event title", true),
+                "start" to PropDef("integer", "Start time (epoch ms)", true),
+                "end" to PropDef("integer", "End time (epoch ms)", true),
+                "description" to PropDef("string", "Event description", false),
+                "location" to PropDef("string", "Event location", false)
+            )),
+            // Media tools
+            ToolDef("query_media", "Query media files (images, videos, audio)", mapOf(
+                "type" to PropDef("string", "Media type: images, videos, or audio", true),
+                "limit" to PropDef("integer", "Max files to return (default: 20)", false)
+            )),
             ToolDef("set_app_proxy", "Set up VPN proxy for specific apps", mapOf(
                 "proxy_host" to PropDef("string", "Proxy server host", true),
                 "proxy_port" to PropDef("integer", "Proxy server port", true),
