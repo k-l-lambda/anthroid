@@ -76,6 +76,12 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
     // Current streaming message ID
     private var streamingMessageId: String? = null
 
+    // Throttle streaming updates to reduce UI lag
+    private var lastStreamingUpdateTime = 0L
+    private var pendingStreamingContent = ""
+    private val STREAMING_UPDATE_INTERVAL_MS = 100L  // Min interval between UI updates
+    private val STREAMING_CHAR_THRESHOLD = 80        // Force update after this many new chars
+
     init {
         checkClaudeInstallation()
 
@@ -371,19 +377,21 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             }
 
             is ClaudeEvent.TextDelta -> {
-                Log.d(TAG, "TextDelta received: ${event.content.take(50)}")
-
-                // Mark any streaming tool messages as complete
+                // Mark any streaming tool messages as complete (only once)
                 // If agent is outputting text, previous tools should have completed
                 // Note: Don't set isError=true here - MCP server's onToolComplete will set the correct status
-                _messages.value = _messages.value.map { msg ->
-                    if (msg.role == MessageRole.TOOL && msg.isStreaming) {
-                        Log.d(TAG, "Marking tool as complete (text started): ${msg.toolName}")
-                        msg.copy(isStreaming = false)
-                    } else {
-                        msg
+                val hasStreamingTool = _messages.value.any { it.role == MessageRole.TOOL && it.isStreaming }
+                if (hasStreamingTool) {
+                    _messages.value = _messages.value.map { msg ->
+                        if (msg.role == MessageRole.TOOL && msg.isStreaming) {
+                            Log.d(TAG, "Marking tool as complete (text started): ${msg.toolName}")
+                            msg.copy(isStreaming = false)
+                        } else {
+                            msg
+                        }
                     }
                 }
+
                 // If streamingMessageId is null (e.g., after tool use), create new streaming message
                 if (streamingMessageId == null) {
                     Log.d(TAG, "Creating new streaming message for post-tool response")
@@ -395,9 +403,26 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                     streamingMessageId = assistantMessage.id
                     _messages.value = _messages.value + assistantMessage
                     _currentResponse.value = ""
+                    pendingStreamingContent = ""
+                    lastStreamingUpdateTime = 0L
                 }
+
+                // Accumulate content
                 _currentResponse.value += event.content
-                updateStreamingMessage(_currentResponse.value)
+                pendingStreamingContent += event.content
+
+                // Throttle UI updates to reduce lag
+                val now = System.currentTimeMillis()
+                val timeSinceLastUpdate = now - lastStreamingUpdateTime
+                val shouldUpdate = timeSinceLastUpdate >= STREAMING_UPDATE_INTERVAL_MS ||
+                                   pendingStreamingContent.length >= STREAMING_CHAR_THRESHOLD ||
+                                   lastStreamingUpdateTime == 0L
+
+                if (shouldUpdate) {
+                    updateStreamingMessage(_currentResponse.value)
+                    lastStreamingUpdateTime = now
+                    pendingStreamingContent = ""
+                }
             }
 
             is ClaudeEvent.ToolUse -> {
@@ -406,6 +431,12 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             }
 
             is ClaudeEvent.MessageEnd -> {
+                // Flush any pending streaming content before finalizing
+                if (pendingStreamingContent.isNotEmpty()) {
+                    updateStreamingMessage(_currentResponse.value)
+                    pendingStreamingContent = ""
+                }
+
                 // Check if current streaming message has content
                 val msgId = streamingMessageId
                 val currentMsg = if (msgId != null) _messages.value.find { it.id == msgId } else null
