@@ -179,6 +179,17 @@
                     android:textSize="20sp"
                     android:textStyle="bold" />
 
+                <!-- Delete button (visible in edit mode) -->
+                <ImageButton
+                    android:id="@+id/btn_delete_selected"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Delete Selected"
+                    android:src="@android:drawable/ic_menu_delete"
+                    android:visibility="gone"
+                    app:tint="#FF4444" />
+
                 <ImageButton
                     android:id="@+id/btn_new_chat"
                     android:layout_width="40dp"

@@ -99,6 +99,7 @@ class ClaudeFragment : Fragment() {
     private lateinit var historyStats: TextView
     private lateinit var historyEmptyText: TextView
     private lateinit var btnNewChat: ImageButton
+    private lateinit var btnDeleteSelected: ImageButton
 
     // Pending images views
     private lateinit var pendingImagesScroll: HorizontalScrollView
@@ -233,6 +234,7 @@ class ClaudeFragment : Fragment() {
         historyStats = view.findViewById(R.id.history_stats)
         historyEmptyText = view.findViewById(R.id.history_empty_text)
         btnNewChat = view.findViewById(R.id.btn_new_chat)
+        btnDeleteSelected = view.findViewById(R.id.btn_delete_selected)
 
         // Set panel width to 70% of screen
         view.post {
@@ -260,10 +262,13 @@ class ClaudeFragment : Fragment() {
                 Toast.makeText(requireContext(), "Resumed: ${conversation.title.take(30)}", Toast.LENGTH_SHORT).show()
             },
             onDeleteClick = { _ ->
-                // Delete disabled
+                // Delete disabled (use edit mode instead)
             },
             onTitleEdit = { conversation ->
                 showEditTitleDialog(conversation)
+            },
+            onSelectionChanged = { selectedIds ->
+                updateEditModeUI(selectedIds.size)
             }
         )
 
@@ -275,6 +280,11 @@ class ClaudeFragment : Fragment() {
             viewModel.startNewConversation()
             hideHistoryPanel()
             Toast.makeText(requireContext(), "Started new conversation", Toast.LENGTH_SHORT).show()
+        }
+
+        // Delete selected button (visible in edit mode)
+        btnDeleteSelected.setOnClickListener {
+            showDeleteConfirmDialog()
         }
     }
 
@@ -867,6 +877,66 @@ class ClaudeFragment : Fragment() {
     }
 
     /**
+     * Update UI based on edit mode selection count.
+     */
+    private fun updateEditModeUI(selectedCount: Int) {
+        if (conversationAdapter.isEditMode) {
+            btnDeleteSelected.visibility = View.VISIBLE
+            btnNewChat.visibility = View.GONE
+            btnDeleteSelected.isEnabled = selectedCount > 0
+            btnDeleteSelected.alpha = if (selectedCount > 0) 1.0f else 0.5f
+        } else {
+            btnDeleteSelected.visibility = View.GONE
+            btnNewChat.visibility = View.VISIBLE
+        }
+    }
+
+    /**
+     * Exit edit mode and reset UI.
+     */
+    private fun exitEditMode() {
+        conversationAdapter.exitEditMode()
+        updateEditModeUI(0)
+    }
+
+    /**
+     * Show confirmation dialog before deleting selected conversations.
+     */
+    private fun showDeleteConfirmDialog() {
+        val count = conversationAdapter.getSelectedCount()
+        if (count == 0) return
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("Delete Conversations")
+            .setMessage("Are you sure you want to delete $count conversation(s)?\n\nThis action cannot be undone.")
+            .setPositiveButton("Delete") { _, _ ->
+                deleteSelectedConversations()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    /**
+     * Delete selected conversations and refresh list.
+     */
+    private fun deleteSelectedConversations() {
+        val selectedIds = conversationAdapter.getSelectedIds()
+        if (selectedIds.isEmpty()) return
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            var deletedCount = 0
+            for (sessionId in selectedIds) {
+                if (conversationManager.deleteConversation(sessionId)) {
+                    deletedCount++
+                }
+            }
+            exitEditMode()
+            refreshHistoryPanel()
+            Toast.makeText(requireContext(), "Deleted $deletedCount conversation(s)", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
      * Show dialog to edit conversation title.
      */
     private fun showEditTitleDialog(conversation: com.anthroid.claude.ConversationManager.Conversation) {
@@ -916,6 +986,10 @@ class ClaudeFragment : Fragment() {
     }
 
     private fun hideHistoryPanel() {
+        // Exit edit mode when closing panel
+        if (conversationAdapter.isEditMode) {
+            exitEditMode()
+        }
         // Animate panel slide out to right
         historyPanel.animate()
             .translationX(historyPanel.width.toFloat())
