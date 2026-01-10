@@ -1,11 +1,14 @@
 package com.anthroid.claude
 
 import android.app.Application
+import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.anthroid.BuildConfig
+import com.anthroid.app.TermuxService
+import com.anthroid.shared.termux.TermuxConstants.TERMUX_APP.TERMUX_SERVICE
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -115,6 +118,17 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 }
                 // Clear current tool after MCP completion
                 _currentTool.value = null
+            }
+        }
+
+        // Auto wake lock: acquire when processing starts, release when processing ends
+        viewModelScope.launch {
+            _isProcessing.collect { isProcessing ->
+                if (isProcessing) {
+                    acquireWakeLock()
+                } else {
+                    releaseWakeLock()
+                }
             }
         }
     }
@@ -1097,8 +1111,37 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /**
+     * Acquire CPU wake lock to keep processing while screen is off.
+     */
+    private fun acquireWakeLock() {
+        try {
+            val intent = Intent(getApplication(), TermuxService::class.java)
+                .setAction(TERMUX_SERVICE.ACTION_WAKE_LOCK)
+            getApplication<Application>().startService(intent)
+            Log.d(TAG, "Wake lock acquired")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to acquire wake lock: ${e.message}")
+        }
+    }
+
+    /**
+     * Release CPU wake lock when processing completes.
+     */
+    private fun releaseWakeLock() {
+        try {
+            val intent = Intent(getApplication(), TermuxService::class.java)
+                .setAction(TERMUX_SERVICE.ACTION_WAKE_UNLOCK)
+            getApplication<Application>().startService(intent)
+            Log.d(TAG, "Wake lock released")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to release wake lock: ${e.message}")
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
+        releaseWakeLock()
         cliClient.close()
     }
 }

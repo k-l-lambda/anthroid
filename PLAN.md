@@ -924,3 +924,100 @@ Currently, session titles are auto-generated based on the first message or conve
 - [ ] Implement title update in ViewModel
 - [ ] Persist title to session storage
 - [ ] Test title persistence across restarts
+
+
+---
+
+### Phase 15: Quick Send Candidates (Planned)
+
+Frequently used short messages as quick send buttons for faster interaction.
+
+#### Background
+
+Users often send the same short commands or phrases repeatedly (e.g., "继续", "好", "确认", "取消", "retry"). Tracking these frequent messages and providing quick access buttons can improve UX.
+
+#### Requirements
+
+1. **Track Short Message Frequency**
+   - Only track messages with length < 16 characters
+   - Strip leading "🎤 " prefix before tracking (voice input messages)
+   - Store message text and usage count
+   - Persist to SharedPreferences or local database
+
+2. **Quick Send Candidate Selection**
+   - Select top 5 messages with usage count > 5
+   - Update candidate list after each message send
+
+3. **UI Display**
+   - Show candidates when input field gets focus
+   - Position: right side, below chat UI (above input bar)
+   - Order: by frequency, highest at bottom (closest to input)
+   - Tap to send immediately
+
+#### Data Structure
+
+```kotlin
+data class QuickSendCandidate(
+    val text: String,
+    val count: Int,
+    val lastUsed: Long
+)
+
+// Storage key: "quick_send_stats"
+// Format: JSON map { "message": count, ... }
+```
+
+#### UI Layout
+
+```
+┌─────────────────────────────────┐
+│         Chat Messages           │
+│                                 │
+│                                 │
+├─────────────────────────────────┤
+│                    ┌──────────┐ │
+│                    │ 确认 (12)│ │  ← Highest frequency at bottom
+│                    │ 继续 (8) │ │
+│                    │ 好 (7)   │ │
+│                    │ retry (6)│ │
+│                    │ 取消 (5) │ │  ← Lowest frequency at top
+│                    └──────────┘ │
+├─────────────────────────────────┤
+│ [Input field]          [Send]  │
+└─────────────────────────────────┘
+```
+
+#### Files to Create
+
+| File | Description |
+|------|-------------|
+| `QuickSendManager.kt` | Track message frequency, persist stats |
+| `QuickSendAdapter.kt` | RecyclerView adapter for candidate chips |
+| `item_quick_send.xml` | Layout for individual quick send chip |
+
+#### Files to Modify
+
+| File | Change |
+|------|--------|
+| `fragment_claude.xml` | Add RecyclerView for quick send candidates |
+| `ClaudeFragment.kt` | Show/hide candidates on input focus, handle click |
+| `ClaudeViewModel.kt` | Track message send, update frequency stats |
+
+#### Implementation Steps
+
+1. Create QuickSendManager for frequency tracking
+2. Add RecyclerView to fragment_claude.xml (right-aligned, above input)
+3. Track message frequency in sendMessage()
+4. Show candidates on input field focus
+5. Hide candidates on input field blur or send
+6. Implement tap-to-send for candidate chips
+
+#### Tasks
+
+- [ ] Create QuickSendManager.kt for frequency tracking
+- [ ] Design item_quick_send.xml chip layout
+- [ ] Add candidates RecyclerView to fragment_claude.xml
+- [ ] Implement focus listener on input field
+- [ ] Track frequency in ClaudeViewModel.sendMessage()
+- [ ] Implement candidate selection logic (top 5, count > 5)
+- [ ] Test quick send functionality
