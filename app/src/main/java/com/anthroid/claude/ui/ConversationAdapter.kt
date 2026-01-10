@@ -17,7 +17,8 @@ import com.anthroid.claude.ConversationManager
  */
 class ConversationAdapter(
     private val onConversationClick: (ConversationManager.Conversation) -> Unit,
-    private val onDeleteClick: (ConversationManager.Conversation) -> Unit
+    private val onDeleteClick: (ConversationManager.Conversation) -> Unit,
+    private val onTitleEdit: ((ConversationManager.Conversation) -> Unit)? = null
 ) : ListAdapter<ConversationManager.Conversation, ConversationAdapter.ViewHolder>(DiffCallback()) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -63,6 +64,12 @@ class ConversationAdapter(
 
             deleteButton.setOnClickListener {
                 onDeleteClick(conversation)
+            }
+
+            // Long-press on title to edit
+            titleText.setOnLongClickListener {
+                onTitleEdit?.invoke(conversation)
+                true
             }
         }
     }

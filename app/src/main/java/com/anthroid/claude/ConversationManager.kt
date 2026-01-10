@@ -19,7 +19,10 @@ class ConversationManager(private val context: Context) {
         private const val TAG = "ConversationManager"
         private const val CLAUDE_HOME = "/data/data/com.anthroid/files/home/.claude"
         private const val PROJECTS_DIR = "$CLAUDE_HOME/projects/-data-data-com-anthroid-files"
+        private const val PREFS_NAME = "conversation_titles"
     }
+
+    private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     /**
      * Represents a conversation session.
@@ -133,7 +136,9 @@ class ConversationManager(private val context: Context) {
             return null
         }
 
-        val title = firstUserMessage?.take(50) ?: "Empty conversation"
+        // Use custom title if set, otherwise use first user message
+        val customTitle = getCustomTitle(sessionId)
+        val title = customTitle ?: firstUserMessage?.take(50) ?: "Empty conversation"
         val lastMsg = lastUserMessage?.take(80) ?: ""
 
         return Conversation(
@@ -365,5 +370,31 @@ class ConversationManager(private val context: Context) {
 
         Log.i(TAG, "Cleaned up $deletedCount empty conversations")
         deletedCount
+    }
+    /**
+     * Get custom title for a conversation.
+     */
+    fun getCustomTitle(sessionId: String): String? {
+        return prefs.getString("title_$sessionId", null)
+    }
+
+    /**
+     * Set custom title for a conversation.
+     */
+    fun setCustomTitle(sessionId: String, title: String?) {
+        if (title.isNullOrBlank()) {
+            prefs.edit().remove("title_$sessionId").apply()
+            Log.i(TAG, "Cleared custom title for $sessionId")
+        } else {
+            prefs.edit().putString("title_$sessionId", title.trim()).apply()
+            Log.i(TAG, "Set custom title for $sessionId: $title")
+        }
+    }
+
+    /**
+     * Check if a conversation has a custom title.
+     */
+    fun hasCustomTitle(sessionId: String): Boolean {
+        return prefs.contains("title_$sessionId")
     }
 }

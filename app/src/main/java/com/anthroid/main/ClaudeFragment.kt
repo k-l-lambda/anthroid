@@ -261,6 +261,9 @@ class ClaudeFragment : Fragment() {
             },
             onDeleteClick = { _ ->
                 // Delete disabled
+            },
+            onTitleEdit = { conversation ->
+                showEditTitleDialog(conversation)
             }
         )
 
@@ -861,6 +864,55 @@ class ClaudeFragment : Fragment() {
             .alpha(1f)
             .setDuration(200)
             .start()
+    }
+
+    /**
+     * Show dialog to edit conversation title.
+     */
+    private fun showEditTitleDialog(conversation: com.anthroid.claude.ConversationManager.Conversation) {
+        val input = android.widget.EditText(requireContext()).apply {
+            setText(conversation.title)
+            setSelection(text.length)
+            setPadding(48, 32, 48, 32)
+            hint = "Enter title"
+        }
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("Edit Title")
+            .setView(input)
+            .setPositiveButton("Save") { _, _ ->
+                val newTitle = input.text.toString().trim()
+                if (newTitle.isNotEmpty()) {
+                    conversationManager.setCustomTitle(conversation.sessionId, newTitle)
+                    // Refresh the conversation list
+                    refreshHistoryPanel()
+                    Toast.makeText(requireContext(), "Title updated", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNeutralButton("Reset") { _, _ ->
+                conversationManager.setCustomTitle(conversation.sessionId, null)
+                refreshHistoryPanel()
+                Toast.makeText(requireContext(), "Title reset to default", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+
+        // Show keyboard
+        input.requestFocus()
+        input.postDelayed({
+            val imm = requireContext().getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+            imm.showSoftInput(input, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+        }, 200)
+    }
+
+    /**
+     * Refresh the history panel with updated conversation list.
+     */
+    private fun refreshHistoryPanel() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val conversations = conversationManager.getConversations()
+            conversationAdapter.submitList(conversations)
+        }
     }
 
     private fun hideHistoryPanel() {
