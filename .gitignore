@@ -29,6 +29,9 @@ app/src/main/assets/claude-code/
 # Logs
 *.log
 
+*.local
+*.local.*
+
 # OS generated
 Thumbs.db
 .DS_Store

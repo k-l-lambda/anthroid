@@ -1,15 +1,18 @@
 # Anthroid
 
-Anthroid is a native Android app that brings **Claude Code-style agent workflows** to your phone.
+<p align="center">
+  <img src="docs/logo.png" alt="Anthroid logo" width="160" />
+</p>
 
-It’s built for situations where a laptop isn’t practical: quick environment checks, acting on what you see on-screen, capturing context with the camera, and running terminal commands — all from a mobile-first UI.
+Anthroid is a native Android app for **mobile agentic workflows**: a Claude Code-style agent that can work with your phone’s native capabilities (camera, voice, clipboard, notifications, app/URL launching, location/calendar, screenshots, and optional UI automation).
 
-## When it helps (real-world scenarios)
+## When it helps
 
 - **On-call / incident triage away from your desk**: run quick diagnostics in a terminal, keep a chat thread with context, and resume the conversation later.
 - **Field work & device setup**: scan QR codes to avoid retyping tokens/URLs, open links on-device, and copy/paste between apps.
 - **Hands-busy workflows**: dictate messages with **offline** speech recognition so you can keep moving even with poor network.
 - **“What am I looking at?” troubleshooting**: attach photos/screenshots for visual context, then follow a short step-by-step checklist.
+- **Phone-use automation**: copy key info to clipboard, open deep links, launch apps, set reminders via notifications, and combine device context (location/calendar) with instructions.
 
 ## Overview
 
