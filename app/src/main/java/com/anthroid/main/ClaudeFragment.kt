@@ -67,6 +67,8 @@ class ClaudeFragment : Fragment() {
     private lateinit var sendButton: ImageButton
     private lateinit var micButton: ImageButton
     private lateinit var micLoading: ProgressBar
+    private lateinit var micContainer: View
+    private lateinit var inputWrapper: FrameLayout
     private lateinit var statusText: TextView
 
     // Voice input
@@ -187,6 +189,8 @@ class ClaudeFragment : Fragment() {
         sendButton = view.findViewById(R.id.send_button)
         micButton = view.findViewById(R.id.mic_button)
         micLoading = view.findViewById(R.id.mic_loading)
+        micContainer = view.findViewById(R.id.mic_container)
+        inputWrapper = view.findViewById(R.id.input_wrapper)
         statusText = view.findViewById(R.id.status_text)
         pendingImagesScroll = view.findViewById(R.id.pending_images_scroll)
         pendingImagesContainer = view.findViewById(R.id.pending_images_container)
@@ -486,10 +490,19 @@ class ClaudeFragment : Fragment() {
         val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(requireContext())
         val asrModel = prefs.getString("asr_model", "none") ?: "none"
         val modelInstalled = SherpaOnnxManager.isModelInstalled(requireContext())
-        val micContainer = micButton.parent as? View
         val shouldShow = asrModel != "none" && modelInstalled
         micButton.visibility = if (shouldShow) View.VISIBLE else View.GONE
-        micContainer?.visibility = if (shouldShow) View.VISIBLE else View.GONE
+        micContainer.visibility = if (shouldShow) View.VISIBLE else View.GONE
+        
+        // Update input field padding based on mic visibility
+        val leftPadding = if (shouldShow) 44 else 12
+        val density = resources.displayMetrics.density
+        inputField.setPadding(
+            (leftPadding * density).toInt(),
+            inputField.paddingTop,
+            inputField.paddingRight,
+            inputField.paddingBottom
+        )
         
         // Set up touch listener if showing (in case it wasn't set up during onCreate)
         if (shouldShow) {
@@ -506,6 +519,25 @@ class ClaudeFragment : Fragment() {
                     else -> false
                 }
             }
+            
+            // Long-press on input wrapper also triggers voice recording
+            inputWrapper.setOnLongClickListener {
+                startVoiceRecording()
+                true
+            }
+            inputWrapper.setOnTouchListener { _, event ->
+                if (event.action == MotionEvent.ACTION_UP || event.action == MotionEvent.ACTION_CANCEL) {
+                    // Stop recording if it was started by long-press
+                    if (sherpaOnnxManager?.isRecording() == true) {
+                        stopVoiceRecording()
+                    }
+                }
+                false // Don't consume the event, let it propagate
+            }
+        } else {
+            // Clear listeners when mic is hidden
+            inputWrapper.setOnLongClickListener(null)
+            inputWrapper.setOnTouchListener(null)
         }
     }
 

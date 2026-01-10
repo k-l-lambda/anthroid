@@ -133,6 +133,9 @@ class SherpaOnnxManager(private val context: Context) {
         } catch (e: Exception) { Log.e(TAG, "Error during recognition: ${e.message}", e); return "" }
     }
 
+    /** Check if currently recording */
+    fun isRecording(): Boolean = isRecording
+
     private fun collectAudio(bufferSize: Int) {
         val shortBuffer = ShortArray(bufferSize / 2)
         while (isRecording && audioRecord != null) {
