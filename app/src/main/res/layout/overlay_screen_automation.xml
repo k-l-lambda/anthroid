@@ -17,17 +17,26 @@
         android:src="@drawable/ic_robot_active"
         android:layout_marginEnd="12dp" />
 
-    <!-- Operation text -->
-    <TextView
-        android:id="@+id/overlay_text"
+    <!-- Operation text with smooth scrolling -->
+    <HorizontalScrollView
+        android:id="@+id/text_scroll_view"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:text="Screen automation running..."
-        android:textColor="#FFFFFF"
-        android:textSize="22sp"
-        android:maxLines="2"
-        android:ellipsize="end" />
+        android:scrollbars="none"
+        android:overScrollMode="never">
+        
+        <TextView
+            android:id="@+id/overlay_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Screen automation running..."
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:singleLine="true"
+            android:paddingEnd="48dp" />
+            
+    </HorizontalScrollView>
 
     <!-- Stop button (shown when active) -->
     <TextView

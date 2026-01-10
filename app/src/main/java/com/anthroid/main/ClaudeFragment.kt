@@ -386,12 +386,12 @@ class ClaudeFragment : Fragment() {
 
         // Start recording
         if (sherpaOnnxManager?.startRecording() == true) {
-            micButton.setColorFilter(ContextCompat.getColor(requireContext(), android.R.color.holo_red_light))
-            // Add red tint overlay to input field
+            micButton.setColorFilter(ContextCompat.getColor(requireContext(), android.R.color.holo_green_light))
+            // Add green tint overlay to input field
             if (originalInputBackground == null) {
                 originalInputBackground = inputField.background
             }
-            inputField.background.setColorFilter(Color.parseColor("#40FF0000"), PorterDuff.Mode.SRC_ATOP)
+            inputWrapper.background?.setColorFilter(Color.parseColor("#4000FF00"), PorterDuff.Mode.SRC_ATOP)
             Toast.makeText(requireContext(), "Listening...", Toast.LENGTH_SHORT).show()
         }
     }
@@ -402,7 +402,7 @@ class ClaudeFragment : Fragment() {
     private fun stopVoiceRecording() {
         micButton.clearColorFilter()
         // Restore input field background
-        inputField.background.clearColorFilter()
+        inputWrapper.background?.clearColorFilter()
 
         val finalText = sherpaOnnxManager?.stopRecording() ?: ""
         if (finalText.isNotEmpty()) {

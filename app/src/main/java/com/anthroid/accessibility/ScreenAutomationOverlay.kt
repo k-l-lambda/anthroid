@@ -12,6 +12,8 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
+import android.view.animation.LinearInterpolator
+import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -70,6 +72,8 @@ class ScreenAutomationOverlay(private val context: Context) {
     private var overlayContainer: LinearLayout? = null
     private var overlayIcon: ImageView? = null
     private var overlayText: TextView? = null
+    private var textScrollView: HorizontalScrollView? = null
+    private var scrollAnimator: android.animation.ValueAnimator? = null
     private var stopButton: TextView? = null
     private var closeButton: TextView? = null
 
@@ -115,12 +119,67 @@ class ScreenAutomationOverlay(private val context: Context) {
 
     /**
      * Update the operation text while overlay is showing.
+     * Uses custom smooth scrolling animation.
      */
     fun updateText(operationText: String) {
         handler.post {
             if (isShowing) {
                 overlayText?.text = operationText
                 Log.d(TAG, "updateText: ${operationText.take(40)}...")
+                // Start smooth scroll animation after text is measured
+                overlayText?.post { startSmoothScroll() }
+            }
+        }
+    }
+    
+    /**
+     * Start smooth scrolling animation for long text.
+     * Scrolls at ~60 chars per second for comfortable reading.
+     */
+    private fun startSmoothScroll() {
+        scrollAnimator?.cancel()
+        val scrollView = textScrollView ?: return
+        val textView = overlayText ?: return
+        
+        // Wait for layout to complete
+        textView.post {
+            val textWidth = textView.width
+            val scrollWidth = scrollView.width
+            val scrollDistance = textWidth - scrollWidth
+            
+            if (scrollDistance <= 0) {
+                // Text fits, no need to scroll
+                scrollView.scrollTo(0, 0)
+                return@post
+            }
+            
+            // Calculate duration: ~60 chars per second, ~10dp per char
+            // So ~600dp per second, or ~1.67ms per dp
+            val duration = (scrollDistance * 12L).coerceIn(2000L, 30000L)  // 2-30 seconds
+            
+            scrollAnimator = android.animation.ValueAnimator.ofInt(0, scrollDistance).apply {
+                this.duration = duration
+                interpolator = LinearInterpolator()
+                repeatCount = android.animation.ValueAnimator.INFINITE
+                repeatMode = android.animation.ValueAnimator.RESTART
+                
+                addUpdateListener { animator ->
+                    scrollView.scrollTo(animator.animatedValue as Int, 0)
+                }
+                
+                // Pause at the end before restarting
+                addListener(object : android.animation.AnimatorListenerAdapter() {
+                    override fun onAnimationRepeat(animation: android.animation.Animator) {
+                        // Brief pause at the end
+                        handler.postDelayed({
+                            scrollView.scrollTo(0, 0)
+                        }, 1500)
+                    }
+                })
+                
+                // Start with a delay so user can see the beginning
+                startDelay = 1000
+                start()
             }
         }
     }
@@ -169,6 +228,8 @@ class ScreenAutomationOverlay(private val context: Context) {
     fun hide() {
         handler.post {
             try {
+                scrollAnimator?.cancel()
+                scrollAnimator = null
                 if (isShowing && overlayView != null) {
                     windowManager.removeView(overlayView)
                     isShowing = false
@@ -186,6 +247,7 @@ class ScreenAutomationOverlay(private val context: Context) {
 
         overlayContainer = overlayView?.findViewById(R.id.overlay_container)
         overlayIcon = overlayView?.findViewById(R.id.overlay_icon)
+        textScrollView = overlayView?.findViewById(R.id.text_scroll_view)
         overlayText = overlayView?.findViewById(R.id.overlay_text)
         stopButton = overlayView?.findViewById(R.id.overlay_stop_button)
         closeButton = overlayView?.findViewById(R.id.overlay_close_button)
@@ -212,10 +274,18 @@ class ScreenAutomationOverlay(private val context: Context) {
                 hide()
             }
         }
+        
+        // Click on text always opens Anthroid (regardless of active/inactive state)
+        overlayText?.setOnClickListener {
+            Log.i(TAG, "Overlay text clicked, opening Anthroid")
+            openAnthroid()
+        }
     }
 
     private fun updateUI(text: String, isActive: Boolean, isCompleted: Boolean = false) {
         overlayText?.text = text
+        // Start smooth scroll after text update
+        overlayText?.post { startSmoothScroll() }
 
         if (isActive) {
             // Active state: show stop button, hide close button, red eyes
