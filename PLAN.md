@@ -912,6 +912,8 @@ Allow users to edit the title of agent conversation sessions.
 - `ConversationAdapter.kt` - Long-press enter edit mode, title tap listener
 - `ClaudeFragment.kt` - Edit dialog, delete confirmation, bulk delete
 
+**Release:** v0.10.4
+
 ---
 
 ### Phase 15: Quick Send Candidates (Complete)
@@ -942,3 +944,5 @@ Frequently used short messages as quick send buttons for faster interaction.
 - ViewTreeObserver.OnGlobalLayoutListener detects keyboard visibility
 - Keyboard detected when screen height reduced by >15%
 - Chips wrapped in FrameLayout for right-alignment (layout_gravity="end")
+
+**Release:** v0.10.5
