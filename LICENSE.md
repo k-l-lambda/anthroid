@@ -1,4 +1,6 @@
-The `termux/termux-app` repository is released under [GPLv3 only](https://www.gnu.org/licenses/gpl-3.0.html) license.
+Anthroid is released under the [GPLv3 only](https://www.gnu.org/licenses/gpl-3.0.html) license.
+
+This project is based on the `termux/termux-app` codebase and follows the same licensing model.
 
 ### Exceptions
 
