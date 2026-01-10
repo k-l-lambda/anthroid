@@ -588,6 +588,8 @@ app/src/main/java/com/anthroid/
 | M11 | ✅ Done | Custom WebSearch/WebFetch |
 | M12 | ✅ Done | AskUserQuestion tool |
 | M13 | ⏸️ Deferred | TodoWrite UI (low priority for mobile) |
+| M14 | ✅ Done | Edit session title + bulk delete |
+| M15 | ✅ Done | Quick send candidates |
 
 ---
 
@@ -892,132 +894,51 @@ Claude Code CLI has a `TodoWrite` tool that displays task progress in the termin
 
 ---
 
-### Phase 14: Edit Agent Session Title (Planned)
+### Phase 14: Edit Agent Session Title (Complete)
 
 Allow users to edit the title of agent conversation sessions.
 
-#### Background
+#### Implementation (Jan 2026)
 
-Currently, session titles are auto-generated based on the first message or conversation content. Users should be able to customize session titles for better organization and quick identification.
+**Features:**
+- [x] Long-press session item to enter edit mode
+- [x] Tap title to edit via dialog
+- [x] Custom title stored in SharedPreferences
+- [x] "Reset" button to restore auto-generated title
+- [x] Bulk delete with multi-selection mode
 
-#### Requirements
-
-- Long-press or tap on session title to edit
-- Show edit dialog with current title pre-filled
-- Save title to session storage
-- Update UI immediately after edit
-- Persist across app restarts
-
-#### Files to Modify
-
-| File | Change |
-|------|--------|
-| `ClaudeFragment.kt` | Add title click/long-press listener |
-| `ClaudeViewModel.kt` | Add updateSessionTitle() method |
-| Session storage | Store custom title field |
-
-#### Tasks
-
-- [ ] Design title edit UI (inline edit vs dialog)
-- [ ] Add click listener to session title view
-- [ ] Create edit dialog layout
-- [ ] Implement title update in ViewModel
-- [ ] Persist title to session storage
-- [ ] Test title persistence across restarts
-
+**Files Modified:**
+- `ConversationManager.kt` - Add setCustomTitle(), getCustomTitle() methods
+- `ConversationAdapter.kt` - Long-press enter edit mode, title tap listener
+- `ClaudeFragment.kt` - Edit dialog, delete confirmation, bulk delete
 
 ---
 
-### Phase 15: Quick Send Candidates (Planned)
+### Phase 15: Quick Send Candidates (Complete)
 
 Frequently used short messages as quick send buttons for faster interaction.
 
-#### Background
+#### Implementation (Jan 2026)
 
-Users often send the same short commands or phrases repeatedly (e.g., "继续", "好", "确认", "取消", "retry"). Tracking these frequent messages and providing quick access buttons can improve UX.
+**Features:**
+- [x] Track messages < 16 chars by frequency (SharedPreferences)
+- [x] Strip "🎤 " prefix from voice input before tracking
+- [x] Show top 5 candidates with count >= 5
+- [x] Display only when keyboard is visible
+- [x] Right-aligned chips above input bar
+- [x] Tap chip to send immediately
+- [x] Refresh after each message send
 
-#### Requirements
+**Files Created:**
+- `QuickSendManager.kt` - Frequency tracking and persistence
+- `QuickSendAdapter.kt` - RecyclerView adapter for chips
+- `item_quick_send.xml` - Material Chip layout with FrameLayout wrapper
 
-1. **Track Short Message Frequency**
-   - Only track messages with length < 16 characters
-   - Strip leading "🎤 " prefix before tracking (voice input messages)
-   - Store message text and usage count
-   - Persist to SharedPreferences or local database
+**Files Modified:**
+- `fragment_claude.xml` - RecyclerView for candidates
+- `ClaudeFragment.kt` - Keyboard visibility detection, show/hide logic
 
-2. **Quick Send Candidate Selection**
-   - Select top 5 messages with usage count > 5
-   - Update candidate list after each message send
-
-3. **UI Display**
-   - Show candidates when input field gets focus
-   - Position: right side, below chat UI (above input bar)
-   - Order: by frequency, highest at bottom (closest to input)
-   - Tap to send immediately
-
-#### Data Structure
-
-```kotlin
-data class QuickSendCandidate(
-    val text: String,
-    val count: Int,
-    val lastUsed: Long
-)
-
-// Storage key: "quick_send_stats"
-// Format: JSON map { "message": count, ... }
-```
-
-#### UI Layout
-
-```
-┌─────────────────────────────────┐
-│         Chat Messages           │
-│                                 │
-│                                 │
-├─────────────────────────────────┤
-│                    ┌──────────┐ │
-│                    │ 确认 (12)│ │  ← Highest frequency at bottom
-│                    │ 继续 (8) │ │
-│                    │ 好 (7)   │ │
-│                    │ retry (6)│ │
-│                    │ 取消 (5) │ │  ← Lowest frequency at top
-│                    └──────────┘ │
-├─────────────────────────────────┤
-│ [Input field]          [Send]  │
-└─────────────────────────────────┘
-```
-
-#### Files to Create
-
-| File | Description |
-|------|-------------|
-| `QuickSendManager.kt` | Track message frequency, persist stats |
-| `QuickSendAdapter.kt` | RecyclerView adapter for candidate chips |
-| `item_quick_send.xml` | Layout for individual quick send chip |
-
-#### Files to Modify
-
-| File | Change |
-|------|--------|
-| `fragment_claude.xml` | Add RecyclerView for quick send candidates |
-| `ClaudeFragment.kt` | Show/hide candidates on input focus, handle click |
-| `ClaudeViewModel.kt` | Track message send, update frequency stats |
-
-#### Implementation Steps
-
-1. Create QuickSendManager for frequency tracking
-2. Add RecyclerView to fragment_claude.xml (right-aligned, above input)
-3. Track message frequency in sendMessage()
-4. Show candidates on input field focus
-5. Hide candidates on input field blur or send
-6. Implement tap-to-send for candidate chips
-
-#### Tasks
-
-- [ ] Create QuickSendManager.kt for frequency tracking
-- [ ] Design item_quick_send.xml chip layout
-- [ ] Add candidates RecyclerView to fragment_claude.xml
-- [ ] Implement focus listener on input field
-- [ ] Track frequency in ClaudeViewModel.sendMessage()
-- [ ] Implement candidate selection logic (top 5, count > 5)
-- [ ] Test quick send functionality
+**Technical Notes:**
+- ViewTreeObserver.OnGlobalLayoutListener detects keyboard visibility
+- Keyboard detected when screen height reduced by >15%
+- Chips wrapped in FrameLayout for right-alignment (layout_gravity="end")

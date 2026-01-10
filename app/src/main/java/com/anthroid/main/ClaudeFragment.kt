@@ -46,7 +46,9 @@ import kotlinx.coroutines.launch
 import com.anthroid.claude.DebugReceiver
 import com.anthroid.claude.ConversationManager
 import com.anthroid.claude.ui.ConversationAdapter
+import com.anthroid.claude.ui.QuickSendAdapter
 import com.anthroid.claude.AskUserQuestionActivity
+import com.anthroid.claude.QuickSendManager
 import com.anthroid.mcp.McpServer
 
 /**
@@ -109,6 +111,12 @@ class ClaudeFragment : Fragment() {
     private lateinit var conversationAdapter: ConversationAdapter
     private lateinit var conversationManager: ConversationManager
 
+    // Quick send candidates
+    private lateinit var quickSendManager: QuickSendManager
+    private lateinit var quickSendRecyclerView: RecyclerView
+    private lateinit var quickSendAdapter: QuickSendAdapter
+    private var isKeyboardVisible = false
+
     // Permission launcher for audio recording
     private val requestAudioPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -161,6 +169,7 @@ class ClaudeFragment : Fragment() {
         // Initialize ViewModel - scoped to Activity to survive fragment recreation
         viewModel = ViewModelProvider(requireActivity())[ClaudeViewModel::class.java]
         conversationManager = ConversationManager(requireContext())
+        quickSendManager = QuickSendManager(requireContext())
 
         // Configure API from shared preferences
         configureApiFromPrefs()
@@ -169,6 +178,7 @@ class ClaudeFragment : Fragment() {
         setupHistoryPanel(view)
         setupRecyclerView()
         setupVoiceInput()
+        setupQuickSend(view)
         observeViewModel()
         setupMcpQuestionCallback()
     }
@@ -335,6 +345,68 @@ class ClaudeFragment : Fragment() {
                 else -> false
             }
         }
+    }
+
+    /**
+     * Setup quick send candidates RecyclerView.
+     */
+    private fun setupQuickSend(view: View) {
+        quickSendRecyclerView = view.findViewById(R.id.quick_send_recycler)
+
+        quickSendAdapter = QuickSendAdapter { text ->
+            // Send the message immediately when chip is clicked
+            viewModel.sendMessage(text)
+            quickSendManager.trackMessage(text)
+            hideQuickSendCandidates()
+        }
+
+        quickSendRecyclerView.apply {
+            layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.VERTICAL, true)
+            adapter = quickSendAdapter
+        }
+
+        // Detect keyboard visibility using ViewTreeObserver
+        val rootView = view.rootView
+        rootView.viewTreeObserver.addOnGlobalLayoutListener {
+            val rect = android.graphics.Rect()
+            rootView.getWindowVisibleDisplayFrame(rect)
+            val screenHeight = rootView.height
+            val keypadHeight = screenHeight - rect.bottom
+
+            // Keyboard is visible if it takes more than 15% of screen height
+            val keyboardVisible = keypadHeight > screenHeight * 0.15
+
+            if (keyboardVisible != isKeyboardVisible) {
+                isKeyboardVisible = keyboardVisible
+                if (keyboardVisible) {
+                    showQuickSendCandidates()
+                } else {
+                    hideQuickSendCandidates()
+                }
+            }
+        }
+    }
+
+    /**
+     * Show quick send candidates if any are available.
+     */
+    private fun showQuickSendCandidates() {
+        val candidates = quickSendManager.getCandidates()
+        Log.d(TAG, "showQuickSendCandidates: ${candidates.size} candidates")
+        if (candidates.isNotEmpty()) {
+            // Order: highest frequency at bottom (reversed list since layoutManager is reversed)
+            candidates.forEach { Log.d(TAG, "  - ${it.text}: ${it.count}") }
+            quickSendAdapter.submitList(candidates.reversed())
+            quickSendRecyclerView.visibility = View.VISIBLE
+            Log.d(TAG, "QuickSend RecyclerView set to VISIBLE")
+        }
+    }
+
+    /**
+     * Hide quick send candidates.
+     */
+    private fun hideQuickSendCandidates() {
+        quickSendRecyclerView.visibility = View.GONE
     }
 
     /**
@@ -704,6 +776,7 @@ class ClaudeFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             DebugReceiver.debugMessageFlow.collect { message ->
                 Log.i(TAG, "Debug message received: ${message.take(50)}...")
+                quickSendManager.trackMessage(message)
                 viewModel.sendMessage(message)
             }
         }
@@ -754,9 +827,17 @@ class ClaudeFragment : Fragment() {
         val message = inputField.text.toString().trim()
         val hasPendingImages = viewModel.pendingImages.value.isNotEmpty()
         if (message.isNotEmpty() || hasPendingImages) {
+            // Track message for quick send candidates
+            if (message.isNotEmpty()) {
+                quickSendManager.trackMessage(message)
+            }
             viewModel.sendMessage(message, isLastInputFromVoice)
             inputField.text.clear()
             isLastInputFromVoice = false
+            // Refresh candidates if keyboard is still visible
+            if (isKeyboardVisible) {
+                showQuickSendCandidates()
+            }
         }
     }
 

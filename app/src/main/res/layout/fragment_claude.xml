@@ -60,6 +60,20 @@
                 android:paddingBottom="4dp" />
         </HorizontalScrollView>
 
+        <!-- Quick send candidates (right-aligned, above input) -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/quick_send_recycler"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="4dp"
+            android:clipToPadding="false"
+            app:layout_constraintBottom_toTopOf="@id/input_container"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
         <!-- Input container -->
         <LinearLayout
             android:id="@+id/input_container"
