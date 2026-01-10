@@ -1,16 +1,25 @@
 # Anthroid
 
-**Your AI Agent on Mobile** - A native Android app that brings Claude AI to your pocket with voice, camera, and terminal capabilities.
+Anthroid is a native Android app that brings **Claude Code-style agent workflows** to your phone.
+
+It’s built for situations where a laptop isn’t practical: quick environment checks, acting on what you see on-screen, capturing context with the camera, and running terminal commands — all from a mobile-first UI.
+
+## When it helps (real-world scenarios)
+
+- **On-call / incident triage away from your desk**: run quick diagnostics in a terminal, keep a chat thread with context, and resume the conversation later.
+- **Field work & device setup**: scan QR codes to avoid retyping tokens/URLs, open links on-device, and copy/paste between apps.
+- **Hands-busy workflows**: dictate messages with **offline** speech recognition so you can keep moving even with poor network.
+- **“What am I looking at?” troubleshooting**: attach photos/screenshots for visual context, then follow a short step-by-step checklist.
 
 ## Overview
 
 Anthroid (Android + Anthropic) is a mobile implementation of [Claude Code](https://docs.anthropic.com/claude-code), designed around mobile-native input methods and device capabilities.
 
-**Design Goals:**
-- **Mobile APIs** - Access to GPS location, calendar, notifications, and other Android system services
-- **Voice input** - Speech recognition (sherpa-onnx) for hands-free interaction, supporting zh/en/ja/ko/yue
-- **Visual context** - Camera integration for image-based queries and QR code scanning
-- **Full toolset** - Bash, file operations, web search - same capabilities as desktop Claude Code
+**Design goals**
+- **Device tools**: access to location, calendar, clipboard, notifications, URL/app launching, and more.
+- **Mobile input**: voice dictation (offline `sherpa-onnx`) and camera capture/QR scanning.
+- **Agent-style automation**: optional overlay shows what the agent is doing when it operates outside the app.
+- **Terminal at hand**: a full bash environment for advanced workflows.
 
 ## Features
 
