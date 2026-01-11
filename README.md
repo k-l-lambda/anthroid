@@ -1,7 +1,7 @@
 # Anthroid
 
 <p align="center">
-  <img src="docs/logo.png" alt="Anthroid logo" width="160" />
+  <img src="docs/logo.png" alt="Anthroid logo" width="480" />
 </p>
 
 Anthroid is a native Android app for **mobile agentic workflows**: a Claude Code-style agent that can work with your phone’s native capabilities (camera, voice, clipboard, notifications, app/URL launching, location/calendar, screenshots, and optional UI automation).
