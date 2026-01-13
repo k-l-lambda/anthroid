@@ -54,6 +54,7 @@ import com.anthroid.shared.termux.TermuxConstants;
 import com.anthroid.shared.termux.TermuxUtils;
 import com.anthroid.shared.activity.media.AppCompatActivityUtils;
 import com.anthroid.shared.theme.NightMode;
+import com.anthroid.claude.QuickSendManager;
 
 public class SettingsActivity extends AppCompatActivity {
 
@@ -117,6 +118,7 @@ public class SettingsActivity extends AppCompatActivity {
             configureVpnProxyPreference(context);
             configureScreenCapturePreference(context);
             configureOverlayPreference(context);
+            configureClearQuickSendPreference(context);
 
             new Thread() {
                 @Override
@@ -233,6 +235,25 @@ public class SettingsActivity extends AppCompatActivity {
                 pref.setSummary("Enabled");
             } else {
                 pref.setSummary("Tap to enable automation status banner");
+            }
+        }
+
+        private void configureClearQuickSendPreference(@NonNull Context context) {
+            Preference clearQuickSend = findPreference("clear_quick_send");
+            if (clearQuickSend != null) {
+                clearQuickSend.setOnPreferenceClickListener(preference -> {
+                    new AlertDialog.Builder(context)
+                        .setTitle("Clear Quick Send History")
+                        .setMessage("This will remove all saved message shortcuts. Continue?")
+                        .setPositiveButton("Clear", (dialog, which) -> {
+                            QuickSendManager manager = new QuickSendManager(context);
+                            manager.clearStats();
+                            Toast.makeText(context, "Quick send history cleared", Toast.LENGTH_SHORT).show();
+                        })
+                        .setNegativeButton("Cancel", null)
+                        .show();
+                    return true;
+                });
             }
         }
 
