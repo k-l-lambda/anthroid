@@ -246,7 +246,7 @@ public class SettingsActivity extends AppCompatActivity {
                         .setTitle("Clear Quick Send History")
                         .setMessage("This will remove all saved message shortcuts. Continue?")
                         .setPositiveButton("Clear", (dialog, which) -> {
-                            QuickSendManager manager = new QuickSendManager(context);
+                            QuickSendManager manager = QuickSendManager.Companion.getInstance(context);
                             manager.clearStats();
                             Toast.makeText(context, "Quick send history cleared", Toast.LENGTH_SHORT).show();
                         })

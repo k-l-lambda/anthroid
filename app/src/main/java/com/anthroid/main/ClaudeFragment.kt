@@ -169,7 +169,7 @@ class ClaudeFragment : Fragment() {
         // Initialize ViewModel - scoped to Activity to survive fragment recreation
         viewModel = ViewModelProvider(requireActivity())[ClaudeViewModel::class.java]
         conversationManager = ConversationManager(requireContext())
-        quickSendManager = QuickSendManager(requireContext())
+        quickSendManager = QuickSendManager.getInstance(requireContext())
 
         // Configure API from shared preferences
         configureApiFromPrefs()
