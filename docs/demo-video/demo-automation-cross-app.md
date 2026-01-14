@@ -2,7 +2,7 @@
 
 ## Overview
 - **Duration**: ~20 seconds
-- **App**: Pinduoduo (拼多多)
+- **App**: JD (京东)
 - **Goal**: Demonstrate AI controlling other apps - Anthroid's core differentiator
 
 ## Pre-recording Setup
@@ -12,19 +12,19 @@
 - Clean conversation (new session)
 - Overlay permission enabled
 - Accessibility service enabled
-- Pinduoduo installed and logged in
+- JD (京东) installed and logged in
 
 ### Prompt to Use
 ```
-打开拼多多，搜索手机壳
+打开京东，帮我找一款风格低调的，耐用的无线鼠标
 ```
 
 ### Expected Tool Call Sequence
-1. `launch_app` → Opens Pinduoduo
+1. `launch_app` → Opens JD (京东)
 2. `get_screen_elements` → Reads UI hierarchy
-3. `click_element` → Clicks search bar (text="搜索你要的商品")
-4. `input_text` → Types "手机壳"
-5. `click_element` → Clicks search button (text="搜索")
+3. `click_element` → Clicks search bar
+4. `input_text` → Types "无线鼠标" or similar search term
+5. `click_element` → Clicks search button
 
 ---
 
@@ -34,7 +34,7 @@
 **Screen**: Anthroid Chat interface
 
 **Action**:
-- User types: "打开拼多多，搜索手机壳"
+- User types: "打开京东，帮我找一款风格低调的，耐用的无线鼠标"
 - Tap send button
 
 **Overlay Text**: "Cross-app automation" (post-edit overlay)
@@ -46,7 +46,7 @@
 ---
 
 ### Shot 2: App Launch (3-7s)
-**Screen**: Transitions from Anthroid → Pinduoduo splash → Pinduoduo home
+**Screen**: Transitions from Anthroid → JD splash → JD home
 
 **Overlay Banner Shows**:
 ```
@@ -55,7 +55,7 @@
 
 **Action**:
 - Anthroid minimizes
-- Pinduoduo launches
+- JD (京东) launches
 - Banner shows tool name in top overlay
 
 **Visual Notes**:
@@ -65,7 +65,7 @@
 ---
 
 ### Shot 3: Element Discovery (7-10s)
-**Screen**: Pinduoduo home page
+**Screen**: JD home page
 
 **Overlay Banner Shows**:
 ```
@@ -78,7 +78,7 @@ then:
 
 **Action**:
 - Claude reads screen elements
-- Identifies search bar "搜索你要的商品"
+- Identifies search bar
 - Clicks on search bar
 - Search page opens with keyboard
 
@@ -89,7 +89,7 @@ then:
 ---
 
 ### Shot 4: Text Input (10-14s)
-**Screen**: Pinduoduo search page with keyboard
+**Screen**: JD search page with keyboard
 
 **Overlay Banner Shows**:
 ```
@@ -97,11 +97,11 @@ then:
 ```
 then:
 ```
-typing: 手机壳
+typing: 无线鼠标
 ```
 
 **Action**:
-- Text "手机壳" appears in search field
+- Text "无线鼠标" appears in search field
 - Keyboard may hide or search initiated
 
 **Visual Notes**:
@@ -111,7 +111,7 @@ typing: 手机壳
 ---
 
 ### Shot 5: Search Execution (14-17s)
-**Screen**: Pinduoduo search page
+**Screen**: JD search page
 
 **Overlay Banner Shows**:
 ```
@@ -119,17 +119,17 @@ typing: 手机壳
 ```
 
 **Action**:
-- Claude clicks "搜索" button
+- Claude clicks search button
 - Search results load
 
 **Visual Notes**:
-- Results grid shows phone cases
+- Results grid shows wireless mice
 - Products visible on screen
 
 ---
 
 ### Shot 6: Completion (17-20s)
-**Screen**: Pinduoduo search results OR return to Anthroid
+**Screen**: JD search results OR return to Anthroid
 
 **Overlay Banner Shows**:
 ```
@@ -142,7 +142,7 @@ Completed
 
 **Claude's Response** (if shown):
 ```
-已完成搜索。拼多多正在显示"手机壳"的搜索结果。
+已完成搜索。京东正在显示"无线鼠标"的搜索结果。
 ```
 
 ---
@@ -153,9 +153,9 @@ Completed
 
 **launch_app**:
 ```json
-{"package_name": "com.xunmeng.pinduoduo"}
+{"package_name": "com.jingdong.app.mall"}
 ```
-Output: "Launched: com.xunmeng.pinduoduo"
+Output: "Launched: com.jingdong.app.mall"
 
 **get_screen_elements**:
 ```json
@@ -165,15 +165,15 @@ Output: List of UI elements with bounds
 
 **click_element**:
 ```json
-{"text": "搜索你要的商品"}
+{"text": "搜索"}
 ```
-Output: "Clicked element: 搜索你要的商品"
+Output: "Clicked element: 搜索"
 
 **input_text**:
 ```json
-{"text": "手机壳"}
+{"text": "无线鼠标"}
 ```
-Output: "Typed: 手机壳"
+Output: "Typed: 无线鼠标"
 
 **click_element**:
 ```json
@@ -214,7 +214,7 @@ Output: "Clicked element: 搜索"
 
 ## Backup Scenarios
 
-### If Pinduoduo Fails
+### If JD Fails
 Use **Settings App** instead:
 ```
 打开设置，找到WLAN选项
@@ -234,7 +234,7 @@ End demo after input_text showing text in search field - still demonstrates the 
 - [ ] Anthroid latest version installed
 - [ ] Accessibility service enabled
 - [ ] Overlay permission granted
-- [ ] Pinduoduo installed and working
+- [ ] JD (京东) installed and working
 - [ ] New/clean chat session
 - [ ] Screen brightness appropriate
 - [ ] Do Not Disturb mode ON (no notifications)
