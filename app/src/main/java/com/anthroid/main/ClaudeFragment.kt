@@ -809,6 +809,23 @@ class ClaudeFragment : Fragment() {
                 Log.i(TAG, "Conversation updated: ${messages.size} messages")
             }
         }
+
+        // Observe set input requests from adb (sets text without sending)
+        viewLifecycleOwner.lifecycleScope.launch {
+            DebugReceiver.setInputFlow.collect { text ->
+                Log.i(TAG, "Setting input field: ${text.take(50)}...")
+                inputField.setText(text)
+                inputField.setSelection(text.length)
+            }
+        }
+
+        // Observe click send requests from adb
+        viewLifecycleOwner.lifecycleScope.launch {
+            DebugReceiver.clickSendFlow.collect {
+                Log.i(TAG, "Click send triggered via adb")
+                sendButton.performClick()
+            }
+        }
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.isClaudeInstalled.collectLatest { isInstalled ->
                 if (!isInstalled) {

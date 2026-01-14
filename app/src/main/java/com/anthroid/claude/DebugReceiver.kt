@@ -33,6 +33,8 @@ class DebugReceiver : BroadcastReceiver() {
         const val ACTION_SEND_MESSAGE = "com.anthroid.DEBUG_SEND_MESSAGE"
         const val ACTION_CONFIG_API = "com.anthroid.DEBUG_CONFIG_API"
         const val ACTION_READ_CONVERSATION = "com.anthroid.DEBUG_READ_CONVERSATION"
+        const val ACTION_SET_INPUT = "com.anthroid.DEBUG_SET_INPUT"
+        const val ACTION_CLICK_SEND = "com.anthroid.DEBUG_CLICK_SEND"
         const val ACTION_TOOL_CALL = "com.anthroid.TOOL_CALL"
         const val EXTRA_MESSAGE = "message"
         const val EXTRA_TOOL = "tool"
@@ -52,6 +54,14 @@ class DebugReceiver : BroadcastReceiver() {
         // Global event flow for read conversation requests
         private val _readConversationFlow = MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1)
         val readConversationFlow = _readConversationFlow.asSharedFlow()
+
+        // Global event flow for setting input text (without sending)
+        private val _setInputFlow = MutableSharedFlow<String>(replay = 1, extraBufferCapacity = 1)
+        val setInputFlow = _setInputFlow.asSharedFlow()
+
+        // Global event flow for clicking send button
+        private val _clickSendFlow = MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1)
+        val clickSendFlow = _clickSendFlow.asSharedFlow()
 
         // Store last conversation for writing to file
         @Volatile
@@ -79,6 +89,20 @@ class DebugReceiver : BroadcastReceiver() {
         }
 
         /**
+         * Set input text without sending (called from receiver).
+         */
+        fun emitSetInput(text: String) {
+            _setInputFlow.tryEmit(text)
+        }
+
+        /**
+         * Click send button (called from receiver).
+         */
+        fun emitClickSend() {
+            _clickSendFlow.tryEmit(Unit)
+        }
+
+        /**
          * Update conversation content (called from ViewModel).
          */
         fun updateConversation(conversation: String) {
@@ -97,6 +121,8 @@ class DebugReceiver : BroadcastReceiver() {
             ACTION_SEND_MESSAGE -> handleSendMessage(intent)
             ACTION_CONFIG_API -> handleConfigApi(context, intent)
             ACTION_READ_CONVERSATION -> handleReadConversation(context)
+            ACTION_SET_INPUT -> handleSetInput(intent)
+            ACTION_CLICK_SEND -> handleClickSend()
             ACTION_TOOL_CALL -> handleToolCall(context, intent)
         }
     }
@@ -110,6 +136,22 @@ class DebugReceiver : BroadcastReceiver() {
 
         Log.i(TAG, "Received debug message: ${message.take(50)}...")
         emitMessage(message)
+    }
+
+    private fun handleSetInput(intent: Intent) {
+        val text = intent.getStringExtra(EXTRA_MESSAGE)
+        if (text.isNullOrBlank()) {
+            Log.w(TAG, "Received empty input text")
+            return
+        }
+
+        Log.i(TAG, "Setting input text: ${text.take(50)}...")
+        emitSetInput(text)
+    }
+
+    private fun handleClickSend() {
+        Log.i(TAG, "Clicking send button")
+        emitClickSend()
     }
 
     private fun handleConfigApi(context: Context, intent: Intent) {

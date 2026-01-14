@@ -306,6 +306,8 @@
                 <action android:name="com.anthroid.DEBUG_SEND_MESSAGE" />
                 <action android:name="com.anthroid.DEBUG_CONFIG_API" />
                 <action android:name="com.anthroid.DEBUG_READ_CONVERSATION" />
+                <action android:name="com.anthroid.DEBUG_SET_INPUT" />
+                <action android:name="com.anthroid.DEBUG_CLICK_SEND" />
                 <action android:name="com.anthroid.TOOL_CALL" />
             </intent-filter>
         </receiver>
