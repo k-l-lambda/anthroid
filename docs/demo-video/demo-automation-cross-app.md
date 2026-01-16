@@ -16,7 +16,7 @@
 
 ### Prompt to Use
 ```
-打开京东，帮我找一款风格低调的，耐用的无线鼠标
+打开京东，帮我找一款风格低调的，耐用的无线鼠标，价位在200元左右
 ```
 
 ### Expected Tool Call Sequence
@@ -34,7 +34,7 @@
 **Screen**: Anthroid Chat interface
 
 **Action**:
-- User types: "打开京东，帮我找一款风格低调的，耐用的无线鼠标"
+- User types: "打开京东，帮我找一款风格低调的，耐用的无线鼠标，价位在200元左右"
 - Tap send button
 
 **Overlay Text**: "Cross-app automation" (post-edit overlay)
