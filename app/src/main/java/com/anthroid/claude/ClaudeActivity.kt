@@ -1,5 +1,6 @@
 package com.anthroid.claude
 
+import android.app.Dialog
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -8,15 +9,18 @@ import android.os.Bundle
 import android.os.IBinder
 import android.util.Log
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
+import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.Toast
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import android.widget.EditText
-import android.widget.ImageButton
 import android.widget.TextView
 import com.anthroid.BuildConfig
 import com.anthroid.R
@@ -140,13 +144,95 @@ class ClaudeActivity : AppCompatActivity() {
     }
 
     private fun setupRecyclerView() {
-        messageAdapter = MessageAdapter()
+        messageAdapter = MessageAdapter(
+            onImageClick = { messageImage ->
+                showImagePreviewDialog(messageImage)
+            },
+            onToolClick = { message ->
+                showToolDetailDialog(message)
+            }
+        )
         recyclerView.apply {
             layoutManager = LinearLayoutManager(this@ClaudeActivity).apply {
                 stackFromEnd = true
             }
             adapter = messageAdapter
         }
+    }
+
+    /**
+     * Show a full-screen image preview dialog.
+     */
+    private fun showImagePreviewDialog(messageImage: MessageImage) {
+        val dialog = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        dialog.setContentView(R.layout.dialog_image_preview)
+
+        val previewImage = dialog.findViewById<ImageView>(R.id.preview_image)
+        val closeButton = dialog.findViewById<ImageButton>(R.id.close_button)
+
+        try {
+            previewImage.setImageURI(messageImage.uri)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load image for preview: ${messageImage.uri}", e)
+            Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        closeButton.setOnClickListener {
+            dialog.dismiss()
+        }
+
+        // Dismiss on background click
+        previewImage.setOnClickListener {
+            dialog.dismiss()
+        }
+
+        dialog.show()
+    }
+
+    /**
+     * Show tool input/output detail dialog.
+     */
+    private fun showToolDetailDialog(message: Message) {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_tool_detail, null)
+
+        val toolInputContent = dialogView.findViewById<TextView>(R.id.tool_input_content)
+        val toolOutputContent = dialogView.findViewById<TextView>(R.id.tool_output_content)
+        val outputLabel = dialogView.findViewById<TextView>(R.id.output_label)
+
+        // Format tool input as pretty JSON if possible
+        val inputText = message.toolInput ?: message.content
+        toolInputContent.text = try {
+            org.json.JSONObject(inputText).toString(2)
+        } catch (e: Exception) {
+            inputText
+        }
+
+        // Show tool output if available
+        val outputText = message.toolOutput
+        if (outputText != null && outputText.isNotEmpty()) {
+            toolOutputContent.text = outputText
+            toolOutputContent.visibility = View.VISIBLE
+            outputLabel.visibility = View.VISIBLE
+        } else if (message.isStreaming) {
+            toolOutputContent.text = "Running..."
+            toolOutputContent.visibility = View.VISIBLE
+            outputLabel.visibility = View.VISIBLE
+        } else {
+            toolOutputContent.visibility = View.GONE
+            outputLabel.visibility = View.GONE
+        }
+
+        // Strip MCP prefix for dialog title
+        val displayName = (message.toolName ?: "Tool")
+            .removePrefix("mcp__anthroid__")
+            .removePrefix("mcp__")
+
+        AlertDialog.Builder(this)
+            .setTitle(displayName)
+            .setView(dialogView)
+            .setPositiveButton("Close", null)
+            .show()
     }
 
     private fun observeViewModel() {

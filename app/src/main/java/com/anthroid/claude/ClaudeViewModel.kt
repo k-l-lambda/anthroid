@@ -89,8 +89,8 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         checkClaudeInstallation()
 
         // Set up MCP server callback to handle tool completion events
-        McpServer.onToolComplete = { toolName, isError ->
-            Log.d(TAG, "MCP onToolComplete: tool=$toolName, isError=$isError")
+        McpServer.onToolComplete = { toolName, isError, result ->
+            Log.d(TAG, "MCP onToolComplete: tool=$toolName, isError=$isError, resultLen=${result.length}")
             viewModelScope.launch {
                 if (isError) {
                     // Update the most recent tool message with this name to show error
@@ -99,18 +99,18 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                             msg.toolName?.contains(toolName) == true &&
                             !msg.isError) {
                             Log.d(TAG, "Setting isError=true for tool message: ${msg.id}")
-                            msg.copy(isStreaming = false, isError = true)
+                            msg.copy(isStreaming = false, isError = true, toolOutput = result)
                         } else {
                             msg
                         }
                     }
                 } else {
-                    // Mark streaming tool as complete (success)
+                    // Mark streaming tool as complete (success) and store result
                     _messages.value = _messages.value.map { msg ->
                         if (msg.role == MessageRole.TOOL &&
                             msg.toolName?.contains(toolName) == true &&
                             msg.isStreaming) {
-                            msg.copy(isStreaming = false)
+                            msg.copy(isStreaming = false, toolOutput = result)
                         } else {
                             msg
                         }
@@ -677,7 +677,8 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             _messages.value = _messages.value.map { msg ->
                 if (msg.id == toolMessage.id) msg.copy(
                     isStreaming = false,
-                    content = "${toolInputText}\n\n📤 Result:\n${result.take(500)}${if (result.length > 500) "..." else ""}"
+                    content = "${toolInputText}\n\n📤 Result:\n${result.take(500)}${if (result.length > 500) "..." else ""}",
+                    toolOutput = result
                 )
                 else msg
             }
@@ -989,6 +990,7 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                             timestamp = msg.timestamp,
                             toolName = msg.toolName,
                             toolInput = msg.toolInput,
+                            toolOutput = msg.toolOutput,
                             isError = isToolError
                         )
                     } else if (msg.content.isNotEmpty()) {
@@ -1159,6 +1161,7 @@ data class Message(
     val isInterrupted: Boolean = false,
     val toolName: String? = null,
     val toolInput: String? = null,
+    val toolOutput: String? = null,
     val images: List<MessageImage> = emptyList()
 )
 

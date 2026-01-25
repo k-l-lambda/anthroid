@@ -45,8 +45,8 @@ class McpServer(
         @Volatile
         private var instance: McpServer? = null
 
-        // Callback for tool completion events
-        var onToolComplete: ((toolName: String, isError: Boolean) -> Unit)? = null
+        // Callback for tool completion events (toolName, isError, result)
+        var onToolComplete: ((toolName: String, isError: Boolean, result: String) -> Unit)? = null
 
         // Callback for ask_user_question tool - UI should observe this
         var onAskUserQuestion: ((McpPendingQuestion) -> Unit)? = null
@@ -504,7 +504,7 @@ class McpServer(
                       (result.startsWith("{") && result.contains("\"success\": false"))
 
         // Notify listener about tool completion
-        onToolComplete?.invoke(toolName, isError)
+        onToolComplete?.invoke(toolName, isError, result)
 
         return JSONObject().apply {
             put("content", JSONArray().put(JSONObject().apply {
@@ -545,12 +545,13 @@ class McpServer(
         }
 
         val isError = !result.success
-        onToolComplete?.invoke("read_terminal", isError)
+        val resultText = if (result.success) result.output else "Error: ${result.output}"
+        onToolComplete?.invoke("read_terminal", isError, resultText)
 
         return JSONObject().apply {
             put("content", JSONArray().put(JSONObject().apply {
                 put("type", "text")
-                put("text", if (result.success) result.output else "Error: ${result.output}")
+                put("text", resultText)
             }))
             put("isError", isError)
         }
@@ -632,7 +633,7 @@ class McpServer(
         }
 
         // Notify tool completion
-        onToolComplete?.invoke("ask_user_question", isError)
+        onToolComplete?.invoke("ask_user_question", isError, resultText)
 
         return JSONObject().apply {
             put("content", JSONArray().put(JSONObject().apply {
