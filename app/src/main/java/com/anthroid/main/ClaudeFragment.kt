@@ -2,6 +2,7 @@ package com.anthroid.main
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Dialog
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -36,6 +37,7 @@ import com.anthroid.BuildConfig
 import com.anthroid.accessibility.ScreenAutomationOverlay
 import com.anthroid.R
 import com.anthroid.claude.ClaudeViewModel
+import com.anthroid.claude.Message
 import com.anthroid.claude.MessageRole
 import com.anthroid.claude.MessageImage
 import com.anthroid.claude.SherpaOnnxManager
@@ -299,13 +301,95 @@ class ClaudeFragment : Fragment() {
     }
 
     private fun setupRecyclerView() {
-        messageAdapter = MessageAdapter()
+        messageAdapter = MessageAdapter(
+            onImageClick = { messageImage ->
+                showImagePreviewDialog(messageImage)
+            },
+            onToolClick = { message ->
+                showToolDetailDialog(message)
+            }
+        )
         recyclerView.apply {
             layoutManager = LinearLayoutManager(requireContext()).apply {
                 stackFromEnd = true
             }
             adapter = messageAdapter
         }
+    }
+
+    /**
+     * Show a full-screen image preview dialog.
+     */
+    private fun showImagePreviewDialog(messageImage: MessageImage) {
+        val dialog = Dialog(requireContext(), android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        dialog.setContentView(R.layout.dialog_image_preview)
+
+        val previewImage = dialog.findViewById<ImageView>(R.id.preview_image)
+        val closeButton = dialog.findViewById<ImageButton>(R.id.close_button)
+
+        try {
+            previewImage.setImageURI(messageImage.uri)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load image for preview: ${messageImage.uri}", e)
+            Toast.makeText(requireContext(), "Failed to load image", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        closeButton.setOnClickListener {
+            dialog.dismiss()
+        }
+
+        // Dismiss on background click
+        previewImage.setOnClickListener {
+            dialog.dismiss()
+        }
+
+        dialog.show()
+    }
+
+    /**
+     * Show tool input/output detail dialog.
+     */
+    private fun showToolDetailDialog(message: Message) {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_tool_detail, null)
+
+        val toolInputContent = dialogView.findViewById<TextView>(R.id.tool_input_content)
+        val toolOutputContent = dialogView.findViewById<TextView>(R.id.tool_output_content)
+        val outputLabel = dialogView.findViewById<TextView>(R.id.output_label)
+
+        // Format tool input as pretty JSON if possible
+        val inputText = message.toolInput ?: message.content
+        toolInputContent.text = try {
+            org.json.JSONObject(inputText).toString(2)
+        } catch (e: Exception) {
+            inputText
+        }
+
+        // Show tool output if available
+        val outputText = message.toolOutput
+        if (outputText != null && outputText.isNotEmpty()) {
+            toolOutputContent.text = outputText
+            toolOutputContent.visibility = View.VISIBLE
+            outputLabel.visibility = View.VISIBLE
+        } else if (message.isStreaming) {
+            toolOutputContent.text = "Running..."
+            toolOutputContent.visibility = View.VISIBLE
+            outputLabel.visibility = View.VISIBLE
+        } else {
+            toolOutputContent.visibility = View.GONE
+            outputLabel.visibility = View.GONE
+        }
+
+        // Strip MCP prefix for dialog title
+        val displayName = (message.toolName ?: "Tool")
+            .removePrefix("mcp__anthroid__")
+            .removePrefix("mcp__")
+
+        AlertDialog.Builder(requireContext())
+            .setTitle(displayName)
+            .setView(dialogView)
+            .setPositiveButton("Close", null)
+            .show()
     }
 
     /**
