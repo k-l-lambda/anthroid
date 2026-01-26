@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:maxHeight="500dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <!-- Tool Input Section -->
+        <TextView
+            android:id="@+id/input_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Input"
+            android:textColor="@color/tool_name_color"
+            android:textStyle="bold"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/tool_input_content"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_code_block"
+            android:padding="12dp"
+            android:fontFamily="monospace"
+            android:textSize="12sp"
+            android:textColor="#333333"
+            android:textIsSelectable="true"
+            tools:text='{"command": "ls -la"}' />
+
+        <!-- Tool Output Section -->
+        <TextView
+            android:id="@+id/output_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Output"
+            android:textColor="@color/tool_name_color"
+            android:textStyle="bold"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/tool_output_content"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_code_block"
+            android:padding="12dp"
+            android:fontFamily="monospace"
+            android:textSize="12sp"
+            android:textColor="#333333"
+            android:textIsSelectable="true"
+            tools:text="total 24\ndrwxr-xr-x  3 user user 4096 Jan 25 10:00 ." />
+
+    </LinearLayout>
+
+</ScrollView>

@@ -89,8 +89,8 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         checkClaudeInstallation()
 
         // Set up MCP server callback to handle tool completion events
-        McpServer.onToolComplete = { toolName, isError ->
-            Log.d(TAG, "MCP onToolComplete: tool=$toolName, isError=$isError")
+        McpServer.onToolComplete = { toolName, isError, result ->
+            Log.d(TAG, "MCP onToolComplete: tool=$toolName, isError=$isError, resultLen=${result.length}")
             viewModelScope.launch {
                 if (isError) {
                     // Update the most recent tool message with this name to show error
@@ -99,18 +99,21 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                             msg.toolName?.contains(toolName) == true &&
                             !msg.isError) {
                             Log.d(TAG, "Setting isError=true for tool message: ${msg.id}")
-                            msg.copy(isStreaming = false, isError = true)
+                            msg.copy(isStreaming = false, isError = true, toolOutput = result)
                         } else {
                             msg
                         }
                     }
                 } else {
-                    // Mark streaming tool as complete (success)
+                    // Mark tool as complete (success) and store result
+                    // Note: Check toolOutput is null instead of isStreaming, because TextDelta
+                    // may have already set isStreaming=false before this callback fires
                     _messages.value = _messages.value.map { msg ->
                         if (msg.role == MessageRole.TOOL &&
                             msg.toolName?.contains(toolName) == true &&
-                            msg.isStreaming) {
-                            msg.copy(isStreaming = false)
+                            msg.toolOutput == null) {
+                            Log.d(TAG, "Storing toolOutput for ${msg.toolName}, resultLen=${result.length}")
+                            msg.copy(isStreaming = false, toolOutput = result)
                         } else {
                             msg
                         }
@@ -451,6 +454,47 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 handleToolUse(event)
             }
 
+            is ClaudeEvent.ToolResult -> {
+                // Tool result from non-MCP tools (WebFetch, Bash, etc.)
+                // Update the tool message with matching toolUseId
+                Log.d(TAG, "ToolResult: id=${event.toolUseId}, isError=${event.isError}, len=${event.content.length}")
+                var matched = false
+                _messages.value = _messages.value.map { msg ->
+                    if (msg.role == MessageRole.TOOL &&
+                        msg.toolOutput == null &&
+                        msg.toolUseId == event.toolUseId) {
+                        Log.d(TAG, "Updating tool message ${msg.toolName} with result (matched by toolUseId)")
+                        matched = true
+                        msg.copy(
+                            isStreaming = false,
+                            isError = event.isError,
+                            toolOutput = event.content
+                        )
+                    } else {
+                        msg
+                    }
+                }
+                // Fallback: find most recent non-MCP tool without output
+                if (!matched) {
+                    _messages.value = _messages.value.mapIndexed { index, msg ->
+                        if (!matched &&
+                            msg.role == MessageRole.TOOL &&
+                            msg.toolOutput == null &&
+                            !msg.toolName.orEmpty().startsWith("mcp__")) {
+                            Log.d(TAG, "Updating non-MCP tool ${msg.toolName} with result (fallback)")
+                            matched = true
+                            msg.copy(
+                                isStreaming = false,
+                                isError = event.isError,
+                                toolOutput = event.content
+                            )
+                        } else {
+                            msg
+                        }
+                    }
+                }
+            }
+
             is ClaudeEvent.MessageEnd -> {
                 // Flush any pending streaming content before finalizing
                 if (pendingStreamingContent.isNotEmpty()) {
@@ -601,6 +645,7 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             content = toolInputText,
             toolName = event.name,
             toolInput = toolInputText,
+            toolUseId = event.id,  // Store Claude's tool_use ID for matching tool_result
             isStreaming = true
         )
         _messages.value = _messages.value + toolMessage
@@ -677,7 +722,8 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             _messages.value = _messages.value.map { msg ->
                 if (msg.id == toolMessage.id) msg.copy(
                     isStreaming = false,
-                    content = "${toolInputText}\n\n📤 Result:\n${result.take(500)}${if (result.length > 500) "..." else ""}"
+                    content = "${toolInputText}\n\n📤 Result:\n${result.take(500)}${if (result.length > 500) "..." else ""}",
+                    toolOutput = result
                 )
                 else msg
             }
@@ -989,6 +1035,7 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                             timestamp = msg.timestamp,
                             toolName = msg.toolName,
                             toolInput = msg.toolInput,
+                            toolOutput = msg.toolOutput,
                             isError = isToolError
                         )
                     } else if (msg.content.isNotEmpty()) {
@@ -1159,6 +1206,8 @@ data class Message(
     val isInterrupted: Boolean = false,
     val toolName: String? = null,
     val toolInput: String? = null,
+    val toolOutput: String? = null,
+    val toolUseId: String? = null,  // Claude's tool_use ID for matching tool_result
     val images: List<MessageImage> = emptyList()
 )
 

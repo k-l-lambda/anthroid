@@ -9,7 +9,7 @@ import android.util.Log
  * Manages quick send candidates - frequently used short messages.
  * Tracks usage frequency and provides top candidates for quick access.
  */
-class QuickSendManager(context: Context) {
+class QuickSendManager private constructor(context: Context) {
 
     companion object {
         private const val TAG = "QuickSendManager"
@@ -19,6 +19,15 @@ class QuickSendManager(context: Context) {
         private const val MIN_COUNT_THRESHOLD = 5
         private const val MAX_CANDIDATES = 5
         private const val VOICE_INPUT_PREFIX = "🎤 "
+        
+        @Volatile
+        private var instance: QuickSendManager? = null
+        
+        fun getInstance(context: Context): QuickSendManager {
+            return instance ?: synchronized(this) {
+                instance ?: QuickSendManager(context.applicationContext).also { instance = it }
+            }
+        }
     }
 
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

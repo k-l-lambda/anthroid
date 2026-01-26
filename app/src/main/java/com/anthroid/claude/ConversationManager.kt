@@ -46,6 +46,7 @@ class ConversationManager(private val context: Context) {
         val timestamp: Long,
         val toolName: String? = null,
         val toolInput: String? = null,
+        val toolOutput: String? = null,
         val isError: Boolean = false
     )
 
@@ -211,9 +212,10 @@ class ConversationManager(private val context: Context) {
             return@withContext emptyList()
         }
 
-        // First pass: collect tool_result error status by tool_use_id
+        // First pass: collect tool_result error status and content by tool_use_id
         // tool_result is in user messages, tool_use is in assistant messages
         val toolErrorMap = mutableMapOf<String, Boolean>()
+        val toolOutputMap = mutableMapOf<String, String>()
 
         file.useLines { lines ->
             for (line in lines) {
@@ -229,9 +231,27 @@ class ConversationManager(private val context: Context) {
                             if (itemType == "tool_result") {
                                 val toolUseId = item.optString("tool_use_id", "")
                                 val isError = item.optBoolean("is_error", false)
+                                // Extract tool output content
+                                val resultContent = item.opt("content")
+                                val outputText = when (resultContent) {
+                                    is String -> resultContent
+                                    is org.json.JSONArray -> {
+                                        // Content can be array of {type: "text", text: "..."} objects
+                                        val sb = StringBuilder()
+                                        for (j in 0 until resultContent.length()) {
+                                            val contentItem = resultContent.optJSONObject(j)
+                                            if (contentItem?.optString("type") == "text") {
+                                                sb.append(contentItem.optString("text", ""))
+                                            }
+                                        }
+                                        sb.toString()
+                                    }
+                                    else -> ""
+                                }
                                 if (toolUseId.isNotEmpty()) {
                                     toolErrorMap[toolUseId] = isError
-                                    Log.d(TAG, "Found tool_result: id=$toolUseId, isError=$isError")
+                                    toolOutputMap[toolUseId] = outputText
+                                    Log.d(TAG, "Found tool_result: id=$toolUseId, isError=$isError, outputLen=${outputText.length}")
                                 }
                             }
                         }
@@ -263,6 +283,7 @@ class ConversationManager(private val context: Context) {
 
                     var toolName: String? = null
                     var toolInput: String? = null
+                    var toolOutput: String? = null
                     var toolUseId: String? = null
                     var isError = false
 
@@ -277,10 +298,11 @@ class ConversationManager(private val context: Context) {
                                     toolUseId = item.optString("id", "")
                                     val input = item.optJSONObject("input")
                                     toolInput = input?.toString()
-                                    // Look up error status from tool_result
+                                    // Look up error status and output from tool_result
                                     if (toolUseId != null && toolUseId.isNotEmpty()) {
                                         isError = toolErrorMap[toolUseId] ?: false
-                                        Log.d(TAG, "Tool $toolName (id=$toolUseId) isError=$isError")
+                                        toolOutput = toolOutputMap[toolUseId]
+                                        Log.d(TAG, "Tool $toolName (id=$toolUseId) isError=$isError, hasOutput=${toolOutput != null}")
                                     }
                                 }
                             }
@@ -295,6 +317,7 @@ class ConversationManager(private val context: Context) {
                             timestamp = timestamp,
                             toolName = toolName,
                             toolInput = toolInput,
+                            toolOutput = toolOutput,
                             isError = isError
                         ))
                     }

@@ -10,9 +10,11 @@ import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.animation.LinearInterpolator
+import kotlin.math.abs
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -76,6 +78,11 @@ class ScreenAutomationOverlay(private val context: Context) {
     private var scrollAnimator: android.animation.ValueAnimator? = null
     private var stopButton: TextView? = null
     private var closeButton: TextView? = null
+    
+    // Swipe to dismiss
+    private var touchStartY = 0f
+    private var touchStartRawY = 0f
+    private val swipeThreshold = 40f  // dp threshold for swipe dismiss
 
     /**
      * Show the overlay with the given operation text.
@@ -279,6 +286,61 @@ class ScreenAutomationOverlay(private val context: Context) {
         overlayText?.setOnClickListener {
             Log.i(TAG, "Overlay text clicked, opening Anthroid")
             openAnthroid()
+        }
+        
+        // Swipe up to dismiss
+        setupSwipeToDismiss()
+    }
+    
+    private fun setupSwipeToDismiss() {
+        overlayContainer?.setOnTouchListener { view, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    touchStartY = event.y
+                    touchStartRawY = event.rawY
+                    false  // Let click listener also handle if needed
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val deltaY = event.rawY - touchStartRawY
+                    if (deltaY < -20) {
+                        // Moving up - translate the view
+                        overlayView?.translationY = deltaY.coerceAtMost(0f)
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    val deltaY = event.rawY - touchStartRawY
+                    val density = context.resources.displayMetrics.density
+                    val thresholdPx = swipeThreshold * density
+                    
+                    if (deltaY < -thresholdPx) {
+                        // Swipe up exceeded threshold - interrupt and hide
+                        Log.i(TAG, "Swipe up detected, interrupting automation")
+                        onStopCallback?.invoke()
+                        overlayView?.animate()
+                            ?.translationY(-overlayView!!.height.toFloat())
+                            ?.setDuration(150)
+                            ?.withEndAction { 
+                                hide()
+                                overlayView?.translationY = 0f
+                            }
+                            ?.start()
+                    } else {
+                        // Reset position
+                        overlayView?.animate()
+                            ?.translationY(0f)
+                            ?.setDuration(150)
+                            ?.start()
+                    }
+                    
+                    // If it was a tap (minimal movement), trigger click
+                    if (abs(deltaY) < 10 * density) {
+                        view.performClick()
+                    }
+                    true
+                }
+                else -> false
+            }
         }
     }
 

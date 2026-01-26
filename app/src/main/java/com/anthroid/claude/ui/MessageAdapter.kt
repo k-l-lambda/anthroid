@@ -28,7 +28,10 @@ import java.util.*
 /**
  * Adapter for displaying chat messages in RecyclerView.
  */
-class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiffCallback()) {
+class MessageAdapter(
+    private val onImageClick: ((MessageImage) -> Unit)? = null,
+    private val onToolClick: ((Message) -> Unit)? = null
+) : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiffCallback()) {
 
     companion object {
         private const val TAG = "MessageAdapter"
@@ -65,15 +68,15 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
         return when (viewType) {
             VIEW_TYPE_USER -> {
                 val view = LayoutInflater.from(parent.context).inflate(R.layout.item_message_user, parent, false)
-                MessageViewHolder(view, isAssistant = false)
+                MessageViewHolder(view, isAssistant = false, onImageClick = onImageClick)
             }
             VIEW_TYPE_TOOL -> {
                 val view = LayoutInflater.from(parent.context).inflate(R.layout.item_message_tool, parent, false)
-                ToolViewHolder(view)
+                ToolViewHolder(view, onToolClick = onToolClick)
             }
             else -> {
                 val view = LayoutInflater.from(parent.context).inflate(R.layout.item_message_assistant, parent, false)
-                MessageViewHolder(view, isAssistant = true)
+                MessageViewHolder(view, isAssistant = true, onImageClick = onImageClick)
             }
         }
     }
@@ -100,7 +103,11 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
         }
     }
 
-    class MessageViewHolder(itemView: View, private val isAssistant: Boolean = false) : RecyclerView.ViewHolder(itemView) {
+    class MessageViewHolder(
+        itemView: View,
+        private val isAssistant: Boolean = false,
+        private val onImageClick: ((MessageImage) -> Unit)? = null
+    ) : RecyclerView.ViewHolder(itemView) {
         private val contentText: TextView = itemView.findViewById(R.id.message_content)
         private val timestampText: TextView = itemView.findViewById(R.id.message_timestamp)
         private val streamingIndicator: ProgressBar? = itemView.findViewById(R.id.streaming_indicator)
@@ -180,6 +187,10 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
                         } catch (e: Exception) {
                             Log.e(TAG, "Failed to load image: ${messageImage.uri}", e)
                         }
+                        // Add click listener for image preview
+                        setOnClickListener {
+                            onImageClick?.invoke(messageImage)
+                        }
                     }
                     container.addView(imageView)
                 }
@@ -187,19 +198,32 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
         }
     }
 
-    class ToolViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+    class ToolViewHolder(
+        itemView: View,
+        private val onToolClick: ((Message) -> Unit)? = null
+    ) : RecyclerView.ViewHolder(itemView) {
         private val toolBubble: View = itemView.findViewById(R.id.tool_bubble)
         private val toolIcon: TextView = itemView.findViewById(R.id.tool_icon)
         private val toolName: TextView = itemView.findViewById(R.id.tool_name)
         private val toolInput: TextView = itemView.findViewById(R.id.tool_input)
         private val streamingIndicator: ProgressBar? = itemView.findViewById(R.id.streaming_indicator)
+        private var currentMessage: Message? = null
 
         fun bind(message: Message) {
             Log.d(TAG, "bind tool: id=${message.id.take(8)}, name=${message.toolName}, streaming=${message.isStreaming}, error=${message.isError}")
+            currentMessage = message
             updateContent(message)
+            // Add click listener for tool detail dialog
+            toolBubble.setOnClickListener {
+                currentMessage?.let { msg ->
+                    onToolClick?.invoke(msg)
+                }
+            }
         }
 
         fun updateContent(message: Message) {
+            // Always update currentMessage so click handler has latest data
+            currentMessage = message
             // Strip MCP server prefixes from tool name for cleaner display
             val displayName = (message.toolName ?: "Tool")
                 .removePrefix("mcp__anthroid__")
@@ -243,11 +267,16 @@ class MessageAdapter : ListAdapter<Message, RecyclerView.ViewHolder>(MessageDiff
                    oldItem.role == newItem.role &&
                    oldItem.toolName == newItem.toolName &&
                    oldItem.toolInput == newItem.toolInput &&
+                   oldItem.toolOutput == newItem.toolOutput &&
                    oldItem.images == newItem.images
         }
 
         override fun getChangePayload(oldItem: Message, newItem: Message): Any? {
-            if (oldItem.content != newItem.content || oldItem.isStreaming != newItem.isStreaming || oldItem.isInterrupted != newItem.isInterrupted) {
+            if (oldItem.content != newItem.content ||
+                oldItem.isStreaming != newItem.isStreaming ||
+                oldItem.isInterrupted != newItem.isInterrupted ||
+                oldItem.toolOutput != newItem.toolOutput ||
+                oldItem.isError != newItem.isError) {
                 return PAYLOAD_CONTENT_CHANGED
             }
             return null

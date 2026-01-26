@@ -50,6 +50,17 @@
     </PreferenceCategory>
 
     <PreferenceCategory
+        app:title="Chat">
+
+        <Preference
+            app:key="clear_quick_send"
+            app:title="Clear Quick Send History"
+            app:summary="Remove frequently used message shortcuts"
+            app:persistent="false"/>
+
+    </PreferenceCategory>
+
+    <PreferenceCategory
         app:title="Claude Mode">
 
         <ListPreference

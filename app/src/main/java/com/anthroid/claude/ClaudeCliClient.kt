@@ -517,6 +517,29 @@ class ClaudeCliClient(private val context: Context) {
                     // Complete message (skip if we're getting deltas)
                     null
                 }
+                "user" -> {
+                    // User message containing tool_result
+                    val message = json.optJSONObject("message")
+                    val content = message?.optJSONArray("content")
+                    if (content != null && content.length() > 0) {
+                        val firstItem = content.optJSONObject(0)
+                        val toolUseId = firstItem?.optString("tool_use_id", "")
+                        val isError = firstItem?.optBoolean("is_error", false) ?: false
+                        // Extract text content from tool_result
+                        val resultContent = firstItem?.optJSONArray("content")
+                        val resultText = if (resultContent != null && resultContent.length() > 0) {
+                            val textItem = resultContent.optJSONObject(0)
+                            textItem?.optString("text", "") ?: ""
+                        } else {
+                            // Fallback: try to get content directly as string
+                            firstItem?.optString("content", "") ?: ""
+                        }
+                        if (!toolUseId.isNullOrEmpty() && resultText.isNotEmpty()) {
+                            Log.i(TAG, "Tool result: id=$toolUseId, isError=$isError, len=${resultText.length}")
+                            ClaudeEvent.ToolResult(toolUseId, resultText, isError)
+                        } else null
+                    } else null
+                }
                 "result" -> {
                     // Final result
                     val isError = json.optBoolean("is_error", false)
@@ -854,6 +877,13 @@ sealed class ClaudeEvent {
         val id: String,
         val name: String,
         val input: String
+    ) : ClaudeEvent()
+
+    /** Tool result (output from tool execution) */
+    data class ToolResult(
+        val toolUseId: String,
+        val content: String,
+        val isError: Boolean
     ) : ClaudeEvent()
 
     /** End of a message */
