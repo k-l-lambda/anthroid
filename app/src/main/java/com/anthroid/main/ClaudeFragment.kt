@@ -351,6 +351,7 @@ class ClaudeFragment : Fragment() {
      * Show tool input/output detail dialog.
      */
     private fun showToolDetailDialog(message: Message) {
+        Log.d(TAG, "showToolDetailDialog: tool=${message.toolName}, hasOutput=${message.toolOutput != null}")
         val dialogView = layoutInflater.inflate(R.layout.dialog_tool_detail, null)
 
         val toolInputContent = dialogView.findViewById<TextView>(R.id.tool_input_content)

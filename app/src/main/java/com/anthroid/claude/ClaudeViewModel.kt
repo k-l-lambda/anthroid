@@ -105,11 +105,14 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                         }
                     }
                 } else {
-                    // Mark streaming tool as complete (success) and store result
+                    // Mark tool as complete (success) and store result
+                    // Note: Check toolOutput is null instead of isStreaming, because TextDelta
+                    // may have already set isStreaming=false before this callback fires
                     _messages.value = _messages.value.map { msg ->
                         if (msg.role == MessageRole.TOOL &&
                             msg.toolName?.contains(toolName) == true &&
-                            msg.isStreaming) {
+                            msg.toolOutput == null) {
+                            Log.d(TAG, "Storing toolOutput for ${msg.toolName}, resultLen=${result.length}")
                             msg.copy(isStreaming = false, toolOutput = result)
                         } else {
                             msg
