@@ -222,6 +222,8 @@ class MessageAdapter(
         }
 
         fun updateContent(message: Message) {
+            // Always update currentMessage so click handler has latest data
+            currentMessage = message
             // Strip MCP server prefixes from tool name for cleaner display
             val displayName = (message.toolName ?: "Tool")
                 .removePrefix("mcp__anthroid__")
@@ -270,7 +272,11 @@ class MessageAdapter(
         }
 
         override fun getChangePayload(oldItem: Message, newItem: Message): Any? {
-            if (oldItem.content != newItem.content || oldItem.isStreaming != newItem.isStreaming || oldItem.isInterrupted != newItem.isInterrupted) {
+            if (oldItem.content != newItem.content ||
+                oldItem.isStreaming != newItem.isStreaming ||
+                oldItem.isInterrupted != newItem.isInterrupted ||
+                oldItem.toolOutput != newItem.toolOutput ||
+                oldItem.isError != newItem.isError) {
                 return PAYLOAD_CONTENT_CHANGED
             }
             return null
