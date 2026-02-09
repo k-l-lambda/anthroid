@@ -198,35 +198,73 @@ final class TermuxInstaller {
                                 }
 
                                 if (!isDirectory) {
-                                    // Read file content to check if it's a script that needs path patching
-                                    java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-                                    int readBytes;
-                                    while ((readBytes = zipInput.read(buffer)) != -1) {
-                                        baos.write(buffer, 0, readBytes);
-                                    }
-                                    byte[] fileBytes = baos.toByteArray();
+                                    long fileSize = zipEntry.getSize();
 
-                                    // Check if this is a text/script file by looking for shebang or text content
-                                    // Scripts need com.termux paths replaced with com.anthroid
-                                    boolean isTextFile = false;
-                                    if (fileBytes.length > 2 && fileBytes[0] == '#' && fileBytes[1] == '!') {
-                                        isTextFile = true; // Shebang script
-                                    } else if (zipEntryName.startsWith("etc/") ||
-                                               (zipEntryName.startsWith("bin/") && fileBytes.length < 65536 && !isElfBinary(fileBytes))) {
-                                        isTextFile = true; // Config files or small non-ELF bin files
-                                    }
+                                    // For large files (>1MB) or lib/ directory (shared libraries),
+                                    // stream directly to avoid OOM
+                                    boolean streamDirectly = fileSize > 1024 * 1024 || zipEntryName.startsWith("lib/");
 
-                                    if (isTextFile) {
-                                        // Replace com.termux paths with com.anthroid in text files
-                                        String content = new String(fileBytes, "UTF-8");
-                                        if (content.contains("com.termux")) {
-                                            content = content.replace("com.termux", "com.anthroid");
-                                            fileBytes = content.getBytes("UTF-8");
+                                    if (!streamDirectly) {
+                                        // Read first bytes to detect ELF binary
+                                        byte[] header = new byte[8];
+                                        int headerRead = zipInput.read(header, 0, 8);
+
+                                        // Handle empty files
+                                        if (headerRead <= 0) {
+                                            // Empty file, just create it
+                                            try (FileOutputStream outStream = new FileOutputStream(targetFile)) {
+                                                // Empty file
+                                            }
+                                        } else if (headerRead >= 4 && isElfBinary(header)) {
+                                            // ELF binary: stream directly
+                                            try (FileOutputStream outStream = new FileOutputStream(targetFile)) {
+                                                outStream.write(header, 0, headerRead);
+                                                int readBytes;
+                                                while ((readBytes = zipInput.read(buffer)) != -1) {
+                                                    outStream.write(buffer, 0, readBytes);
+                                                }
+                                            }
+                                        } else {
+                                            // Small non-ELF file: read into memory for path replacement
+                                            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+                                            baos.write(header, 0, headerRead);
+                                            int readBytes;
+                                            while ((readBytes = zipInput.read(buffer)) != -1) {
+                                                baos.write(buffer, 0, readBytes);
+                                            }
+                                            byte[] fileBytes = baos.toByteArray();
+
+                                            // Check if this is a text/script file by looking for shebang or text content
+                                            // Scripts need com.termux paths replaced with com.anthroid
+                                            boolean isTextFile = false;
+                                            if (fileBytes.length > 2 && fileBytes[0] == '#' && fileBytes[1] == '!') {
+                                                isTextFile = true; // Shebang script
+                                            } else if (zipEntryName.startsWith("etc/") ||
+                                                       (zipEntryName.startsWith("bin/") && fileBytes.length < 65536)) {
+                                                isTextFile = true; // Config files or small bin files
+                                            }
+
+                                            if (isTextFile) {
+                                                // Replace com.termux paths with com.anthroid in text files
+                                                String content = new String(fileBytes, "UTF-8");
+                                                if (content.contains("com.termux")) {
+                                                    content = content.replace("com.termux", "com.anthroid");
+                                                    fileBytes = content.getBytes("UTF-8");
+                                                }
+                                            }
+
+                                            try (FileOutputStream outStream = new FileOutputStream(targetFile)) {
+                                                outStream.write(fileBytes);
+                                            }
                                         }
-                                    }
-
-                                    try (FileOutputStream outStream = new FileOutputStream(targetFile)) {
-                                        outStream.write(fileBytes);
+                                    } else {
+                                        // Large file: stream directly without loading into memory
+                                        try (FileOutputStream outStream = new FileOutputStream(targetFile)) {
+                                            int readBytes;
+                                            while ((readBytes = zipInput.read(buffer)) != -1) {
+                                                outStream.write(buffer, 0, readBytes);
+                                            }
+                                        }
                                     }
 
                                     if (zipEntryName.startsWith("bin/") || zipEntryName.startsWith("libexec") ||

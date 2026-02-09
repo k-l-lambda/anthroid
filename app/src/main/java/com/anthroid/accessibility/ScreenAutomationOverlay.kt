@@ -314,9 +314,8 @@ class ScreenAutomationOverlay(private val context: Context) {
                     val thresholdPx = swipeThreshold * density
                     
                     if (deltaY < -thresholdPx) {
-                        // Swipe up exceeded threshold - interrupt and hide
-                        Log.i(TAG, "Swipe up detected, interrupting automation")
-                        onStopCallback?.invoke()
+                        // Swipe up exceeded threshold - just hide banner, don't stop session
+                        Log.i(TAG, "Swipe up detected, hiding banner (session continues)")
                         overlayView?.animate()
                             ?.translationY(-overlayView!!.height.toFloat())
                             ?.setDuration(150)
