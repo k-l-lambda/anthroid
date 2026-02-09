@@ -6,12 +6,35 @@
 
 Anthroid is a native Android app for **mobile agentic workflows**: a Claude Code-style agent that can work with your phone’s native capabilities (camera, voice, clipboard, notifications, app/URL launching, location/calendar, screenshots, and optional UI automation).
 
+## Demos
+
+### Cross-App Automation
+Launch other apps and automate multi-step tasks. Here the agent opens a shopping app, searches for products, and navigates the interface.
+
+<p align="center">
+  <img src="docs/ClipA-eng.gif" alt="Cross-app automation demo" width="300" />
+</p>
+
+### Remote Server Monitoring
+Use voice commands to check server status. The agent connects via SSH, runs diagnostics, and reports back.
+
+<p align="center">
+  <img src="docs/ClipB-eng.gif" alt="Server monitoring demo" width="300" />
+</p>
+
+### Document Analysis with Camera
+Take a photo or pick from gallery, then ask the agent to analyze. Here it reads insurance documents and creates a comparison report.
+
+<p align="center">
+  <img src="docs/ClipC-eng.gif" alt="Document analysis demo" width="300" />
+</p>
+
 ## When it helps
 
 - **On-call / incident triage away from your desk**: run quick diagnostics in a terminal, keep a chat thread with context, and resume the conversation later.
 - **Field work & device setup**: scan QR codes to avoid retyping tokens/URLs, open links on-device, and copy/paste between apps.
 - **Hands-busy workflows**: dictate messages with **offline** speech recognition so you can keep moving even with poor network.
-- **“What am I looking at?” troubleshooting**: attach photos/screenshots for visual context, then follow a short step-by-step checklist.
+- **"What am I looking at?" troubleshooting**: attach photos/screenshots for visual context, then follow a short step-by-step checklist.
 - **Phone-use automation**: copy key info to clipboard, open deep links, launch apps, set reminders via notifications, and combine device context (location/calendar) with instructions.
 
 ## Overview
