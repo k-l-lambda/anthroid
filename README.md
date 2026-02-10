@@ -22,8 +22,8 @@ Use voice commands to check server status. The agent connects via SSH, runs diag
   <img src="docs/ClipB-eng.gif" alt="Server monitoring demo" width="300" />
 </p>
 
-### Document Analysis with Camera
-Take a photo or pick from gallery, then ask the agent to analyze. Here it reads insurance documents and creates a comparison report.
+### Document Analysis & Local File Management
+Take a photo or pick from gallery, then ask the agent to analyze. Here it reads insurance documents and creates a comparison report. The agent can also organize, rename, and move files on your device — tasks that are typically cumbersome on mobile due to limited input methods.
 
 <p align="center">
   <img src="docs/ClipC-eng.gif" alt="Document analysis demo" width="300" />
@@ -40,6 +40,66 @@ Take a photo or pick from gallery, then ask the agent to analyze. Here it reads 
 ## Overview
 
 Anthroid (Android + Anthropic) is a mobile implementation of [Claude Code](https://docs.anthropic.com/claude-code), designed around mobile-native input methods and device capabilities.
+
+### Architecture Comparison
+
+Unlike typical mobile AI apps that merely serve as a frontend to remote agent systems, Anthroid runs the **full agent logic locally** on your device:
+
+<table>
+<tr>
+<th>Typical Mobile AI Apps</th>
+<th>Anthroid</th>
+</tr>
+<tr>
+<td>
+
+```mermaid
+flowchart TB
+    subgraph phone["📱 Mobile Device"]
+        ui["UI Only"]
+    end
+    subgraph server["☁️ Remote Server"]
+        agent["Agent Logic"]
+        tools["Tool Executor"]
+    end
+    subgraph cloud["☁️ LLM Provider"]
+        api["LLM API"]
+    end
+    ui <-->|"Every action"| agent
+    agent --> tools
+    agent <--> api
+```
+
+❌ Tools run on remote server<br/>
+❌ Limited device access<br/>
+❌ Network latency for every action
+
+</td>
+<td>
+
+```mermaid
+flowchart TB
+    subgraph phone["📱 Mobile Device"]
+        subgraph runtime["Agent Runtime"]
+            tools["Tool Executor<br/>Bash / Files / Camera / Voice"]
+        end
+    end
+    subgraph cloud["☁️ Cloud"]
+        api["LLM API<br/>(Claude / OpenAI compatible)"]
+    end
+    runtime <-->|"Inference requests"| api
+```
+
+✅ Tools execute locally<br/>
+✅ Full device access<br/>
+✅ Only LLM inference calls remote API<br/>
+✅ Supports any OpenAI-compatible endpoint
+
+</td>
+</tr>
+</table>
+
+This means Anthroid can directly access your camera, files, clipboard, and other device capabilities without round-tripping through a remote server.
 
 **Design goals**
 - **Device tools**: access to location, calendar, clipboard, notifications, URL/app launching, and more.
