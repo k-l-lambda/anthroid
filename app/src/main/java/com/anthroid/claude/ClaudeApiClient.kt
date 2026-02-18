@@ -38,6 +38,17 @@ class ClaudeApiClient(private val context: Context) {
     private var pendingToolId: String? = null
     private var pendingToolName: String? = null
     private val pendingToolInput = StringBuilder()
+    private var isInThinkingBlock = false
+
+    /**
+     * Check if the configured model supports extended thinking.
+     */
+    private fun isThinkingModel(): Boolean {
+        return model.contains("sonnet-4-5") ||
+               model.contains("claude-3-7") ||
+               model.contains("o1") ||
+               model.contains("o3")
+    }
 
     /**
      * Configure the API client.
@@ -118,15 +129,22 @@ class ClaudeApiClient(private val context: Context) {
                     messagesArray.put(msg)
                 }
 
+                val thinkingEnabled = isThinkingModel()
                 val requestBody = JSONObject().apply {
                     put("model", model)
-                    put("max_tokens", 4096)
+                    put("max_tokens", if (thinkingEnabled) 16000 else 4096)
                     put("stream", true)
                     put("messages", messagesArray)
                     put("tools", getToolDefinitions())
+                    if (thinkingEnabled) {
+                        put("thinking", JSONObject().apply {
+                            put("type", "enabled")
+                            put("budget_tokens", 10000)
+                        })
+                    }
                 }
 
-                Log.d(TAG, "Sending request to $url")
+                Log.d(TAG, "Sending request to $url (thinking=$thinkingEnabled)")
                 connection.outputStream.write(requestBody.toString().toByteArray())
                 connection.outputStream.flush()
 
@@ -160,32 +178,51 @@ class ClaudeApiClient(private val context: Context) {
                             when (type) {
                                 "content_block_start" -> {
                                     val contentBlock = event.optJSONObject("content_block")
-                                    if (contentBlock?.optString("type") == "tool_use") {
-                                        pendingToolId = contentBlock.optString("id")
-                                        pendingToolName = contentBlock.optString("name")
-                                        pendingToolInput.clear()
-                                        Log.i(TAG, "Tool use started: id=$pendingToolId, name=$pendingToolName")
+                                    val blockType = contentBlock?.optString("type", "")
+                                    when (blockType) {
+                                        "tool_use" -> {
+                                            pendingToolId = contentBlock.optString("id")
+                                            pendingToolName = contentBlock.optString("name")
+                                            pendingToolInput.clear()
+                                            Log.i(TAG, "Tool use started: id=$pendingToolId, name=$pendingToolName")
+                                        }
+                                        "thinking" -> {
+                                            isInThinkingBlock = true
+                                            Log.i(TAG, "Thinking block started")
+                                            send(ClaudeEvent.ThinkingStart)
+                                        }
                                     }
                                 }
                                 "content_block_delta" -> {
                                     val delta = event.optJSONObject("delta")
                                     val deltaType = delta?.optString("type", "") ?: ""
 
-                                    if (deltaType == "input_json_delta") {
-                                        // Tool input delta
-                                        val partialJson = delta.optString("partial_json", "")
-                                        pendingToolInput.append(partialJson)
-                                    } else {
-                                        // Text delta
-                                        val text = delta?.optString("text", "") ?: ""
-                                        if (text.isNotEmpty()) {
-                                            responseBuilder.append(text)
-                                            send(ClaudeEvent.TextDelta(text))
+                                    when (deltaType) {
+                                        "input_json_delta" -> {
+                                            val partialJson = delta.optString("partial_json", "")
+                                            pendingToolInput.append(partialJson)
+                                        }
+                                        "thinking_delta" -> {
+                                            val thinking = delta?.optString("thinking", "") ?: ""
+                                            if (thinking.isNotEmpty()) {
+                                                send(ClaudeEvent.ThinkingDelta(thinking))
+                                            }
+                                        }
+                                        else -> {
+                                            val text = delta?.optString("text", "") ?: ""
+                                            if (text.isNotEmpty()) {
+                                                responseBuilder.append(text)
+                                                send(ClaudeEvent.TextDelta(text))
+                                            }
                                         }
                                     }
                                 }
                                 "content_block_stop" -> {
-                                    if (pendingToolId != null && pendingToolName != null) {
+                                    if (isInThinkingBlock) {
+                                        isInThinkingBlock = false
+                                        Log.i(TAG, "Thinking block ended")
+                                        send(ClaudeEvent.ThinkingEnd)
+                                    } else if (pendingToolId != null && pendingToolName != null) {
                                         val toolId = pendingToolId!!
                                         val toolName = pendingToolName!!
                                         val toolInput = if (pendingToolInput.isNotEmpty()) pendingToolInput.toString() else "{}"
@@ -439,12 +476,19 @@ Provide the summary in a structured format."""
                     messagesArray.put(msg)
                 }
 
+                val thinkingEnabled2 = isThinkingModel()
                 val requestBody = JSONObject().apply {
                     put("model", model)
-                    put("max_tokens", 4096)
+                    put("max_tokens", if (thinkingEnabled2) 16000 else 4096)
                     put("stream", true)
                     put("messages", messagesArray)
                     put("tools", getToolDefinitions())
+                    if (thinkingEnabled2) {
+                        put("thinking", JSONObject().apply {
+                            put("type", "enabled")
+                            put("budget_tokens", 10000)
+                        })
+                    }
                 }
 
                 Log.d(TAG, "Sending tool result for $toolName")
@@ -481,30 +525,49 @@ Provide the summary in a structured format."""
                             when (type) {
                                 "content_block_start" -> {
                                     val contentBlock = event.optJSONObject("content_block")
-                                    if (contentBlock?.optString("type") == "tool_use") {
-                                        pendingToolId = contentBlock.optString("id")
-                                        pendingToolName = contentBlock.optString("name")
-                                        pendingToolInput.clear()
-                                        Log.i(TAG, "Tool use started: id=$pendingToolId, name=$pendingToolName")
+                                    val blockType = contentBlock?.optString("type", "")
+                                    when (blockType) {
+                                        "tool_use" -> {
+                                            pendingToolId = contentBlock.optString("id")
+                                            pendingToolName = contentBlock.optString("name")
+                                            pendingToolInput.clear()
+                                            Log.i(TAG, "Tool use started: id=$pendingToolId, name=$pendingToolName")
+                                        }
+                                        "thinking" -> {
+                                            isInThinkingBlock = true
+                                            send(ClaudeEvent.ThinkingStart)
+                                        }
                                     }
                                 }
                                 "content_block_delta" -> {
                                     val delta = event.optJSONObject("delta")
                                     val deltaType = delta?.optString("type", "") ?: ""
 
-                                    if (deltaType == "input_json_delta") {
-                                        val partialJson = delta.optString("partial_json", "")
-                                        pendingToolInput.append(partialJson)
-                                    } else {
-                                        val text = delta?.optString("text", "") ?: ""
-                                        if (text.isNotEmpty()) {
-                                            responseBuilder.append(text)
-                                            send(ClaudeEvent.TextDelta(text))
+                                    when (deltaType) {
+                                        "input_json_delta" -> {
+                                            val partialJson = delta.optString("partial_json", "")
+                                            pendingToolInput.append(partialJson)
+                                        }
+                                        "thinking_delta" -> {
+                                            val thinking = delta?.optString("thinking", "") ?: ""
+                                            if (thinking.isNotEmpty()) {
+                                                send(ClaudeEvent.ThinkingDelta(thinking))
+                                            }
+                                        }
+                                        else -> {
+                                            val text = delta?.optString("text", "") ?: ""
+                                            if (text.isNotEmpty()) {
+                                                responseBuilder.append(text)
+                                                send(ClaudeEvent.TextDelta(text))
+                                            }
                                         }
                                     }
                                 }
                                 "content_block_stop" -> {
-                                    if (pendingToolId != null && pendingToolName != null) {
+                                    if (isInThinkingBlock) {
+                                        isInThinkingBlock = false
+                                        send(ClaudeEvent.ThinkingEnd)
+                                    } else if (pendingToolId != null && pendingToolName != null) {
                                         val tid = pendingToolId!!
                                         val tname = pendingToolName!!
                                         val tinput = if (pendingToolInput.isNotEmpty()) pendingToolInput.toString() else "{}"

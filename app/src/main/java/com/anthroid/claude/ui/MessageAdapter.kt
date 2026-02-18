@@ -114,6 +114,15 @@ class MessageAdapter(
         private val interruptedIndicator: TextView? = itemView.findViewById(R.id.interrupted_indicator)
         private val imagesContainer: LinearLayout? = itemView.findViewById(R.id.images_container)
 
+        // Thinking UI elements (only present in assistant layout)
+        private val thinkingIndicator: View? = itemView.findViewById(R.id.thinking_indicator)
+        private val thinkingTimer: TextView? = itemView.findViewById(R.id.thinking_timer)
+        private val thinkingBlock: View? = itemView.findViewById(R.id.thinking_block)
+        private val thinkingHeader: View? = itemView.findViewById(R.id.thinking_header)
+        private val thinkingExpandIcon: TextView? = itemView.findViewById(R.id.thinking_expand_icon)
+        private val thinkingSummary: TextView? = itemView.findViewById(R.id.thinking_summary)
+        private val thinkingContent: TextView? = itemView.findViewById(R.id.thinking_content)
+
         private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
         private val markwon: Markwon by lazy { getMarkwon(itemView.context) }
 
@@ -124,15 +133,56 @@ class MessageAdapter(
         }
 
         fun bind(message: Message) {
-            Log.d(TAG, "bind: id=${message.id.take(8)}, len=${message.content.length}, streaming=${message.isStreaming}, interrupted=${message.isInterrupted}, images=${message.images.size}")
+            Log.d(TAG, "bind: id=${message.id.take(8)}, len=${message.content.length}, streaming=${message.isStreaming}, thinking=${message.isThinking}, interrupted=${message.isInterrupted}, images=${message.images.size}")
             updateContent(message)
             updateImages(message)
             timestampText.text = timeFormat.format(Date(message.timestamp))
         }
 
         fun updateContent(message: Message) {
+            // --- Thinking indicator (active thinking phase) ---
+            if (message.isThinking) {
+                thinkingIndicator?.visibility = View.VISIBLE
+                streamingIndicator?.visibility = View.GONE
+                interruptedIndicator?.visibility = View.GONE
+                thinkingBlock?.visibility = View.GONE
+                // Show elapsed time from content field (set by ViewModel)
+                if (message.content.isNotEmpty() && message.content.matches(Regex("\\d+s"))) {
+                    thinkingTimer?.text = message.content
+                    thinkingTimer?.visibility = View.VISIBLE
+                } else {
+                    thinkingTimer?.visibility = View.GONE
+                }
+                contentText.visibility = View.GONE
+                return
+            }
+
+            // Not thinking - hide thinking indicator
+            thinkingIndicator?.visibility = View.GONE
+
+            // --- Collapsible thinking block (after thinking completes) ---
+            if (message.thinkingContent != null) {
+                thinkingBlock?.visibility = View.VISIBLE
+                val charCount = message.thinkingContent.length
+                thinkingSummary?.text = "Thinking ($charCount chars)"
+
+                thinkingHeader?.setOnClickListener {
+                    val expanded = thinkingContent?.visibility == View.VISIBLE
+                    thinkingContent?.visibility = if (expanded) View.GONE else View.VISIBLE
+                    thinkingExpandIcon?.text = if (expanded) "▶" else "▼"
+                    if (!expanded) {
+                        // Lazy-load thinking text
+                        thinkingContent?.text = message.thinkingContent
+                    }
+                }
+            } else {
+                thinkingBlock?.visibility = View.GONE
+            }
+
+            // --- Main content rendering ---
             if (message.isStreaming && message.content.isEmpty()) {
                 contentText.text = "..."
+                contentText.visibility = View.VISIBLE
                 streamingIndicator?.visibility = View.VISIBLE
                 interruptedIndicator?.visibility = View.GONE
                 if (isAssistant) contentText.setTextColor(Color.parseColor("#333333"))
@@ -264,6 +314,8 @@ class MessageAdapter(
                    oldItem.isStreaming == newItem.isStreaming &&
                    oldItem.isError == newItem.isError &&
                    oldItem.isInterrupted == newItem.isInterrupted &&
+                   oldItem.isThinking == newItem.isThinking &&
+                   oldItem.thinkingContent == newItem.thinkingContent &&
                    oldItem.role == newItem.role &&
                    oldItem.toolName == newItem.toolName &&
                    oldItem.toolInput == newItem.toolInput &&
@@ -275,6 +327,8 @@ class MessageAdapter(
             if (oldItem.content != newItem.content ||
                 oldItem.isStreaming != newItem.isStreaming ||
                 oldItem.isInterrupted != newItem.isInterrupted ||
+                oldItem.isThinking != newItem.isThinking ||
+                oldItem.thinkingContent != newItem.thinkingContent ||
                 oldItem.toolOutput != newItem.toolOutput ||
                 oldItem.isError != newItem.isError) {
                 return PAYLOAD_CONTENT_CHANGED

@@ -85,6 +85,10 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
     private val STREAMING_UPDATE_INTERVAL_MS = 100L  // Min interval between UI updates
     private val STREAMING_CHAR_THRESHOLD = 80        // Force update after this many new chars
 
+    // Thinking state tracking
+    private var pendingThinkingContent = StringBuilder()
+    private var thinkingStartTime = 0L
+
     init {
         checkClaudeInstallation()
 
@@ -393,6 +397,55 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         when (event) {
             is ClaudeEvent.MessageStart -> {
                 Log.d(TAG, "Message started: ${event.messageId}")
+            }
+
+            is ClaudeEvent.ThinkingStart -> {
+                Log.d(TAG, "Thinking started")
+                thinkingStartTime = System.currentTimeMillis()
+                pendingThinkingContent.clear()
+                // Update streaming message to show thinking state
+                val msgId = streamingMessageId
+                if (msgId != null) {
+                    _messages.value = _messages.value.map { msg ->
+                        if (msg.id == msgId) msg.copy(isThinking = true) else msg
+                    }
+                }
+            }
+
+            is ClaudeEvent.ThinkingDelta -> {
+                pendingThinkingContent.append(event.content)
+                // Update thinking elapsed time periodically (every 500ms)
+                val msgId = streamingMessageId
+                val now = System.currentTimeMillis()
+                if (msgId != null && now - lastStreamingUpdateTime >= 500) {
+                    lastStreamingUpdateTime = now
+                    val elapsed = (now - thinkingStartTime) / 1000
+                    _messages.value = _messages.value.map { msg ->
+                        if (msg.id == msgId) msg.copy(
+                            isThinking = true,
+                            content = "${elapsed}s"
+                        ) else msg
+                    }
+                }
+            }
+
+            is ClaudeEvent.ThinkingEnd -> {
+                Log.d(TAG, "Thinking ended, ${pendingThinkingContent.length} chars")
+                val msgId = streamingMessageId
+                if (msgId != null) {
+                    val thinkingText = pendingThinkingContent.toString()
+                    _messages.value = _messages.value.map { msg ->
+                        if (msg.id == msgId) msg.copy(
+                            isThinking = false,
+                            thinkingContent = if (thinkingText.isNotEmpty()) thinkingText else null,
+                            content = ""
+                        ) else msg
+                    }
+                }
+                pendingThinkingContent.clear()
+                _currentResponse.value = ""
+                pendingStreamingContent = ""
+                lastStreamingUpdateTime = 0L
             }
 
             is ClaudeEvent.Text -> {
@@ -1204,6 +1257,8 @@ data class Message(
     val isStreaming: Boolean = false,
     val isError: Boolean = false,
     val isInterrupted: Boolean = false,
+    val isThinking: Boolean = false,
+    val thinkingContent: String? = null,
     val toolName: String? = null,
     val toolInput: String? = null,
     val toolOutput: String? = null,

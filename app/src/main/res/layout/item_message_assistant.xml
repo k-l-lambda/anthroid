@@ -22,6 +22,93 @@
         app:layout_constraintWidth_max="wrap"
         app:layout_constraintHorizontal_bias="0.0">
 
+        <!-- Thinking indicator (shown during active thinking) -->
+        <LinearLayout
+            android:id="@+id/thinking_indicator"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:visibility="gone"
+            tools:visibility="visible">
+
+            <ProgressBar
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:layout_marginEnd="6dp" />
+
+            <TextView
+                android:id="@+id/thinking_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Thinking..."
+                android:textColor="#8B5CF6"
+                android:textSize="14sp"
+                android:textStyle="italic" />
+
+            <TextView
+                android:id="@+id/thinking_timer"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:textColor="#9CA3AF"
+                android:textSize="12sp"
+                tools:text="5s" />
+        </LinearLayout>
+
+        <!-- Collapsible thinking block (shown after thinking completes) -->
+        <LinearLayout
+            android:id="@+id/thinking_block"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone"
+            android:layout_marginBottom="6dp">
+
+            <LinearLayout
+                android:id="@+id/thinking_header"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="?attr/selectableItemBackground"
+                android:paddingVertical="4dp">
+
+                <TextView
+                    android:id="@+id/thinking_expand_icon"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="▶"
+                    android:textSize="10sp"
+                    android:textColor="#8B5CF6" />
+
+                <TextView
+                    android:id="@+id/thinking_summary"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:textColor="#8B5CF6"
+                    android:textSize="13sp"
+                    android:textStyle="italic"
+                    tools:text="Thinking (1,234 chars)" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/thinking_content"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:visibility="gone"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="6dp"
+                android:background="#F5F3FF"
+                android:textColor="#6B7280"
+                android:textSize="12sp"
+                android:fontFamily="monospace"
+                android:maxLines="100"
+                android:textIsSelectable="true" />
+        </LinearLayout>
+
+        <!-- Main content row -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

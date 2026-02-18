@@ -36,6 +36,9 @@ class ClaudeCliClient(private val context: Context) {
     private var pendingToolName: String? = null
     private val pendingToolInput = StringBuilder()
 
+    // Thinking block state tracking
+    private var isInThinkingBlock = false
+
     /**
      * Check if Claude CLI is installed in the Termux environment.
      */
@@ -466,6 +469,10 @@ class ClaudeCliClient(private val context: Context) {
                                     Log.d(TAG, "text_delta text: '$text'")
                                     if (text.isNotEmpty()) ClaudeEvent.TextDelta(text) else null
                                 }
+                                "thinking_delta" -> {
+                                    val thinking = delta?.optString("thinking", "") ?: ""
+                                    if (thinking.isNotEmpty()) ClaudeEvent.ThinkingDelta(thinking) else null
+                                }
                                 "input_json_delta" -> {
                                     // Accumulate tool input JSON chunks
                                     val partialJson = delta?.optString("partial_json", "") ?: ""
@@ -486,20 +493,32 @@ class ClaudeCliClient(private val context: Context) {
                         "content_block_start" -> {
                             val contentBlock = event.optJSONObject("content_block")
                             val blockType = contentBlock?.optString("type", "")
-                            if (blockType == "tool_use") {
-                                // Save tool info, input will come in input_json_delta events
-                                pendingToolId = contentBlock.optString("id", "")
-                                pendingToolName = contentBlock.optString("name", "")
-                                pendingToolInput.clear()
-                                Log.i(TAG, "Tool use started: $pendingToolName (id: $pendingToolId)")
-                                null  // Don't emit yet, wait for input and content_block_stop
-                            } else if (blockType == "text") {
-                                null  // Text blocks are handled via text_delta
-                            } else null
+                            when (blockType) {
+                                "tool_use" -> {
+                                    // Save tool info, input will come in input_json_delta events
+                                    pendingToolId = contentBlock.optString("id", "")
+                                    pendingToolName = contentBlock.optString("name", "")
+                                    pendingToolInput.clear()
+                                    Log.i(TAG, "Tool use started: $pendingToolName (id: $pendingToolId)")
+                                    null  // Don't emit yet, wait for input and content_block_stop
+                                }
+                                "thinking" -> {
+                                    isInThinkingBlock = true
+                                    Log.i(TAG, "Thinking block started")
+                                    ClaudeEvent.ThinkingStart
+                                }
+                                "text" -> null  // Text blocks are handled via text_delta
+                                else -> null
+                            }
                         }
                         "content_block_stop" -> {
-                            // Emit tool use event now that we have complete input
-                            if (pendingToolId != null && pendingToolName != null) {
+                            if (isInThinkingBlock) {
+                                // Thinking block completed
+                                isInThinkingBlock = false
+                                Log.i(TAG, "Thinking block ended")
+                                ClaudeEvent.ThinkingEnd
+                            } else if (pendingToolId != null && pendingToolName != null) {
+                                // Emit tool use event now that we have complete input
                                 val toolId = pendingToolId!!
                                 val toolName = pendingToolName!!
                                 val toolInput = if (pendingToolInput.isNotEmpty()) pendingToolInput.toString() else "{}"
@@ -888,6 +907,15 @@ sealed class ClaudeEvent {
 
     /** End of a message */
     object MessageEnd : ClaudeEvent()
+
+    /** Thinking block started (extended thinking) */
+    object ThinkingStart : ClaudeEvent()
+
+    /** Incremental thinking text update (streaming) */
+    data class ThinkingDelta(val content: String) : ClaudeEvent()
+
+    /** Thinking block completed */
+    object ThinkingEnd : ClaudeEvent()
 
     /** Error occurred */
     data class Error(val message: String) : ClaudeEvent()
