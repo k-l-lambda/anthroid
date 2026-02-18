@@ -171,6 +171,7 @@ class ClaudeCliClient(private val context: Context) {
                 "--verbose",
                 "--include-partial-messages",
                 "--dangerously-skip-permissions",
+                "--disallowedTools", "AskUserQuestion",
                 "--mcp-config", getMcpConfig()
             )
 
@@ -321,6 +322,7 @@ class ClaudeCliClient(private val context: Context) {
                 "--include-partial-messages",
                 "--print",
                 "--dangerously-skip-permissions",
+                "--disallowedTools", "AskUserQuestion",
                 "--mcp-config", getMcpConfig()
                 // Note: CLI's built-in Bash tool is enabled for file operations
             )
@@ -596,6 +598,7 @@ class ClaudeCliClient(private val context: Context) {
             getClaudePath(),
             "--output-format", "stream-json",
             "--dangerously-skip-permissions",
+            "--disallowedTools", "AskUserQuestion",
             "--mcp-config", getMcpConfig()
         )
         conversationId?.let {

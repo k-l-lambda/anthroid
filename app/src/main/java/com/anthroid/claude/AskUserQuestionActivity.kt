@@ -73,7 +73,10 @@ class AskUserQuestionActivity : AppCompatActivity() {
 
         submitButton.setOnClickListener { submitAnswers() }
         cancelButton.setOnClickListener {
-            setResult(Activity.RESULT_CANCELED)
+            val cancelIntent = Intent().apply {
+                putExtra("IS_MCP_MODE", intent.getBooleanExtra("IS_MCP_MODE", false))
+            }
+            setResult(Activity.RESULT_CANCELED, cancelIntent)
             finish()
         }
     }
@@ -338,19 +341,27 @@ class AskUserQuestionActivity : AppCompatActivity() {
         val resultIntent = Intent().apply {
             putExtra(EXTRA_ANSWERS_JSON, answersJson.toString())
             putExtra(EXTRA_TOOL_ID, intent.getStringExtra(EXTRA_TOOL_ID))
+            // Forward MCP mode flag so ClaudeFragment knows how to route the answer
+            putExtra("IS_MCP_MODE", intent.getBooleanExtra("IS_MCP_MODE", false))
         }
         setResult(Activity.RESULT_OK, resultIntent)
         finish()
     }
 
     override fun onSupportNavigateUp(): Boolean {
-        setResult(Activity.RESULT_CANCELED)
+        val cancelIntent = Intent().apply {
+            putExtra("IS_MCP_MODE", intent.getBooleanExtra("IS_MCP_MODE", false))
+        }
+        setResult(Activity.RESULT_CANCELED, cancelIntent)
         finish()
         return true
     }
 
     override fun onBackPressed() {
-        setResult(Activity.RESULT_CANCELED)
+        val cancelIntent = Intent().apply {
+            putExtra("IS_MCP_MODE", intent.getBooleanExtra("IS_MCP_MODE", false))
+        }
+        setResult(Activity.RESULT_CANCELED, cancelIntent)
         super.onBackPressed()
     }
 }

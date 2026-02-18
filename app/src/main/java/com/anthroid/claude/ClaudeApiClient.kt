@@ -40,6 +40,9 @@ class ClaudeApiClient(private val context: Context) {
     private val pendingToolInput = StringBuilder()
     private var isInThinkingBlock = false
 
+    // Track thinking content for conversation history
+    private val thinkingAccumulator = StringBuilder()
+
     /**
      * Check if the configured model supports extended thinking.
      */
@@ -164,6 +167,11 @@ class ClaudeApiClient(private val context: Context) {
                 val responseBuilder = StringBuilder()
                 var line: String?
 
+                // Track full assistant response content blocks for proper conversation history
+                val contentBlocks = JSONArray()
+                thinkingAccumulator.clear()
+                var hasToolUse = false
+
                 send(ClaudeEvent.MessageStart(""))
 
                 while (reader.readLine().also { line = it } != null) {
@@ -184,10 +192,12 @@ class ClaudeApiClient(private val context: Context) {
                                             pendingToolId = contentBlock.optString("id")
                                             pendingToolName = contentBlock.optString("name")
                                             pendingToolInput.clear()
+                                            hasToolUse = true
                                             Log.i(TAG, "Tool use started: id=$pendingToolId, name=$pendingToolName")
                                         }
                                         "thinking" -> {
                                             isInThinkingBlock = true
+                                            thinkingAccumulator.clear()
                                             Log.i(TAG, "Thinking block started")
                                             send(ClaudeEvent.ThinkingStart)
                                         }
@@ -205,6 +215,7 @@ class ClaudeApiClient(private val context: Context) {
                                         "thinking_delta" -> {
                                             val thinking = delta?.optString("thinking", "") ?: ""
                                             if (thinking.isNotEmpty()) {
+                                                thinkingAccumulator.append(thinking)
                                                 send(ClaudeEvent.ThinkingDelta(thinking))
                                             }
                                         }
@@ -220,13 +231,28 @@ class ClaudeApiClient(private val context: Context) {
                                 "content_block_stop" -> {
                                     if (isInThinkingBlock) {
                                         isInThinkingBlock = false
-                                        Log.i(TAG, "Thinking block ended")
+                                        // Store thinking block for conversation history
+                                        if (thinkingAccumulator.isNotEmpty()) {
+                                            contentBlocks.put(JSONObject().apply {
+                                                put("type", "thinking")
+                                                put("thinking", thinkingAccumulator.toString())
+                                            })
+                                        }
+                                        Log.i(TAG, "Thinking block ended (${thinkingAccumulator.length} chars)")
                                         send(ClaudeEvent.ThinkingEnd)
                                     } else if (pendingToolId != null && pendingToolName != null) {
                                         val toolId = pendingToolId!!
                                         val toolName = pendingToolName!!
                                         val toolInput = if (pendingToolInput.isNotEmpty()) pendingToolInput.toString() else "{}"
-                                        Log.i(TAG, "Tool use complete: ")
+                                        // Store tool_use block for conversation history
+
+                                        contentBlocks.put(JSONObject().apply {
+                                            put("type", "tool_use")
+                                            put("id", toolId)
+                                            put("name", toolName)
+                                            put("input", JSONObject(toolInput))
+                                        })
+                                        Log.i(TAG, "Tool use complete: $toolName")
                                         pendingToolId = null
                                         pendingToolName = null
                                         pendingToolInput.clear()
@@ -234,11 +260,27 @@ class ClaudeApiClient(private val context: Context) {
                                     }
                                 }
                                 "message_stop" -> {
-                                    // Add assistant response to history
-                                    conversationHistory.add(JSONObject().apply {
-                                        put("role", "assistant")
-                                        put("content", responseBuilder.toString())
-                                    })
+                                    if (hasToolUse) {
+                                        // For tool_use responses, store the full content blocks array
+                                        // (includes thinking + tool_use). sendToolResult will add tool_result.
+                                        // Add text block if there was any text content
+                                        if (responseBuilder.isNotEmpty()) {
+                                            contentBlocks.put(JSONObject().apply {
+                                                put("type", "text")
+                                                put("text", responseBuilder.toString())
+                                            })
+                                        }
+                                        conversationHistory.add(JSONObject().apply {
+                                            put("role", "assistant")
+                                            put("content", contentBlocks)
+                                        })
+                                    } else {
+                                        // For text-only responses, store as simple string
+                                        conversationHistory.add(JSONObject().apply {
+                                            put("role", "assistant")
+                                            put("content", responseBuilder.toString())
+                                        })
+                                    }
                                     send(ClaudeEvent.MessageEnd)
                                 }
                                 "error" -> {
@@ -428,6 +470,8 @@ Provide the summary in a structured format."""
 
     /**
      * Send tool result and get Claude's response.
+     * NOTE: chat() already stored the assistant message (with thinking + tool_use) in conversationHistory.
+     * We only need to add the tool_result user message here.
      */
     fun sendToolResult(toolUseId: String, toolName: String, result: String): Flow<ClaudeEvent> = channelFlow {
         if (!isConfigured()) {
@@ -437,20 +481,7 @@ Provide the summary in a structured format."""
 
         withContext(Dispatchers.IO) {
             try {
-                // Add assistant message with tool_use
-                conversationHistory.add(JSONObject().apply {
-                    put("role", "assistant")
-                    put("content", JSONArray().apply {
-                        put(JSONObject().apply {
-                            put("type", "tool_use")
-                            put("id", toolUseId)
-                            put("name", toolName)
-                            put("input", JSONObject())
-                        })
-                    })
-                })
-
-                // Add tool result message
+                // Add tool result message (assistant message was already added by chat() on message_stop)
                 conversationHistory.add(JSONObject().apply {
                     put("role", "user")
                     put("content", JSONArray().apply {
@@ -491,7 +522,7 @@ Provide the summary in a structured format."""
                     }
                 }
 
-                Log.d(TAG, "Sending tool result for $toolName")
+                Log.d(TAG, "Sending tool result for $toolName (history=${conversationHistory.size} msgs)")
                 connection.outputStream.write(requestBody.toString().toByteArray())
                 connection.outputStream.flush()
 
@@ -506,10 +537,15 @@ Provide the summary in a structured format."""
                     return@withContext
                 }
 
-                // Process SSE stream (same as chat())
+                // Process SSE stream — reuse same pattern as chat()
                 val reader = BufferedReader(InputStreamReader(connection.inputStream))
                 val responseBuilder = StringBuilder()
                 var line: String?
+
+                // Track content blocks for this response's conversation history
+                val contentBlocks = JSONArray()
+                thinkingAccumulator.clear()
+                var hasToolUse = false
 
                 send(ClaudeEvent.MessageStart(""))
 
@@ -531,10 +567,12 @@ Provide the summary in a structured format."""
                                             pendingToolId = contentBlock.optString("id")
                                             pendingToolName = contentBlock.optString("name")
                                             pendingToolInput.clear()
+                                            hasToolUse = true
                                             Log.i(TAG, "Tool use started: id=$pendingToolId, name=$pendingToolName")
                                         }
                                         "thinking" -> {
                                             isInThinkingBlock = true
+                                            thinkingAccumulator.clear()
                                             send(ClaudeEvent.ThinkingStart)
                                         }
                                     }
@@ -551,6 +589,7 @@ Provide the summary in a structured format."""
                                         "thinking_delta" -> {
                                             val thinking = delta?.optString("thinking", "") ?: ""
                                             if (thinking.isNotEmpty()) {
+                                                thinkingAccumulator.append(thinking)
                                                 send(ClaudeEvent.ThinkingDelta(thinking))
                                             }
                                         }
@@ -566,12 +605,25 @@ Provide the summary in a structured format."""
                                 "content_block_stop" -> {
                                     if (isInThinkingBlock) {
                                         isInThinkingBlock = false
+                                        if (thinkingAccumulator.isNotEmpty()) {
+                                            contentBlocks.put(JSONObject().apply {
+                                                put("type", "thinking")
+                                                put("thinking", thinkingAccumulator.toString())
+                                            })
+                                        }
                                         send(ClaudeEvent.ThinkingEnd)
                                     } else if (pendingToolId != null && pendingToolName != null) {
                                         val tid = pendingToolId!!
                                         val tname = pendingToolName!!
                                         val tinput = if (pendingToolInput.isNotEmpty()) pendingToolInput.toString() else "{}"
-                                        Log.i(TAG, "Tool use complete: ")
+
+                                        contentBlocks.put(JSONObject().apply {
+                                            put("type", "tool_use")
+                                            put("id", tid)
+                                            put("name", tname)
+                                            put("input", JSONObject(tinput))
+                                        })
+                                        Log.i(TAG, "Tool use complete: $tname")
                                         pendingToolId = null
                                         pendingToolName = null
                                         pendingToolInput.clear()
@@ -579,10 +631,23 @@ Provide the summary in a structured format."""
                                     }
                                 }
                                 "message_stop" -> {
-                                    conversationHistory.add(JSONObject().apply {
-                                        put("role", "assistant")
-                                        put("content", responseBuilder.toString())
-                                    })
+                                    if (hasToolUse) {
+                                        if (responseBuilder.isNotEmpty()) {
+                                            contentBlocks.put(JSONObject().apply {
+                                                put("type", "text")
+                                                put("text", responseBuilder.toString())
+                                            })
+                                        }
+                                        conversationHistory.add(JSONObject().apply {
+                                            put("role", "assistant")
+                                            put("content", contentBlocks)
+                                        })
+                                    } else {
+                                        conversationHistory.add(JSONObject().apply {
+                                            put("role", "assistant")
+                                            put("content", responseBuilder.toString())
+                                        })
+                                    }
                                     send(ClaudeEvent.MessageEnd)
                                 }
                                 "error" -> {
