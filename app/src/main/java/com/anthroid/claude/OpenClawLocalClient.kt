@@ -333,6 +333,24 @@ class OpenClawLocalClient(private val context: Context) {
                             }
                         }
 
+                        "tool_use" -> {
+                            val toolId = event.optString("id", "")
+                            val toolName = event.optString("name", "")
+                            val toolInput = event.optString("input", "{}")
+                            Log.i(TAG, "Tool use: $toolName (id: $toolId)")
+                            if (toolName.isNotEmpty()) {
+                                ClaudeEvent.ToolUse(toolId, toolName, toolInput)
+                            } else null
+                        }
+
+                        "tool_result" -> {
+                            val toolUseId = event.optString("tool_use_id", "")
+                            val content = event.optString("content", "")
+                            val isError = event.optBoolean("is_error", false)
+                            Log.i(TAG, "Tool result: id=$toolUseId, error=$isError, len=${content.length}")
+                            ClaudeEvent.ToolResult(toolUseId, content, isError)
+                        }
+
                         else -> null
                     }
                 }

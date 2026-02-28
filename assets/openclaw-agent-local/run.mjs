@@ -102,6 +102,24 @@ function emitMessageEnd() {
   emitStreamEvent({ type: "message_stop" });
 }
 
+function emitToolUse(toolCallId, toolName, input) {
+  emitStreamEvent({
+    type: "tool_use",
+    id: toolCallId,
+    name: toolName,
+    input: input || "{}",
+  });
+}
+
+function emitToolResultEvent(toolCallId, content, isError) {
+  emitStreamEvent({
+    type: "tool_result",
+    tool_use_id: toolCallId,
+    content: content || "",
+    is_error: isError || false,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Session management
 // ---------------------------------------------------------------------------
@@ -277,6 +295,8 @@ async function runAgent(prompt, images) {
   let isThinking = false;
   let hasText = false;
   let lastPartialText = "";  // Track cumulative text to emit only incremental deltas
+  let activeToolCallId = null;  // Currently executing tool call ID
+  let toolResultText = "";      // Accumulated tool result text
 
   try {
     // Discover Android tools on first run
@@ -367,18 +387,30 @@ async function runAgent(prompt, images) {
         }
       },
 
-      // Tool results for UI display
+      // Tool result text — accumulate for the active tool call
       onToolResult: (payload) => {
-        if (payload.text) {
-          // Emit as tool-related event for display
-          emitTextDelta(`\n[Tool result: ${payload.text.slice(0, 200)}${payload.text.length > 200 ? "..." : ""}]\n`);
+        if (payload.text && activeToolCallId) {
+          toolResultText += payload.text;
         }
       },
 
-      // Agent events for debugging/display
+      // Agent lifecycle events — emit tool_use / tool_result for UI
       onAgentEvent: (evt) => {
-        // Could emit these for debugging
-        // For now, silently consume
+        if (evt?.stream === "tool" && evt.data) {
+          if (evt.data.phase === "start") {
+            activeToolCallId = evt.data.toolCallId;
+            toolResultText = "";
+            emitToolUse(evt.data.toolCallId, evt.data.name);
+          } else if (evt.data.phase === "result") {
+            emitToolResultEvent(
+              evt.data.toolCallId,
+              toolResultText.slice(0, 2000),
+              evt.data.isError || false,
+            );
+            activeToolCallId = null;
+            toolResultText = "";
+          }
+        }
       },
 
       shouldEmitToolResult: () => true,
