@@ -40,6 +40,9 @@ const TIMEOUT_MS = parseInt(process.env.TIMEOUT_MS || "300000", 10); // 5 min de
 const PROVIDER = process.env.PROVIDER || "anthropic";
 const MODEL = process.env.MODEL || undefined; // let agent pick default
 
+// Base URL for provider API (e.g. ppinfra proxy)
+const BASE_URL = process.env.ANTHROPIC_BASE_URL || "";
+
 // MCP endpoint for Android tools bridge
 const MCP_ENDPOINT = process.env.MCP_ENDPOINT || "http://localhost:8765/mcp";
 
@@ -273,11 +276,43 @@ async function runAgent(prompt, images) {
 
   let isThinking = false;
   let hasText = false;
+  let lastPartialText = "";  // Track cumulative text to emit only incremental deltas
 
   try {
     // Discover Android tools on first run
     if (androidToolsPrompt === null) {
       androidToolsPrompt = await discoverAndroidTools() || "";
+    }
+
+    // Build config with provider overrides for custom base URL / proxy models.
+    // When ANTHROPIC_BASE_URL is set (e.g. ppinfra proxy), configure the provider
+    // with that base URL. If the MODEL includes a prefix like "pa/", register it
+    // as a custom model so the agent's model resolution recognizes it.
+    let agentConfig;
+    if (BASE_URL || (MODEL && MODEL.includes("/"))) {
+      const providerCfg = {};
+      if (BASE_URL) providerCfg.baseUrl = BASE_URL;
+
+      // Register prefixed models (e.g. "pa/claude-sonnet-4-6") as custom models.
+      // The models field must be an array of { id, contextWindow, ... } objects.
+      if (MODEL && MODEL.includes("/")) {
+        providerCfg.models = [{
+          id: MODEL,
+          api: "anthropic-messages",
+          contextWindow: 200000,
+          maxOutput: 64000,
+          input: ["text", "image"],
+          output: ["text"],
+        }];
+      }
+
+      agentConfig = {
+        models: {
+          providers: {
+            [PROVIDER]: providerCfg,
+          },
+        },
+      };
     }
 
     const result = await runEmbeddedPiAgent({
@@ -288,12 +323,15 @@ async function runAgent(prompt, images) {
       images: images || undefined,
       provider: PROVIDER,
       model: MODEL,
+      config: agentConfig,
       timeoutMs: TIMEOUT_MS,
       runId,
       abortSignal: abortCtrl.signal,
       extraSystemPrompt: androidToolsPrompt || undefined,
 
-      // Stream text to stdout as deltas
+      // Stream text to stdout as deltas.
+      // onPartialReply sends cumulative text, so we diff against lastPartialText
+      // to emit only the new incremental portion.
       onPartialReply: (payload) => {
         if (isThinking) {
           emitThinkingEnd();
@@ -301,7 +339,13 @@ async function runAgent(prompt, images) {
         }
         if (payload.text) {
           hasText = true;
-          emitTextDelta(payload.text);
+          const newText = payload.text.startsWith(lastPartialText)
+            ? payload.text.slice(lastPartialText.length)
+            : payload.text;
+          lastPartialText = payload.text;
+          if (newText) {
+            emitTextDelta(newText);
+          }
         }
       },
 
