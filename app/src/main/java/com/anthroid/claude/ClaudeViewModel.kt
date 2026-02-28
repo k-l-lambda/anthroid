@@ -35,6 +35,7 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
 
     private val cliClient = ClaudeCliClient(application)
     private val apiClient = ClaudeApiClient(application)
+    private val openclawClient = OpenClawLocalClient(application)
     private val androidTools = AndroidTools(application)
     private val conversationManager = ConversationManager(application)
 
@@ -70,8 +71,9 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
     private val _currentTool = MutableStateFlow<String?>(null)
     val currentTool: StateFlow<String?> = _currentTool.asStateFlow()
 
-    // Use CLI or API
-    private var useCliMode = false
+    // Agent mode selection
+    private enum class AgentMode { CLI, API, OPENCLAW }
+    private var agentMode = AgentMode.API
 
     // Current session job
     private var sessionJob: Job? = null
@@ -146,6 +148,7 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
      */
     fun configureApi(apiKey: String, baseUrl: String = BuildConfig.CLAUDE_API_BASE_URL, model: String = BuildConfig.CLAUDE_API_MODEL) {
         apiClient.configure(apiKey, baseUrl, model)
+        openclawClient.configure(apiKey, baseUrl, model)
         checkClaudeInstallation()
     }
 
@@ -156,24 +159,27 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
     fun checkClaudeInstallation() {
         val cliAvailable = cliClient.isClaudeInstalled()
         val apiConfigured = apiClient.isConfigured()
-        
+        val openclawAvailable = openclawClient.isAgentInstalled()
+
         // Read user preference for claude mode
         val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(getApplication())
         val claudeMode = prefs.getString("claude_mode", "auto") ?: "auto"
-        
-        useCliMode = when (claudeMode) {
-            "cli" -> cliAvailable  // Force CLI if available
-            "api" -> false         // Force API mode
-            else -> cliAvailable && !apiConfigured  // Auto: prefer API when configured
+
+        agentMode = when (claudeMode) {
+            "cli" -> if (cliAvailable) AgentMode.CLI else AgentMode.API
+            "api" -> AgentMode.API
+            "openclaw" -> if (openclawAvailable) AgentMode.OPENCLAW else AgentMode.API
+            else -> if (cliAvailable && !apiConfigured) AgentMode.CLI else AgentMode.API  // auto: unchanged
         }
-        
+
         _isClaudeInstalled.value = when (claudeMode) {
             "cli" -> cliAvailable
             "api" -> apiConfigured
-            else -> cliAvailable || apiConfigured
+            "openclaw" -> openclawAvailable
+            else -> cliAvailable || apiConfigured || openclawAvailable
         }
-        
-        Log.i(TAG, "Claude CLI: $cliAvailable, API: $apiConfigured, mode: $claudeMode, useCliMode: $useCliMode")
+
+        Log.i(TAG, "Claude CLI: $cliAvailable, API: $apiConfigured, OpenClaw: $openclawAvailable, mode: $claudeMode, agentMode: $agentMode")
     }
 
     /**
@@ -245,11 +251,11 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
 
         // Send result to Claude
         viewModelScope.launch {
-            if (useCliMode) {
-                cliClient.sendToolResponse(pending.toolId, result)
-            } else {
-                apiClient.sendToolResult(pending.toolId, pending.toolName, result)
+            when (agentMode) {
+                AgentMode.CLI -> cliClient.sendToolResponse(pending.toolId, result)
+                AgentMode.API -> apiClient.sendToolResult(pending.toolId, pending.toolName, result)
                     .collect { responseEvent -> handleEvent(responseEvent) }
+                AgentMode.OPENCLAW -> Log.w(TAG, "sendToolResponse not supported in OpenClaw mode")
             }
         }
     }
@@ -278,11 +284,11 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         // Send cancellation result to Claude
         viewModelScope.launch {
             val result = "User cancelled the question dialog without answering."
-            if (useCliMode) {
-                cliClient.sendToolResponse(pending.toolId, result)
-            } else {
-                apiClient.sendToolResult(pending.toolId, pending.toolName, result)
+            when (agentMode) {
+                AgentMode.CLI -> cliClient.sendToolResponse(pending.toolId, result)
+                AgentMode.API -> apiClient.sendToolResult(pending.toolId, pending.toolName, result)
                     .collect { responseEvent -> handleEvent(responseEvent) }
+                AgentMode.OPENCLAW -> Log.w(TAG, "sendToolResponse not supported in OpenClaw mode")
             }
         }
     }
@@ -301,7 +307,7 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
 
-        Log.i(TAG, "Sending message: ${content.take(50)}... with ${images.size} images (useCliMode=$useCliMode, isFromVoice=$isFromVoice)")
+        Log.i(TAG, "Sending message: ${content.take(50)}... with ${images.size} images (agentMode=$agentMode, isFromVoice=$isFromVoice)")
 
         // Add user message with images
         val userMessage = Message(
@@ -334,7 +340,7 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 val hasImages = images.isNotEmpty()
 
                 if (hasImages) {
-                    // Images can use CLI with stream-json input, or API mode
+                    // Images can use CLI with stream-json input, OpenClaw, or API mode
                     val imageDataList = images.mapNotNull { image ->
                         val base64 = ImageUtils.processImageForApi(getApplication(), image.uri)
                         if (base64 != null) {
@@ -342,45 +348,62 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                         } else null
                     }
 
-                    if (useCliMode && cliClient.isClaudeInstalled()) {
-                        // CLI mode with stream-json input for images
-                        Log.d(TAG, "CLI mode: sending ${imageDataList.size} images via stream-json")
-                        val cliImages = imageDataList.map { (base64, mimeType) ->
-                            ClaudeCliClient.ImageData(base64, mimeType)
-                        }
-                        cliClient.chatWithImages(content, cliImages)
-                            .collect { event ->
-                                handleEvent(event)
+                    when (agentMode) {
+                        AgentMode.OPENCLAW -> {
+                            Log.d(TAG, "OpenClaw mode: sending ${imageDataList.size} images")
+                            val cliImages = imageDataList.map { (base64, mimeType) ->
+                                ClaudeCliClient.ImageData(base64, mimeType)
                             }
-                    } else if (apiClient.isConfigured()) {
-                        // API mode for images
-                        Log.d(TAG, "API mode: sending ${imageDataList.size} images")
-                        val apiImages = imageDataList.map { (base64, mimeType) ->
-                            ClaudeApiClient.ImageContent(base64, mimeType)
+                            openclawClient.chat(content, cliImages)
+                                .collect { event -> handleEvent(event) }
                         }
-                        apiClient.chat(content, apiImages)
-                            .collect { event ->
-                                handleEvent(event)
+                        AgentMode.CLI -> {
+                            if (cliClient.isClaudeInstalled()) {
+                                Log.d(TAG, "CLI mode: sending ${imageDataList.size} images via stream-json")
+                                val cliImages = imageDataList.map { (base64, mimeType) ->
+                                    ClaudeCliClient.ImageData(base64, mimeType)
+                                }
+                                cliClient.chatWithImages(content, cliImages)
+                                    .collect { event -> handleEvent(event) }
+                            } else {
+                                _error.value = "Claude CLI not available"
+                                _isProcessing.value = false
+                                _messages.value = _messages.value.filter { it.id != streamingMessageId }
+                                return@launch
                             }
-                    } else {
-                        // Neither CLI nor API available for images
-                        _error.value = "Images require Claude CLI or API key to be configured"
-                        _isProcessing.value = false
-                        _messages.value = _messages.value.filter { it.id != streamingMessageId }
-                        return@launch
+                        }
+                        AgentMode.API -> {
+                            if (apiClient.isConfigured()) {
+                                Log.d(TAG, "API mode: sending ${imageDataList.size} images")
+                                val apiImages = imageDataList.map { (base64, mimeType) ->
+                                    ClaudeApiClient.ImageContent(base64, mimeType)
+                                }
+                                apiClient.chat(content, apiImages)
+                                    .collect { event -> handleEvent(event) }
+                            } else {
+                                _error.value = "API key not configured"
+                                _isProcessing.value = false
+                                _messages.value = _messages.value.filter { it.id != streamingMessageId }
+                                return@launch
+                            }
+                        }
                     }
-                } else if (useCliMode) {
-                    // CLI mode for text-only messages
-                    cliClient.chatStreaming(content, emptyList())
-                        .collect { event ->
-                            handleEvent(event)
-                        }
                 } else {
-                    // API mode for text-only messages
-                    apiClient.chat(content, emptyList())
-                        .collect { event ->
-                            handleEvent(event)
+                    // Text-only messages
+                    when (agentMode) {
+                        AgentMode.OPENCLAW -> {
+                            openclawClient.chat(content)
+                                .collect { event -> handleEvent(event) }
                         }
+                        AgentMode.CLI -> {
+                            cliClient.chatStreaming(content, emptyList())
+                                .collect { event -> handleEvent(event) }
+                        }
+                        AgentMode.API -> {
+                            apiClient.chat(content, emptyList())
+                                .collect { event -> handleEvent(event) }
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Session error", e)
@@ -722,11 +745,11 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 // Send error result
                 viewModelScope.launch {
                     val errorResult = "Error parsing questions: ${e.message}"
-                    if (useCliMode) {
-                        cliClient.sendToolResponse(event.id, errorResult)
-                    } else {
-                        apiClient.sendToolResult(event.id, event.name, errorResult)
+                    when (agentMode) {
+                        AgentMode.CLI -> cliClient.sendToolResponse(event.id, errorResult)
+                        AgentMode.API -> apiClient.sendToolResult(event.id, event.name, errorResult)
                             .collect { responseEvent -> handleEvent(responseEvent) }
+                        AgentMode.OPENCLAW -> Log.w(TAG, "sendToolResponse not supported in OpenClaw mode")
                     }
                 }
             }
@@ -740,11 +763,11 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
 
-        // In CLI mode, ALL tools are handled by MCP server - don't execute locally!
-        // CLI uses mcp-http-bridge.js which routes all tool calls to McpServer.
+        // In CLI/OpenClaw mode, ALL tools are handled externally - don't execute locally!
+        // CLI uses mcp-http-bridge.js, OpenClaw uses android-tools-bridge.mjs.
         // Executing here would cause DUPLICATE execution.
-        if (useCliMode) {
-            Log.d(TAG, "CLI mode: tool '${event.name}' handled by MCP server, skipping local execution")
+        if (agentMode != AgentMode.API) {
+            Log.d(TAG, "${agentMode.name} mode: tool '${event.name}' handled externally, skipping local execution")
             return
         }
 
@@ -785,14 +808,11 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             _currentTool.value = null
 
             // Send tool result back to Claude
-            if (useCliMode) {
-                cliClient.sendToolResponse(event.id, result)
-            } else {
-                // Use API client for HTTP mode
-                apiClient.sendToolResult(event.id, event.name, result)
-                    .collect { responseEvent ->
-                        handleEvent(responseEvent)
-                    }
+            when (agentMode) {
+                AgentMode.CLI -> cliClient.sendToolResponse(event.id, result)
+                AgentMode.API -> apiClient.sendToolResult(event.id, event.name, result)
+                    .collect { responseEvent -> handleEvent(responseEvent) }
+                AgentMode.OPENCLAW -> {} // Tools handled internally by agent
             }
         }
     }
@@ -1024,8 +1044,10 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
     fun cancelRequest() {
         Log.i(TAG, "Cancelling request")
         sessionJob?.cancel()
-        if (useCliMode) {
-            cliClient.cancelCurrentRequest()
+        when (agentMode) {
+            AgentMode.CLI -> cliClient.cancelCurrentRequest()
+            AgentMode.OPENCLAW -> openclawClient.cancelCurrentRequest()
+            AgentMode.API -> {} // API cancellation handled by sessionJob?.cancel()
         }
 
         // Mark the streaming message as interrupted
@@ -1137,9 +1159,9 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
      * Only works in API mode.
      */
     fun compactConversation() {
-        if (useCliMode) {
-            Log.w(TAG, "Compact not supported in CLI mode")
-            _error.value = "Compact not supported in CLI mode. Use API mode."
+        if (agentMode != AgentMode.API) {
+            Log.w(TAG, "Compact not supported in ${agentMode.name} mode")
+            _error.value = "Compact only supported in API mode."
             return
         }
 
@@ -1243,6 +1265,7 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         super.onCleared()
         releaseWakeLock()
         cliClient.close()
+        openclawClient.close()
     }
 }
 
