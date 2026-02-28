@@ -26,30 +26,30 @@ class OpenClawLocalClient(private val context: Context) {
 
     companion object {
         private const val TAG = "OpenClawLocalClient"
-        private const val PREFIX_PATH = "/data/data/com.anthroid/files/usr"
         private const val AGENT_DIR_NAME = "openclaw-agent-local"
     }
 
+    @Volatile
     private var process: Process? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-
-    // Thinking block state tracking
-    private var isInThinkingBlock = false
 
     // API credentials — set via configure()
     private var apiKey: String = ""
     private var baseUrl: String = ""
     private var model: String = ""
 
+    private val prefixPath: String
+        get() = "${context.filesDir.absolutePath}/usr"
+
     private val agentDir: String
-        get() = "$PREFIX_PATH/../home/$AGENT_DIR_NAME"
+        get() = "${context.filesDir.absolutePath}/home/$AGENT_DIR_NAME"
 
     /**
      * Check if the OpenClaw agent is installed (run.mjs exists and node is available).
      */
     fun isAgentInstalled(): Boolean {
         val runMjs = File("$agentDir/run.mjs")
-        val node = File("$PREFIX_PATH/bin/node")
+        val node = File("$prefixPath/bin/node")
         val installed = runMjs.exists() && node.exists()
         Log.d(TAG, "Agent installed check: runMjs=${runMjs.exists()}, node=${node.exists()} → $installed")
         return installed
@@ -81,12 +81,13 @@ class OpenClawLocalClient(private val context: Context) {
         images: List<ClaudeCliClient.ImageData>? = null
     ): Flow<ClaudeEvent> = channelFlow {
         val env = buildEnvironment()
-        val nodePath = "$PREFIX_PATH/bin/node"
+        val nodePath = "$prefixPath/bin/node"
         val runMjsPath = "$agentDir/run.mjs"
 
         Log.i(TAG, "Starting OpenClaw agent for message: ${message.take(50)}...")
 
-        isInThinkingBlock = false
+        // Thinking block state — scoped to this chat invocation
+        var isInThinkingBlock = false
 
         try {
             val processBuilder = ProcessBuilder(nodePath, runMjsPath)
@@ -127,7 +128,7 @@ class OpenClawLocalClient(private val context: Context) {
 
             // Write JSON line to stdin, then close to signal end of input.
             // The agent processes this message, streams events, then exits.
-            val writer = BufferedWriter(OutputStreamWriter(proc.outputStream))
+            val writer = BufferedWriter(OutputStreamWriter(proc.outputStream, Charsets.UTF_8))
             val jsonLine = inputJson.toString()
             Log.d(TAG, "Sending input: ${jsonLine.take(200)}...")
             writer.write(jsonLine)
@@ -138,51 +139,35 @@ class OpenClawLocalClient(private val context: Context) {
 
             // Read stderr in background
             val stderrJob = launch {
-                val reader = BufferedReader(InputStreamReader(proc.errorStream))
-                try {
-                    var line: String?
-                    while (reader.readLine().also { line = it } != null) {
-                        if (line!!.contains("unused DT entry")) continue
-                        Log.w(TAG, "OpenClaw stderr: $line")
+                BufferedReader(InputStreamReader(proc.errorStream, Charsets.UTF_8)).use { reader ->
+                    try {
+                        var line: String? = null
+                        while (isActive && reader.readLine().also { line = it } != null) {
+                            if (line!!.contains("unused DT entry")) continue
+                            Log.w(TAG, "OpenClaw stderr: $line")
+                        }
+                    } catch (e: IOException) {
+                        if (isActive) Log.e(TAG, "Error reading stderr", e)
                     }
-                } catch (e: IOException) {
-                    if (isActive) Log.e(TAG, "Error reading stderr", e)
-                } finally {
-                    reader.close()
                 }
             }
 
-            // Read stdout char by char for real-time streaming.
+            // Read stdout line by line for streaming.
             // Events are JSON lines terminated by \n.
-            val stdoutReader = InputStreamReader(proc.inputStream)
-            try {
-                val lineBuilder = StringBuilder()
-                var charCode: Int
-                while (stdoutReader.read().also { charCode = it } != -1) {
-                    if (charCode == '\n'.code) {
-                        val line = lineBuilder.toString()
-                        lineBuilder.clear()
-                        if (line.isNotBlank()) {
-                            Log.d(TAG, "Event: ${line.take(100)}")
-                            parseStreamEvent(line)?.let { event ->
-                                send(event)
-                            }
+            BufferedReader(InputStreamReader(proc.inputStream, Charsets.UTF_8)).use { reader ->
+                try {
+                    var line: String? = null
+                    while (isActive && reader.readLine().also { line = it } != null) {
+                        val l = line ?: continue
+                        if (l.isBlank()) continue
+                        Log.d(TAG, "Event: ${l.take(100)}")
+                        parseStreamEvent(l, { isInThinkingBlock }, { isInThinkingBlock = it })?.let { event ->
+                            send(event)
                         }
-                    } else {
-                        lineBuilder.append(charCode.toChar())
                     }
+                } catch (e: IOException) {
+                    if (isActive) Log.e(TAG, "Error reading stdout", e)
                 }
-                // Handle any remaining content in buffer
-                if (lineBuilder.isNotEmpty()) {
-                    val line = lineBuilder.toString()
-                    if (line.isNotBlank()) {
-                        parseStreamEvent(line)?.let { send(it) }
-                    }
-                }
-            } catch (e: IOException) {
-                if (isActive) Log.e(TAG, "Error reading stdout", e)
-            } finally {
-                stdoutReader.close()
             }
 
             val exitCode = proc.waitFor()
@@ -200,7 +185,13 @@ class OpenClawLocalClient(private val context: Context) {
             process = null
         }
 
-        awaitClose { }
+        awaitClose {
+            process?.let {
+                Log.i(TAG, "awaitClose: destroying agent process")
+                it.destroy()
+                process = null
+            }
+        }
     }.flowOn(Dispatchers.IO)
 
     /**
@@ -237,18 +228,20 @@ class OpenClawLocalClient(private val context: Context) {
      * Includes Termux paths, API credentials, and MCP endpoint.
      */
     private fun buildEnvironment(): Map<String, String> {
+        val prefix = prefixPath
+        val home = "${context.filesDir.absolutePath}/home"
         val env = mutableMapOf(
-            "HOME" to "$PREFIX_PATH/../home",
-            "PREFIX" to PREFIX_PATH,
-            "PATH" to "$PREFIX_PATH/bin",
-            "LD_LIBRARY_PATH" to "$PREFIX_PATH/lib",
-            "TMPDIR" to "$PREFIX_PATH/tmp",
+            "HOME" to home,
+            "PREFIX" to prefix,
+            "PATH" to "$prefix/bin",
+            "LD_LIBRARY_PATH" to "$prefix/lib",
+            "TMPDIR" to "$prefix/tmp",
             "LANG" to "en_US.UTF-8",
             "TERM" to "xterm-256color",
-            "SHELL" to "$PREFIX_PATH/bin/bash",
+            "SHELL" to "$prefix/bin/bash",
             "MCP_ENDPOINT" to "http://localhost:8765/mcp",
             "SESSION_DIR" to "$agentDir/.sessions",
-            "WORKSPACE_DIR" to "$PREFIX_PATH/../home"
+            "WORKSPACE_DIR" to home
         )
         if (apiKey.isNotBlank()) {
             env["ANTHROPIC_API_KEY"] = apiKey
@@ -270,7 +263,15 @@ class OpenClawLocalClient(private val context: Context) {
      *   { type: "stream_event", event: { type: "message_start"|"content_block_*"|"message_stop", ... } }
      *   { type: "error", error: { message: "..." } }
      */
-    private fun parseStreamEvent(line: String): ClaudeEvent? {
+    private fun parseStreamEvent(
+        line: String,
+        getThinking: () -> Boolean,
+        setThinking: (Boolean) -> Unit
+    ): ClaudeEvent? {
+        if (!line.trimStart().startsWith("{")) {
+            Log.d(TAG, "Skipping non-JSON line: ${line.take(80)}")
+            return null
+        }
         return try {
             val json = JSONObject(line)
             val type = json.optString("type", "")
@@ -299,7 +300,7 @@ class OpenClawLocalClient(private val context: Context) {
                             val contentBlock = event.optJSONObject("content_block")
                             when (contentBlock?.optString("type", "")) {
                                 "thinking" -> {
-                                    isInThinkingBlock = true
+                                    setThinking(true)
                                     Log.d(TAG, "Thinking block started")
                                     ClaudeEvent.ThinkingStart
                                 }
@@ -323,8 +324,8 @@ class OpenClawLocalClient(private val context: Context) {
                         }
 
                         "content_block_stop" -> {
-                            if (isInThinkingBlock) {
-                                isInThinkingBlock = false
+                            if (getThinking()) {
+                                setThinking(false)
                                 Log.d(TAG, "Thinking block ended")
                                 ClaudeEvent.ThinkingEnd
                             } else {
