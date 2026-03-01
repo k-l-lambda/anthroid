@@ -783,7 +783,21 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             toolUseId = event.id,  // Store Claude's tool_use ID for matching tool_result
             isStreaming = true
         )
-        _messages.value = _messages.value + toolMessage
+        // Insert tool BEFORE the streaming assistant placeholder so tools appear
+        // before the text response in chronological order
+        val streamMsgId = streamingMessageId
+        if (streamMsgId != null) {
+            val msgs = _messages.value.toMutableList()
+            val streamIdx = msgs.indexOfFirst { it.id == streamMsgId }
+            if (streamIdx >= 0) {
+                msgs.add(streamIdx, toolMessage)
+                _messages.value = msgs
+            } else {
+                _messages.value = _messages.value + toolMessage
+            }
+        } else {
+            _messages.value = _messages.value + toolMessage
+        }
 
         // Set current tool for overlay display
         _currentTool.value = event.name
