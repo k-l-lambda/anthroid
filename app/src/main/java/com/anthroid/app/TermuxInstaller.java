@@ -598,7 +598,9 @@ final class TermuxInstaller {
                 sb.append("export HOME=/data/data/com.anthroid/files/home\n");
                 sb.append("cd \"$HOME/openclaw-agent-local\"\n");
                 sb.append("echo 'Installing OpenClaw agent dependencies...'\n");
-                sb.append("npm install --production 2>&1\n");
+                sb.append("npm install --production --ignore-scripts 2>&1\n");
+                sb.append("echo 'Creating stub packages...'\n");
+                sb.append("node create-stubs.mjs 2>&1\n");
                 sb.append("echo 'OpenClaw agent dependencies installed.'\n");
                 sb.append("rm -f \"$0\"\n");  // Self-delete after success
                 try (FileOutputStream fos = new FileOutputStream(installScript)) {

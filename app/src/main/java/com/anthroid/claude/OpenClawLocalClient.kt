@@ -133,7 +133,17 @@ class OpenClawLocalClient(private val context: Context) {
     suspend fun ensureDependencies(): Boolean = withContext(Dispatchers.IO) {
         val nodeModules = File("$agentDir/node_modules")
         if (nodeModules.exists()) {
-            Log.d(TAG, "node_modules already exists, skipping dependency install")
+            // Check if stubs exist (created by create-stubs.mjs)
+            val stubMarker = File("$agentDir/node_modules/@aws-sdk/client-bedrock/package.json")
+            if (!stubMarker.exists()) {
+                Log.i(TAG, "Stub packages missing, running create-stubs.mjs...")
+                if (!runCreateStubs()) {
+                    Log.w(TAG, "Failed to create stubs, agent may not start correctly")
+                    return@withContext false
+                }
+            } else {
+                Log.d(TAG, "node_modules and stubs ready")
+            }
             return@withContext true
         }
 
@@ -169,6 +179,48 @@ class OpenClawLocalClient(private val context: Context) {
             return@withContext exitCode == 0 && nodeModules.exists()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to install dependencies: ${e.message}")
+            return@withContext false
+        }
+    }
+
+    /**
+     * Run create-stubs.mjs to generate stub packages for channel-specific
+     * dependencies (Discord, Slack, etc.) that are statically imported but
+     * never invoked in anthroid's local-agent mode.
+     */
+    private suspend fun runCreateStubs(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val nodePath = "$prefixPath/bin/node"
+            val stubScript = "$agentDir/create-stubs.mjs"
+
+            if (!File(stubScript).exists()) {
+                Log.w(TAG, "create-stubs.mjs not found")
+                return@withContext false
+            }
+
+            val proc = ProcessBuilder(nodePath, stubScript)
+                .directory(File(agentDir))
+                .redirectErrorStream(true)
+                .apply { environment().putAll(buildEnvironment()) }
+                .start()
+
+            val reader = BufferedReader(InputStreamReader(proc.inputStream))
+            var line: String?
+            while (reader.readLine().also { line = it } != null) {
+                Log.d(TAG, "create-stubs: $line")
+            }
+
+            val finished = proc.waitFor(60, TimeUnit.SECONDS)
+            if (!finished) {
+                Log.w(TAG, "create-stubs.mjs timed out")
+                proc.destroyForcibly()
+                return@withContext false
+            }
+            val exitCode = proc.exitValue()
+            Log.i(TAG, "create-stubs.mjs completed with exit code: $exitCode")
+            return@withContext exitCode == 0
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to run create-stubs.mjs: ${e.message}")
             return@withContext false
         }
     }

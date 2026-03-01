@@ -604,6 +604,7 @@ assets/openclaw-agent-local/
 | M16b | ✅ Done | OpenClaw tool bar UI fix |
 | M17 | ✅ Done | APK asset bundling + version-based auto-extraction |
 | M18 | ✅ Done | Gateway connection (session sync, memory, notifications) |
+| M19 | ✅ Done | OpenClaw auto-setup (auto mode, --ignore-scripts, stubs) |
 
 ---
 
@@ -1085,7 +1086,7 @@ Add optional connectivity to OpenClaw gateway for session sync, memory, and noti
 - [x] Implement session sync → push conversation to "Anthroid" session via `chat.inject`
 - [x] Implement notification channel (receive `notification.push` events)
 - [ ] Optional: GatewayForegroundService for background WebSocket (future)
-- [ ] Testing on device pending (OPPO installer timeout issue)
+- [x] Testing on device — connected to real gateway via SSH tunnel + ADB reverse
 
 #### Sub-phase 16.7: Persistent Notification via TCP Tunnel (Future)
 
@@ -1093,3 +1094,19 @@ For notification delivery when app is fully killed.
 - Lightweight TCP relay on minimal-instance
 - Or FCM integration
 - Design TBD based on Phase 16.6 experience
+
+#### Sub-phase 16.8: Auto-Setup & Auto Mode ✅
+
+Fix three issues preventing OpenClaw from working out-of-the-box on fresh install.
+
+**Commit:** `cd2fe15`
+
+**Problems fixed:**
+1. **Auto mode ignores OpenClaw** — `auto` preference always picked API when configured. Now: OpenClaw > API > CLI.
+2. **npm install fails** — koffi native addon build fails without CMake. Added `--ignore-scripts`.
+3. **Stubs never created** — `.install_deps.sh` didn't run `create-stubs.mjs`. Added auto-stub creation after npm install.
+
+**Files modified:**
+- `ClaudeViewModel.kt` — auto mode priority: `openclawAvailable && apiConfigured → OPENCLAW`
+- `TermuxInstaller.java` — `.install_deps.sh` adds `--ignore-scripts` and `node create-stubs.mjs`
+- `OpenClawLocalClient.kt` — `ensureDependencies()` checks stub marker, adds `runCreateStubs()` helper

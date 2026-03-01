@@ -177,7 +177,14 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             "cli" -> if (cliAvailable) AgentMode.CLI else AgentMode.API
             "api" -> AgentMode.API
             "openclaw" -> if (openclawAvailable) AgentMode.OPENCLAW else AgentMode.API
-            else -> if (cliAvailable && !apiConfigured) AgentMode.CLI else AgentMode.API  // auto: unchanged
+            else -> when {
+                // Auto priority: OpenClaw > API > CLI
+                // OpenClaw needs both agent files AND API key (calls LLM directly)
+                openclawAvailable && apiConfigured -> AgentMode.OPENCLAW
+                apiConfigured -> AgentMode.API
+                cliAvailable -> AgentMode.CLI
+                else -> AgentMode.API
+            }
         }
 
         _isClaudeInstalled.value = when (claudeMode) {
