@@ -605,6 +605,7 @@ assets/openclaw-agent-local/
 | M17 | ✅ Done | APK asset bundling + version-based auto-extraction |
 | M18 | ✅ Done | Gateway connection (session sync, memory, notifications) |
 | M19 | ✅ Done | OpenClaw auto-setup (auto mode, --ignore-scripts, stubs) |
+| M20 | ✅ Done | Gateway message notifications (ForegroundService, per-session grouping) |
 
 ---
 
@@ -1085,15 +1086,28 @@ Add optional connectivity to OpenClaw gateway for session sync, memory, and noti
 - [x] Add `DEBUG_CONFIG_GATEWAY` broadcast for ADB testing
 - [x] Implement session sync → push conversation to "Anthroid" session via `chat.inject`
 - [x] Implement notification channel (receive `notification.push` events)
-- [ ] Optional: GatewayForegroundService for background WebSocket (future)
+- [x] Optional: GatewayForegroundService for background WebSocket → implemented in 16.7
 - [x] Testing on device — connected to real gateway via SSH tunnel + ADB reverse
 
-#### Sub-phase 16.7: Persistent Notification via TCP Tunnel (Future)
+#### Sub-phase 16.7: Gateway Message Notifications ✅
 
-For notification delivery when app is fully killed.
-- Lightweight TCP relay on minimal-instance
-- Or FCM integration
-- Design TBD based on Phase 16.6 experience
+IM-like system notifications for incoming gateway messages when app is backgrounded.
+
+**Commit:** `9152b3b`
+
+**Architecture:**
+- `GatewayForegroundService` — keeps WebSocket alive via persistent low-importance notification
+- `GatewayNotificationHelper` — per-session grouped notifications (HIGH importance)
+- `GatewayManager` — handles `"chat"` events (`state=final`, `role=assistant`) from gateway
+
+**Changes:**
+1. New `GatewayNotificationHelper.kt` — multi-session notification grouping, summary when 2+ sessions
+2. New `GatewayForegroundService.kt` — owns GatewayManager lifecycle, START_STICKY for auto-restart
+3. Modified `GatewayManager.kt` — added `"chat"` event parsing, `onChatMessage` callback
+4. Modified `ClaudeViewModel.kt` — delegates gateway to service, nullable access
+5. Modified `MainPagerActivity.kt` — clears notifications on resume, handles deep-link tap
+6. Modified `ClaudeFragment.kt` — debug gateway config uses service instead of direct manager
+7. Registered service in `AndroidManifest.xml`
 
 #### Sub-phase 16.8: Auto-Setup & Auto Mode ✅
 
