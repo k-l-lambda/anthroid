@@ -36,12 +36,12 @@ const WORKSPACE_DIR = process.env.WORKSPACE_DIR
 
 const TIMEOUT_MS = parseInt(process.env.TIMEOUT_MS || "300000", 10); // 5 min default
 
-// Provider config — defaults to Anthropic, overridable via env
-const PROVIDER = process.env.PROVIDER || "anthropic";
-const MODEL = process.env.MODEL || undefined; // let agent pick default
+// Provider config — defaults to Anthropic, overridable via env or stdin config
+let PROVIDER = process.env.PROVIDER || "anthropic";
+let MODEL = process.env.MODEL || undefined; // let agent pick default
 
 // Base URL for provider API (e.g. ppinfra proxy)
-const BASE_URL = process.env.ANTHROPIC_BASE_URL || "";
+let BASE_URL = process.env.ANTHROPIC_BASE_URL || "";
 
 // MCP endpoint for Android tools bridge
 const MCP_ENDPOINT = process.env.MCP_ENDPOINT || "http://localhost:8765/mcp";
@@ -490,6 +490,22 @@ async function main() {
 
     try {
       const msg = JSON.parse(trimmed);
+
+      if (msg.type === "config") {
+        // Receive API credentials via stdin instead of env (security: avoids /proc exposure)
+        if (msg.apiKey) process.env.ANTHROPIC_API_KEY = msg.apiKey;
+        if (msg.baseUrl) {
+          process.env.ANTHROPIC_BASE_URL = msg.baseUrl;
+          BASE_URL = msg.baseUrl;
+        }
+        if (msg.model) {
+          process.env.MODEL = msg.model;
+          MODEL = msg.model;
+        }
+        if (msg.provider) PROVIDER = msg.provider;
+        process.stderr.write("[openclaw-agent] config received via stdin\n");
+        continue;
+      }
 
       if (msg.type === "user" && msg.message) {
         // Extract text and images from the message content

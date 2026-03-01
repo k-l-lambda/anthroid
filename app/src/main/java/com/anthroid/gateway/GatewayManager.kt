@@ -107,6 +107,7 @@ class GatewayManager(
 
     scope.launch {
       try {
+        val sessionKey = gatewaySession.currentMainSessionKey() ?: "Anthroid"
         val messages = JSONArray().apply {
           put(JSONObject().apply {
             put("role", "user")
@@ -118,7 +119,7 @@ class GatewayManager(
           })
         }
         val params = JSONObject().apply {
-          put("sessionKey", "Anthroid")
+          put("sessionKey", sessionKey)
           put("messages", messages)
         }
         gatewaySession.request("chat.inject", params.toString(), timeoutMs = 10_000)

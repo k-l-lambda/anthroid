@@ -64,6 +64,14 @@ class GatewaySession(
 
   private val writeLock = Mutex()
   private val pending = ConcurrentHashMap<String, CompletableDeferred<RpcResponse>>()
+  private val disconnectNotified = AtomicBoolean(false)
+
+  // Shared OkHttpClient — reused across reconnections to avoid thread pool leaks
+  private val httpClient: OkHttpClient = OkHttpClient.Builder()
+    .writeTimeout(60, TimeUnit.SECONDS)
+    .readTimeout(0, TimeUnit.SECONDS)
+    .pingInterval(30, TimeUnit.SECONDS)
+    .build()
 
   @Volatile private var mainSessionKey: String? = null
 
@@ -100,7 +108,10 @@ class GatewaySession(
       job?.cancelAndJoin()
       job = null
       mainSessionKey = null
-      onDisconnected("Offline")
+      // Only notify once — listener may have already called onDisconnected
+      if (disconnectNotified.compareAndSet(false, true)) {
+        onDisconnected("Offline")
+      }
     }
   }
 
@@ -157,23 +168,16 @@ class GatewaySession(
     private val connectNonceDeferred = CompletableDeferred<String>()
     private var socket: WebSocket? = null
 
-    private val client: OkHttpClient = OkHttpClient.Builder()
-      .writeTimeout(60, TimeUnit.SECONDS)
-      .readTimeout(0, TimeUnit.SECONDS)
-      .pingInterval(30, TimeUnit.SECONDS)
-      .build()
-
     val remoteAddress: String = "$host:$port"
 
     suspend fun connect() {
-      val url = "ws://$host:$port"
+      // Use wss:// for non-loopback connections to protect auth tokens and chat data
+      val isLocal = host == "127.0.0.1" || host == "localhost" || host == "::1"
+      val scheme = if (isLocal) "ws" else "wss"
+      val url = "$scheme://$host:$port"
       val request = Request.Builder().url(url).build()
-      socket = client.newWebSocket(request, Listener())
-      try {
-        connectDeferred.await()
-      } catch (err: Throwable) {
-        throw err
-      }
+      socket = httpClient.newWebSocket(request, Listener())
+      connectDeferred.await()
     }
 
     suspend fun request(method: String, params: JSONObject?, timeoutMs: Long): RpcResponse {
@@ -186,12 +190,12 @@ class GatewaySession(
         put("method", method)
         if (params != null) put("params", params)
       }
-      sendJson(frame)
-      return try {
-        withTimeout(timeoutMs) { deferred.await() }
-      } catch (err: TimeoutCancellationException) {
+      try {
+        sendJson(frame)
+        return withTimeout(timeoutMs) { deferred.await() }
+      } catch (err: Throwable) {
         pending.remove(id)
-        throw IllegalStateException("request timeout")
+        throw if (err is TimeoutCancellationException) IllegalStateException("request timeout") else err
       }
     }
 
@@ -236,7 +240,9 @@ class GatewaySession(
         if (isClosed.compareAndSet(false, true)) {
           failPending()
           closedDeferred.complete(Unit)
-          onDisconnected("Gateway error: ${t.message ?: t::class.java.simpleName}")
+          if (disconnectNotified.compareAndSet(false, true)) {
+            onDisconnected("Gateway error: ${t.message ?: t::class.java.simpleName}")
+          }
         }
       }
 
@@ -247,7 +253,9 @@ class GatewaySession(
         if (isClosed.compareAndSet(false, true)) {
           failPending()
           closedDeferred.complete(Unit)
-          onDisconnected("Gateway closed: $reason")
+          if (disconnectNotified.compareAndSet(false, true)) {
+            onDisconnected("Gateway closed: $reason")
+          }
         }
       }
     }
@@ -428,13 +436,16 @@ class GatewaySession(
       }
 
       try {
+        disconnectNotified.set(false)  // Reset for new connection cycle
         onDisconnected(if (attempt == 0) "Connecting..." else "Reconnecting...")
         connectOnce(target)
         attempt = 0
       } catch (err: Throwable) {
         attempt += 1
         Log.w(TAG, "connect attempt #$attempt failed: ${err.message}")
-        onDisconnected("Gateway error: ${err.message ?: err::class.java.simpleName}")
+        if (disconnectNotified.compareAndSet(false, true)) {
+          onDisconnected("Gateway error: ${err.message ?: err::class.java.simpleName}")
+        }
         val sleepMs = minOf(8_000L, (350.0 * Math.pow(1.7, attempt.toDouble())).toLong())
         delay(sleepMs)
       }
