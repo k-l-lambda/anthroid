@@ -1,0 +1,7 @@
+{
+  "provider": "anthropic",
+  "model": "claude-sonnet-4-20250514",
+  "timeoutMs": 300000,
+  "sessionDir": ".sessions",
+  "workspaceDir": "."
+}

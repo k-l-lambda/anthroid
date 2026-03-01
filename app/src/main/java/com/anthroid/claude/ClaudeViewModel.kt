@@ -157,6 +157,9 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
      * Respects user's claude_mode preference setting.
      */
     fun checkClaudeInstallation() {
+        // Update agent files from APK assets if app version changed
+        openclawClient.updateAgentIfNeeded()
+
         val cliAvailable = cliClient.isClaudeInstalled()
         val apiConfigured = apiClient.isConfigured()
         val openclawAvailable = openclawClient.isAgentInstalled()
@@ -350,6 +353,17 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
 
                     when (agentMode) {
                         AgentMode.OPENCLAW -> {
+                            // Ensure agent dependencies are installed before first use
+                            if (!openclawClient.isAgentInstalled()) {
+                                Log.i(TAG, "OpenClaw agent dependencies not ready, installing...")
+                                val installed = openclawClient.ensureDependencies()
+                                if (!installed) {
+                                    _error.value = "Failed to install OpenClaw agent dependencies"
+                                    _isProcessing.value = false
+                                    _messages.value = _messages.value.filter { it.id != streamingMessageId }
+                                    return@launch
+                                }
+                            }
                             Log.d(TAG, "OpenClaw mode: sending ${imageDataList.size} images")
                             val cliImages = imageDataList.map { (base64, mimeType) ->
                                 ClaudeCliClient.ImageData(base64, mimeType)
@@ -392,6 +406,17 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                     // Text-only messages
                     when (agentMode) {
                         AgentMode.OPENCLAW -> {
+                            // Ensure agent dependencies are installed before first use
+                            if (!openclawClient.isAgentInstalled()) {
+                                Log.i(TAG, "OpenClaw agent dependencies not ready, installing...")
+                                val installed = openclawClient.ensureDependencies()
+                                if (!installed) {
+                                    _error.value = "Failed to install OpenClaw agent dependencies"
+                                    _isProcessing.value = false
+                                    _messages.value = _messages.value.filter { it.id != streamingMessageId }
+                                    return@launch
+                                }
+                            }
                             openclawClient.chat(content)
                                 .collect { event -> handleEvent(event) }
                         }

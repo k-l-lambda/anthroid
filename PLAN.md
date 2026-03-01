@@ -557,13 +557,23 @@ app/src/main/java/com/anthroid/
 │   ├── ClaudeFragment.kt        # Chat UI fragment
 │   └── TerminalFragment.kt      # Terminal launcher fragment
 ├── claude/
-│   ├── ClaudeViewModel.kt       # State management
+│   ├── ClaudeViewModel.kt       # State management (AgentMode: CLI/API/OPENCLAW)
 │   ├── ClaudeApiClient.kt       # HTTP API client
 │   ├── ClaudeCliClient.kt       # CLI wrapper
+│   ├── OpenClawLocalClient.kt   # OpenClaw agent subprocess wrapper
 │   └── ui/
 │       └── MessageAdapter.kt    # Message list
 └── shared/
     └── ... (existing)
+
+assets/openclaw-agent-local/
+├── run.mjs                      # Entry point (stream-json stdio adapter)
+├── android-tools-bridge.mjs     # MCP :8765 → agent tools bridge
+├── config.json                  # Model config (ppinfra proxy)
+├── package.json                 # Node.js dependencies
+├── agent/
+│   └── run-BDwHy0wP.mjs        # Compiled pi-embedded-runner bundle
+└── node_modules/                # ~60-80MB (installed on device)
 ```
 
 ---
@@ -590,6 +600,10 @@ app/src/main/java/com/anthroid/
 | M13 | ⏸️ Deferred | TodoWrite UI (low priority for mobile) |
 | M14 | ✅ Done | Edit session title + bulk delete |
 | M15 | ✅ Done | Quick send candidates |
+| M16 | ✅ Done | OpenClaw agent runtime (Phase 1+2+3) |
+| M16b | ✅ Done | OpenClaw tool bar UI fix |
+| M17 | 🔜 Next | Wrapper bash script + APK asset bundling |
+| M18 | ⏳ Planned | Gateway connection (session sync, memory, notifications) |
 
 ---
 
@@ -946,3 +960,133 @@ Frequently used short messages as quick send buttons for faster interaction.
 - Chips wrapped in FrameLayout for right-alignment (layout_gravity="end")
 
 **Release:** v0.10.5
+
+---
+
+### Phase 16: OpenClaw Agent Integration (In Progress)
+
+Replace Claude CLI agent with OpenClaw's `pi-embedded-runner` for sophisticated tool-use, model selection, and context management.
+
+**Key principle**: Anthroid works independently without OpenClaw gateway. Gateway features (memory sync, session sync, notifications) are optional add-ons.
+
+#### Architecture
+
+```
+┌──────────────────────────────────────────────────┐
+│  Anthroid App (Android)                          │
+│                                                  │
+│  ┌────────────────────────────────────────────┐  │
+│  │  Kotlin Layer                              │  │
+│  │  ├─ Chat UI (existing MessageAdapter)      │  │
+│  │  ├─ ClaudeViewModel (AgentMode.OPENCLAW)   │  │
+│  │  ├─ MCP Server (NanoHTTPD :8765)           │  │
+│  │  └─ AndroidTools (60+ tools)               │  │
+│  └──────────────┬─────────────────────────────┘  │
+│                 │ HTTP localhost:8765              │
+│  ┌──────────────┴─────────────────────────────┐  │
+│  │  Termux / Node.js Layer                    │  │
+│  │  ├─ openclaw-agent-local/                  │  │
+│  │  │   ├─ run.mjs (entry point)             │  │
+│  │  │   ├─ pi-embedded-runner (compiled JS)   │  │
+│  │  │   ├─ android-tools-bridge.mjs           │  │
+│  │  │   ├─ config.json (models, API keys)     │  │
+│  │  │   └─ node_modules/ (~60-80MB)           │  │
+│  │  └─ [optional] memory/ (node:sqlite)       │  │
+│  └────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────┘
+```
+
+#### Sub-phase 16.1: Extract & Bundle Agent Runtime ✅
+
+Extracted minimal agent from OpenClaw `src/agents/pi-embedded-runner/` into standalone package.
+
+**Commits:**
+- `424ff41` feat: add OpenClaw agent runtime with Android tools bridge (Phase 1+2)
+
+**Files created:**
+- `assets/openclaw-agent-local/run.mjs` — entry point, stream-json stdio adapter
+- `assets/openclaw-agent-local/android-tools-bridge.mjs` — MCP :8765 → agent tools
+- `assets/openclaw-agent-local/config.json` — model config (ppinfra proxy)
+- `assets/openclaw-agent-local/agent/` — compiled pi-embedded-runner bundle
+- `assets/openclaw-agent-local/package.json` — dependencies
+
+#### Sub-phase 16.2: Android Tools Bridge ✅
+
+Created `android-tools-bridge.mjs` that wraps anthroid's MCP server tools as OpenClaw-compatible tool definitions.
+
+- Dynamic tool discovery via `tools/list` MCP call
+- All 60+ Android tools available to the agent
+- Base coding tools (read, write, edit, exec) coexist with Android tools
+
+#### Sub-phase 16.3: Kotlin Integration ✅
+
+Created `OpenClawLocalClient.kt` — subprocess wrapper similar to `ClaudeCliClient.kt`.
+
+**Commits:**
+- `bc9928f` feat: add OpenClaw agent mode with Kotlin integration (Phase 3)
+- `34261d4` fix: address code review issues in OpenClawLocalClient
+- `c2ca473` fix: add ppinfra proxy support and fix text delta duplication
+
+**Key files:**
+- `app/src/.../claude/OpenClawLocalClient.kt` — subprocess management via ProcessBuilder
+- `app/src/.../claude/ClaudeViewModel.kt` — added `AgentMode.OPENCLAW`
+
+**Stream-json compatibility:** run.mjs outputs same event format as ClaudeCliClient expects:
+```json
+{"type":"message_start","message":{"id":"msg_xxx","role":"assistant"}}
+{"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello"}}
+{"type":"tool_use","id":"tu_xxx","name":"exec","input":"{}"}
+{"type":"tool_result","tool_use_id":"tu_xxx","content":"..."}
+{"type":"message_stop"}
+```
+
+#### Sub-phase 16.4: Tool Bar UI Fix ✅
+
+Fixed tool bar not displaying during OpenClaw agent tool usage.
+
+**Commit:** `eb333ca` feat: add tool bar UI support for OpenClaw agent mode
+
+**Root cause:** run.mjs emitted tool output as plain text deltas instead of structured tool events.
+
+**Fix:**
+- run.mjs: Added `emitToolUse()` / `emitToolResultEvent()` using `onAgentEvent` callback
+- OpenClawLocalClient.kt: Added `tool_use` and `tool_result` event parsing in `parseStreamEvent()`
+
+#### Sub-phase 16.5: Wrapper Bash Script + APK Asset Bundling 🔜
+
+**Status: Next**
+
+Reuse the existing wrapper bash script design from Phase 2 for environment variable setup. Bundle agent runtime into APK assets with automatic extraction on first launch.
+
+**Tasks:**
+- [ ] Reuse wrapper bash script pattern for OpenClaw agent env vars (NODE_PATH, API keys, etc.)
+- [ ] Add asset extraction code in Kotlin (copy openclaw-agent-local/ to filesDir on install/update)
+- [ ] Run `npm install --production` on first launch or bundle pre-installed node_modules
+- [ ] Version check to re-extract on app update
+- [ ] Test cold start (fresh install → agent works)
+
+#### Sub-phase 16.6: Gateway Connection (Optional) ⏳
+
+**Status: Planned (Phase 4 of original plan)**
+
+Add optional connectivity to OpenClaw gateway for session sync, memory, and notifications.
+
+**Prerequisites:**
+- OpenClaw gateway running on camus-station (101.43.33.48:40445)
+- Ed25519 device identity for authentication
+
+**Tasks:**
+- [ ] Create `GatewaySession.kt` — WebSocket connection to gateway
+- [ ] Create `DeviceIdentityStore.kt` — Ed25519 key management
+- [ ] Implement session sync → push conversation to "Anthroid" session
+- [ ] Implement memory integration (passive: auto-save on session reset)
+- [ ] Implement notification channel (receive `notification.push` events)
+- [ ] Optional: GatewayForegroundService for background WebSocket
+- [ ] Add BouncyCastle + security-crypto dependencies to build.gradle
+
+#### Sub-phase 16.7: Persistent Notification via TCP Tunnel (Future)
+
+For notification delivery when app is fully killed.
+- Lightweight TCP relay on minimal-instance
+- Or FCM integration
+- Design TBD based on Phase 16.6 experience

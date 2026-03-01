@@ -27,6 +27,7 @@ class OpenClawLocalClient(private val context: Context) {
     companion object {
         private const val TAG = "OpenClawLocalClient"
         private const val AGENT_DIR_NAME = "openclaw-agent-local"
+        private const val ASSET_DIR_NAME = "openclaw-agent-local"
     }
 
     @Volatile
@@ -50,9 +51,114 @@ class OpenClawLocalClient(private val context: Context) {
     fun isAgentInstalled(): Boolean {
         val runMjs = File("$agentDir/run.mjs")
         val node = File("$prefixPath/bin/node")
-        val installed = runMjs.exists() && node.exists()
-        Log.d(TAG, "Agent installed check: runMjs=${runMjs.exists()}, node=${node.exists()} → $installed")
+        val nodeModules = File("$agentDir/node_modules")
+        val installed = runMjs.exists() && node.exists() && nodeModules.exists()
+        Log.d(TAG, "Agent installed check: runMjs=${runMjs.exists()}, node=${node.exists()}, node_modules=${nodeModules.exists()} → $installed")
         return installed
+    }
+
+    /**
+     * Update agent core files from APK assets if app version has changed.
+     * Preserves node_modules and .sessions (runtime data).
+     */
+    fun updateAgentIfNeeded() {
+        try {
+            val versionFile = File("$agentDir/.version")
+            val appVersion = context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: ""
+
+            if (versionFile.exists() && versionFile.readText().trim() == appVersion) {
+                Log.d(TAG, "Agent files up to date (version $appVersion)")
+                return
+            }
+
+            Log.i(TAG, "Updating OpenClaw agent files to version $appVersion")
+            extractAgentFromAssets()
+
+            // Write version marker
+            versionFile.writeText(appVersion)
+            Log.i(TAG, "Agent files updated to version $appVersion")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to update agent files: ${e.message}")
+        }
+    }
+
+    /**
+     * Extract agent core files from APK assets to agentDir.
+     * Copies everything except node_modules (installed via npm).
+     */
+    private fun extractAgentFromAssets() {
+        val dir = File(agentDir)
+        if (!dir.exists()) dir.mkdirs()
+
+        val assetManager = context.assets
+        copyAssetDir(assetManager, ASSET_DIR_NAME, dir.absolutePath)
+
+        // Make scripts executable
+        arrayOf("run.mjs", "android-tools-bridge.mjs", "create-stubs.mjs").forEach { name ->
+            val f = File(dir, name)
+            if (f.exists()) f.setExecutable(true)
+        }
+
+        Log.i(TAG, "Extracted agent files from assets to $agentDir")
+    }
+
+    private fun copyAssetDir(assetManager: android.content.res.AssetManager, assetPath: String, targetPath: String) {
+        val children = assetManager.list(assetPath)
+        if (children == null || children.isEmpty()) {
+            // It's a file — copy it
+            assetManager.open(assetPath).use { input ->
+                FileOutputStream(targetPath).use { output ->
+                    input.copyTo(output)
+                }
+            }
+        } else {
+            // It's a directory — recurse
+            File(targetPath).mkdirs()
+            for (child in children) {
+                copyAssetDir(assetManager, "$assetPath/$child", "$targetPath/$child")
+            }
+        }
+    }
+
+    /**
+     * Install agent dependencies if needed (runs .install_deps.sh).
+     * Returns true if dependencies are ready, false if installation failed.
+     */
+    suspend fun ensureDependencies(): Boolean = withContext(Dispatchers.IO) {
+        val nodeModules = File("$agentDir/node_modules")
+        if (nodeModules.exists()) {
+            Log.d(TAG, "node_modules already exists, skipping dependency install")
+            return@withContext true
+        }
+
+        val installScript = File("$agentDir/.install_deps.sh")
+        if (!installScript.exists()) {
+            Log.w(TAG, "No install script found and no node_modules — agent not properly deployed")
+            return@withContext false
+        }
+
+        Log.i(TAG, "Installing OpenClaw agent dependencies via npm...")
+        try {
+            val bashPath = "$prefixPath/bin/bash"
+            val proc = ProcessBuilder(bashPath, installScript.absolutePath)
+                .directory(File(agentDir))
+                .redirectErrorStream(true)
+                .start()
+
+            // Read output for logging
+            val reader = BufferedReader(InputStreamReader(proc.inputStream))
+            var line: String?
+            while (reader.readLine().also { line = it } != null) {
+                Log.d(TAG, "npm install: $line")
+            }
+
+            val exitCode = proc.waitFor()
+            Log.i(TAG, "npm install completed with exit code: $exitCode")
+            return@withContext exitCode == 0 && nodeModules.exists()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to install dependencies: ${e.message}")
+            return@withContext false
+        }
     }
 
     /**

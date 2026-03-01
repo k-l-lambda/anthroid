@@ -300,10 +300,11 @@ task downloadBootstraps() {
 afterEvaluate {
     android.applicationVariants.all { variant ->
         variant.javaCompileProvider.get().dependsOn(downloadBootstraps)
-        // Make mergeAssets depend on copyClaudeCode
+        // Make mergeAssets depend on copyClaudeCode and copyOpenClawAgent
         def mergeAssetsTask = tasks.findByName("merge${variant.name.capitalize()}Assets")
         if (mergeAssetsTask) {
             mergeAssetsTask.dependsOn(copyClaudeCode)
+            mergeAssetsTask.dependsOn(copyOpenClawAgent)
         }
         // Make lint tasks depend on copyClaudeCode
         def lintAnalyzeTask = tasks.findByName("lintVitalAnalyze${variant.name.capitalize()}")
@@ -321,4 +322,15 @@ task copyClaudeCode(type: Copy) {
     include "anthroid-config.js"
     include "package.json"
     include "resvg.wasm"
+}
+
+// Copy OpenClaw agent core files from root assets/ to APK assets during build
+// Excludes node_modules (installed on device via npm) and .sessions (runtime data)
+task copyOpenClawAgent(type: Copy) {
+    from "${rootProject.projectDir}/assets/openclaw-agent-local"
+    into "${projectDir}/src/main/assets/openclaw-agent-local"
+    exclude "node_modules"
+    exclude ".sessions"
+    exclude ".gitignore"
+    exclude "package-lock.json"
 }
