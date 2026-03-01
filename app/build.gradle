@@ -77,6 +77,12 @@ android {
         // NanoHTTPD for MCP server
         implementation "org.nanohttpd:nanohttpd:2.3.1"
 
+        // OkHttp for WebSocket (gateway connection)
+        implementation "com.squareup.okhttp3:okhttp:4.12.0"
+
+        // BouncyCastle for Ed25519 device authentication
+        implementation "org.bouncycastle:bcprov-jdk18on:1.78.1"
+
         implementation project(":terminal-view")
         implementation project(":termux-shared")
     }

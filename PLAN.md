@@ -602,8 +602,8 @@ assets/openclaw-agent-local/
 | M15 | ✅ Done | Quick send candidates |
 | M16 | ✅ Done | OpenClaw agent runtime (Phase 1+2+3) |
 | M16b | ✅ Done | OpenClaw tool bar UI fix |
-| M17 | 🔜 Next | Wrapper bash script + APK asset bundling |
-| M18 | ⏳ Planned | Gateway connection (session sync, memory, notifications) |
+| M17 | ✅ Done | APK asset bundling + version-based auto-extraction |
+| M18 | ✅ Done | Gateway connection (session sync, memory, notifications) |
 
 ---
 
@@ -1052,22 +1052,19 @@ Fixed tool bar not displaying during OpenClaw agent tool usage.
 - run.mjs: Added `emitToolUse()` / `emitToolResultEvent()` using `onAgentEvent` callback
 - OpenClawLocalClient.kt: Added `tool_use` and `tool_result` event parsing in `parseStreamEvent()`
 
-#### Sub-phase 16.5: Wrapper Bash Script + APK Asset Bundling 🔜
+#### Sub-phase 16.5: APK Asset Bundling ✅
 
-**Status: Next**
+**Commit:** `e016195` feat: bundle OpenClaw agent in APK assets with auto-extraction
 
-Reuse the existing wrapper bash script design from Phase 2 for environment variable setup. Bundle agent runtime into APK assets with automatic extraction on first launch.
+- Gradle `copyOpenClawAgent` task bundles core files (~6MB) excluding node_modules
+- `TermuxInstaller.installOpenClawAgent()` extracts on fresh install (bootstrap)
+- `OpenClawLocalClient.updateAgentIfNeeded()` re-extracts on app version change
+- `OpenClawLocalClient.ensureDependencies()` runs npm install if node_modules missing
+- `ClaudeViewModel` pre-chat dependency check for OpenClaw mode
 
-**Tasks:**
-- [ ] Reuse wrapper bash script pattern for OpenClaw agent env vars (NODE_PATH, API keys, etc.)
-- [ ] Add asset extraction code in Kotlin (copy openclaw-agent-local/ to filesDir on install/update)
-- [ ] Run `npm install --production` on first launch or bundle pre-installed node_modules
-- [ ] Version check to re-extract on app update
-- [ ] Test cold start (fresh install → agent works)
+#### Sub-phase 16.6: Gateway Connection (Optional) ✅
 
-#### Sub-phase 16.6: Gateway Connection (Optional) ⏳
-
-**Status: Planned (Phase 4 of original plan)**
+**Status: Done**
 
 Add optional connectivity to OpenClaw gateway for session sync, memory, and notifications.
 
@@ -1075,14 +1072,20 @@ Add optional connectivity to OpenClaw gateway for session sync, memory, and noti
 - OpenClaw gateway running on camus-station (101.43.33.48:40445)
 - Ed25519 device identity for authentication
 
-**Tasks:**
-- [ ] Create `GatewaySession.kt` — WebSocket connection to gateway
-- [ ] Create `DeviceIdentityStore.kt` — Ed25519 key management
-- [ ] Implement session sync → push conversation to "Anthroid" session
-- [ ] Implement memory integration (passive: auto-save on session reset)
-- [ ] Implement notification channel (receive `notification.push` events)
-- [ ] Optional: GatewayForegroundService for background WebSocket
-- [ ] Add BouncyCastle + security-crypto dependencies to build.gradle
+**Implementation:**
+- [x] Create `DeviceIdentityStore.kt` — Ed25519 keypair via BouncyCastle lightweight API
+- [x] Create `DeviceAuthPayload.kt` — v3 pipe-delimited auth payload
+- [x] Create `DeviceAuthStore.kt` — Token persistence via SharedPreferences
+- [x] Create `GatewaySession.kt` — OkHttp WebSocket with reconnection loop
+- [x] Create `GatewayManager.kt` — High-level gateway lifecycle + session sync
+- [x] Add OkHttp + BouncyCastle dependencies to build.gradle
+- [x] Integrate into ClaudeViewModel (auto-connect from prefs, session sync at SessionEnded)
+- [x] Add gateway settings UI (host, port, token, enable switch)
+- [x] Add `DEBUG_CONFIG_GATEWAY` broadcast for ADB testing
+- [x] Implement session sync → push conversation to "Anthroid" session via `chat.inject`
+- [x] Implement notification channel (receive `notification.push` events)
+- [ ] Optional: GatewayForegroundService for background WebSocket (future)
+- [ ] Testing on device pending (OPPO installer timeout issue)
 
 #### Sub-phase 16.7: Persistent Notification via TCP Tunnel (Future)
 

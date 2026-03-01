@@ -32,6 +32,7 @@ class DebugReceiver : BroadcastReceiver() {
         private const val TAG = "DebugReceiver"
         const val ACTION_SEND_MESSAGE = "com.anthroid.DEBUG_SEND_MESSAGE"
         const val ACTION_CONFIG_API = "com.anthroid.DEBUG_CONFIG_API"
+        const val ACTION_CONFIG_GATEWAY = "com.anthroid.DEBUG_CONFIG_GATEWAY"
         const val ACTION_READ_CONVERSATION = "com.anthroid.DEBUG_READ_CONVERSATION"
         const val ACTION_TOOL_CALL = "com.anthroid.TOOL_CALL"
         const val EXTRA_MESSAGE = "message"
@@ -40,6 +41,9 @@ class DebugReceiver : BroadcastReceiver() {
         const val EXTRA_API_KEY = "api_key"
         const val EXTRA_BASE_URL = "base_url"
         const val EXTRA_MODEL = "model"
+        const val EXTRA_GATEWAY_HOST = "host"
+        const val EXTRA_GATEWAY_PORT = "port"
+        const val EXTRA_GATEWAY_TOKEN = "token"
 
         // Global event flow for debug messages (replay=1 ensures late collectors get the message)
         private val _debugMessageFlow = MutableSharedFlow<String>(replay = 1, extraBufferCapacity = 1)
@@ -48,6 +52,10 @@ class DebugReceiver : BroadcastReceiver() {
         // Global event flow for API config changes
         private val _apiConfigFlow = MutableSharedFlow<ApiConfig>(replay = 1, extraBufferCapacity = 1)
         val apiConfigFlow = _apiConfigFlow.asSharedFlow()
+
+        // Global event flow for gateway config changes
+        private val _gatewayConfigFlow = MutableSharedFlow<GatewayConfig>(replay = 1, extraBufferCapacity = 1)
+        val gatewayConfigFlow = _gatewayConfigFlow.asSharedFlow()
 
         // Global event flow for read conversation requests
         private val _readConversationFlow = MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1)
@@ -72,6 +80,13 @@ class DebugReceiver : BroadcastReceiver() {
         }
 
         /**
+         * Emit gateway config change (called from receiver).
+         */
+        fun emitGatewayConfig(config: GatewayConfig) {
+            _gatewayConfigFlow.tryEmit(config)
+        }
+
+        /**
          * Request to read conversation (called from receiver).
          */
         fun requestReadConversation() {
@@ -92,10 +107,17 @@ class DebugReceiver : BroadcastReceiver() {
         val model: String?
     )
 
+    data class GatewayConfig(
+        val host: String,
+        val port: Int,
+        val token: String?
+    )
+
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
             ACTION_SEND_MESSAGE -> handleSendMessage(intent)
             ACTION_CONFIG_API -> handleConfigApi(context, intent)
+            ACTION_CONFIG_GATEWAY -> handleConfigGateway(context, intent)
             ACTION_READ_CONVERSATION -> handleReadConversation(context)
             ACTION_TOOL_CALL -> handleToolCall(context, intent)
         }
@@ -135,6 +157,31 @@ class DebugReceiver : BroadcastReceiver() {
 
         // Emit config change event
         emitApiConfig(ApiConfig(apiKey, baseUrl, model))
+    }
+
+    private fun handleConfigGateway(context: Context, intent: Intent) {
+        val host = intent.getStringExtra(EXTRA_GATEWAY_HOST)
+        if (host.isNullOrBlank()) {
+            Log.w(TAG, "Received empty gateway host")
+            return
+        }
+
+        val port = intent.getStringExtra(EXTRA_GATEWAY_PORT)?.toIntOrNull() ?: 40445
+        val token = intent.getStringExtra(EXTRA_GATEWAY_TOKEN)
+
+        // Save to SharedPreferences
+        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
+        prefs.edit().apply {
+            putBoolean("gateway_enabled", true)
+            putString("gateway_host", host)
+            putString("gateway_port", port.toString())
+            token?.let { putString("gateway_token", it) }
+            apply()
+        }
+
+        Log.i(TAG, "Gateway config saved: host=$host, port=$port, token=${if (token != null) "(set)" else "(none)"}")
+
+        emitGatewayConfig(GatewayConfig(host, port, token))
     }
 
     private fun handleReadConversation(context: Context) {

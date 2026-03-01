@@ -12,6 +12,7 @@ import com.anthroid.shared.termux.TermuxConstants.TERMUX_APP.TERMUX_SERVICE
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import com.anthroid.gateway.GatewayManager
 import com.anthroid.mcp.McpServer
 
 /**
@@ -38,6 +39,7 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
     private val openclawClient = OpenClawLocalClient(application)
     private val androidTools = AndroidTools(application)
     private val conversationManager = ConversationManager(application)
+    val gatewayManager = GatewayManager(application, viewModelScope)
 
     // Chat messages
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
@@ -90,6 +92,9 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
     // Thinking state tracking
     private var pendingThinkingContent = StringBuilder()
     private var thinkingStartTime = 0L
+
+    // Track last user message for gateway session sync
+    private var lastUserMessageContent = ""
 
     init {
         checkClaudeInstallation()
@@ -183,6 +188,16 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         Log.i(TAG, "Claude CLI: $cliAvailable, API: $apiConfigured, OpenClaw: $openclawAvailable, mode: $claudeMode, agentMode: $agentMode")
+
+        // Auto-connect to gateway if configured
+        val gatewayHost = prefs.getString("gateway_host", null)?.trim()
+        val gatewayPort = prefs.getString("gateway_port", "40445")?.trim()?.toIntOrNull() ?: 40445
+        val gatewayToken = prefs.getString("gateway_token", null)?.trim()
+        val gatewayEnabled = prefs.getBoolean("gateway_enabled", false)
+        if (gatewayEnabled && !gatewayHost.isNullOrBlank() && !gatewayManager.isConnected.value) {
+            Log.i(TAG, "Auto-connecting to gateway: $gatewayHost:$gatewayPort")
+            gatewayManager.connect(gatewayHost, gatewayPort, gatewayToken)
+        }
     }
 
     /**
@@ -311,6 +326,7 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         Log.i(TAG, "Sending message: ${content.take(50)}... with ${images.size} images (agentMode=$agentMode, isFromVoice=$isFromVoice)")
+        lastUserMessageContent = content
 
         // Add user message with images
         val userMessage = Message(
@@ -629,6 +645,17 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             is ClaudeEvent.SessionEnded -> {
                 Log.i(TAG, "Session ended with code: ${event.exitCode}")
                 _isProcessing.value = false
+
+                // Sync conversation to gateway if connected
+                if (gatewayManager.isConnected.value && lastUserMessageContent.isNotEmpty()) {
+                    val assistantContent = _currentResponse.value.ifEmpty {
+                        // Collect from finalized messages
+                        _messages.value.lastOrNull { it.role == MessageRole.ASSISTANT && !it.isStreaming }?.content ?: ""
+                    }
+                    if (assistantContent.isNotEmpty()) {
+                        gatewayManager.syncMessages(lastUserMessageContent, assistantContent)
+                    }
+                }
             }
         }
     }
