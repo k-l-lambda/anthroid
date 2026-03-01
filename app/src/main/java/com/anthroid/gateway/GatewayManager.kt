@@ -42,6 +42,7 @@ class GatewayManager(
   val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
 
   var onNotification: ((title: String, body: String) -> Unit)? = null
+  var onChatMessage: ((sessionKey: String, displayName: String?, messageText: String) -> Unit)? = null
 
   private var session: GatewaySession? = null
 
@@ -156,6 +157,39 @@ class GatewayManager(
           onNotification?.invoke(title, body)
         } catch (err: Throwable) {
           Log.w(TAG, "Failed to parse notification: ${err.message}")
+        }
+      }
+      "chat" -> {
+        try {
+          val obj = if (payloadJson != null) JSONObject(payloadJson) else return
+          val state = obj.optString("state", "")
+          // Only notify on final messages, not streaming deltas
+          if (state != "final") return
+          val sessionKey = obj.optString("sessionKey", "").takeIf { it.isNotEmpty() } ?: return
+          val msgObj = obj.optJSONObject("message") ?: return
+          val role = msgObj.optString("role", "")
+          if (role != "assistant") return
+          // Extract text from content array
+          val contentArray = msgObj.optJSONArray("content")
+          val textParts = mutableListOf<String>()
+          if (contentArray != null) {
+            for (i in 0 until contentArray.length()) {
+              val block = contentArray.optJSONObject(i) ?: continue
+              if (block.optString("type") == "text") {
+                textParts.add(block.optString("text", ""))
+              }
+            }
+          } else {
+            // content might be a plain string
+            val contentStr = msgObj.optString("content", "")
+            if (contentStr.isNotEmpty()) textParts.add(contentStr)
+          }
+          val messageText = textParts.joinToString("\n").trim()
+          if (messageText.isEmpty()) return
+          Log.i(TAG, "Chat message: session=$sessionKey, len=${messageText.length}")
+          onChatMessage?.invoke(sessionKey, null, messageText)
+        } catch (err: Throwable) {
+          Log.w(TAG, "Failed to parse chat event: ${err.message}")
         }
       }
       else -> {

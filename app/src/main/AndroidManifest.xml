@@ -340,6 +340,11 @@
                 android:value="false" />
         </service>
 
+        <!-- Gateway Foreground Service for persistent WebSocket connection -->
+        <service
+            android:name=".gateway.GatewayForegroundService"
+            android:exported="false" />
+
         <!-- Screen Capture Service for screenshots and audio recording -->
         <service
             android:name=".capture.ScreenCaptureService"

@@ -23,6 +23,8 @@ import com.anthroid.app.TermuxService
 import com.anthroid.app.activities.SettingsActivity
 import com.anthroid.claude.CameraCaptureActivity
 import com.anthroid.claude.TerminalCommandBridge
+import com.anthroid.gateway.GatewayForegroundService
+import com.anthroid.gateway.GatewayNotificationHelper
 import com.anthroid.terminal.TerminalSession
 
 /**
@@ -179,6 +181,9 @@ class MainPagerActivity : AppCompatActivity() {
                 .replace(R.id.fragment_container, ClaudeFragment.newInstance())
                 .commit()
         }
+
+        // Handle notification deep-link
+        handleNotificationDeepLink(intent)
     }
 
     override fun onStart() {
@@ -192,6 +197,21 @@ class MainPagerActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         ScreenAutomationOverlay.isAppInForeground = true
+        // Clear gateway message notifications when user returns to app
+        GatewayForegroundService.instance?.notificationHelper?.clearAll()
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        intent?.let { handleNotificationDeepLink(it) }
+    }
+
+    private fun handleNotificationDeepLink(intent: Intent) {
+        val sessionKey = intent.getStringExtra(GatewayNotificationHelper.EXTRA_SESSION_KEY)
+        if (sessionKey != null) {
+            Log.d(TAG, "Notification deep-link to session: $sessionKey")
+            GatewayForegroundService.instance?.notificationHelper?.clearSession(sessionKey)
+        }
     }
 
     override fun onPause() {

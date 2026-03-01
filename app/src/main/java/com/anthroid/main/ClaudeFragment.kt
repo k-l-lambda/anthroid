@@ -880,7 +880,9 @@ class ClaudeFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             DebugReceiver.gatewayConfigFlow.collect { config ->
                 Log.i(TAG, "Gateway config received: host=${config.host}, port=${config.port}")
-                viewModel.gatewayManager.connect(config.host, config.port, config.token)
+                com.anthroid.gateway.GatewayForegroundService.start(
+                    requireContext(), config.host, config.port, config.token
+                )
                 Toast.makeText(requireContext(), "Gateway connecting to ${config.host}:${config.port}", Toast.LENGTH_SHORT).show()
             }
         }
