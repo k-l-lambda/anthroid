@@ -1109,6 +1109,16 @@ IM-like system notifications for incoming gateway messages when app is backgroun
 6. Modified `ClaudeFragment.kt` — debug gateway config uses service instead of direct manager
 7. Registered service in `AndroidManifest.xml`
 
+#### Sub-phase 16.7.1: Direct API Response Notifications ✅
+
+Show system notification when Claude API response completes while app is backgrounded. Phase 16.7 only covered gateway events — direct API responses arrived silently.
+
+**Changes:**
+1. Modified `ClaudeViewModel.kt` — added `showDirectResponseNotification()` method, called at `SessionEnded` when `!isAppInForeground`
+2. Modified `MainPagerActivity.kt` — cancel direct notification (ID 49999) in `onResume()`
+
+Uses same `gateway_messages` notification channel (idempotent channel creation). Fixed notification ID `49999` since only one direct conversation runs at a time.
+
 #### Sub-phase 16.8: Auto-Setup & Auto Mode ✅
 
 Fix three issues preventing OpenClaw from working out-of-the-box on fresh install.

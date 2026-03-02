@@ -16,6 +16,7 @@ import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.NotificationManagerCompat
 import com.anthroid.R
 import com.anthroid.app.TermuxActivity
 import com.anthroid.accessibility.ScreenAutomationOverlay
@@ -199,6 +200,8 @@ class MainPagerActivity : AppCompatActivity() {
         ScreenAutomationOverlay.isAppInForeground = true
         // Clear gateway message notifications when user returns to app
         GatewayForegroundService.instance?.notificationHelper?.clearAll()
+        // Clear direct Claude response notification
+        NotificationManagerCompat.from(this).cancel(49999)
     }
 
     override fun onNewIntent(intent: Intent?) {

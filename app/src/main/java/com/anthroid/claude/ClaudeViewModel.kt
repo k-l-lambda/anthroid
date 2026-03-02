@@ -1,19 +1,29 @@
 package com.anthroid.claude
 
 import android.app.Application
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.util.Log
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.anthroid.BuildConfig
+import com.anthroid.R
+import com.anthroid.accessibility.ScreenAutomationOverlay
 import com.anthroid.app.TermuxService
+import com.anthroid.gateway.GatewayForegroundService
+import com.anthroid.gateway.GatewayNotificationHelper
+import com.anthroid.main.MainPagerActivity
+import com.anthroid.mcp.McpServer
 import com.anthroid.shared.termux.TermuxConstants.TERMUX_APP.TERMUX_SERVICE
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import com.anthroid.gateway.GatewayForegroundService
-import com.anthroid.mcp.McpServer
 
 /**
  * Data class for pending ask_user_question tool call.
@@ -32,6 +42,7 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
 
     companion object {
         private const val TAG = "ClaudeViewModel"
+        private const val DIRECT_NOTIFICATION_ID = 49999
     }
 
     private val cliClient = ClaudeCliClient(application)
@@ -654,12 +665,18 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 Log.i(TAG, "Session ended with code: ${event.exitCode}")
                 _isProcessing.value = false
 
+                // Collect assistant response content
+                val assistantContent = _currentResponse.value.ifEmpty {
+                    _messages.value.lastOrNull { it.role == MessageRole.ASSISTANT && !it.isStreaming }?.content ?: ""
+                }
+
+                // Notify user if app is backgrounded
+                if (!ScreenAutomationOverlay.isAppInForeground && assistantContent.isNotEmpty()) {
+                    showDirectResponseNotification(assistantContent)
+                }
+
                 // Sync conversation to gateway if connected
                 if (gatewayManager?.isConnected?.value == true && lastUserMessageContent.isNotEmpty()) {
-                    val assistantContent = _currentResponse.value.ifEmpty {
-                        // Collect from finalized messages
-                        _messages.value.lastOrNull { it.role == MessageRole.ASSISTANT && !it.isStreaming }?.content ?: ""
-                    }
                     if (assistantContent.isNotEmpty()) {
                         gatewayManager?.syncMessages(lastUserMessageContent, assistantContent)
                     }
@@ -1332,6 +1349,49 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             Log.d(TAG, "Wake lock released")
         } catch (e: Exception) {
             Log.w(TAG, "Failed to release wake lock: ${e.message}")
+        }
+    }
+
+    /**
+     * Show a notification for direct Claude API response when app is backgrounded.
+     */
+    private fun showDirectResponseNotification(text: String) {
+        val context = getApplication<Application>()
+
+        // Ensure notification channel exists (idempotent)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                GatewayNotificationHelper.CHANNEL_ID,
+                "Messages",
+                NotificationManager.IMPORTANCE_HIGH
+            )
+            context.getSystemService(NotificationManager::class.java)
+                .createNotificationChannel(channel)
+        }
+
+        val intent = Intent(context, MainPagerActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context, DIRECT_NOTIFICATION_ID, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val preview = text.take(500)
+        val notification = NotificationCompat.Builder(context, GatewayNotificationHelper.CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_service_notification)
+            .setContentTitle("Claude")
+            .setContentText(preview)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(preview))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .build()
+
+        try {
+            NotificationManagerCompat.from(context).notify(DIRECT_NOTIFICATION_ID, notification)
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Notification permission not granted: ${e.message}")
         }
     }
 
