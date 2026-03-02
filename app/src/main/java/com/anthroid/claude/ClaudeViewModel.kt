@@ -20,6 +20,7 @@ import com.anthroid.gateway.GatewayForegroundService
 import com.anthroid.gateway.GatewayNotificationHelper
 import com.anthroid.main.MainPagerActivity
 import com.anthroid.mcp.McpServer
+import com.anthroid.remote.RemoteSessionInfo
 import com.anthroid.shared.termux.TermuxConstants.TERMUX_APP.TERMUX_SERVICE
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
@@ -84,6 +85,14 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
     // Current tool being executed (for overlay display)
     private val _currentTool = MutableStateFlow<String?>(null)
     val currentTool: StateFlow<String?> = _currentTool.asStateFlow()
+
+    // Slash command events (consumed by Fragment)
+    sealed class SlashCommandEvent {
+        data class ListRemotes(val hostname: String?) : SlashCommandEvent()
+        data class ConnectRemote(val session: RemoteSessionInfo) : SlashCommandEvent()
+    }
+    private val _slashCommandEvent = MutableSharedFlow<SlashCommandEvent>(extraBufferCapacity = 1)
+    val slashCommandEvent: SharedFlow<SlashCommandEvent> = _slashCommandEvent.asSharedFlow()
 
     // Agent mode selection
     private enum class AgentMode { CLI, API, OPENCLAW }
@@ -338,10 +347,10 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         val images = _pendingImages.value.toList()
         if (content.isBlank() && images.isEmpty()) return
 
-        // Handle /compact command
-        if (content.trim().lowercase().startsWith("/compact")) {
-            compactConversation()
-            return
+        // Handle slash commands
+        val trimmed = content.trim()
+        if (trimmed.startsWith("/")) {
+            if (handleSlashCommand(trimmed)) return
         }
 
         Log.i(TAG, "Sending message: ${content.take(50)}... with ${images.size} images (agentMode=$agentMode, isFromVoice=$isFromVoice)")
@@ -1243,6 +1252,25 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         _currentResponse.value = ""
         apiClient.clearHistory()
         cliClient.clearConversation()
+    }
+
+    /**
+     * Handle slash commands. Returns true if command was recognized and handled.
+     */
+    private fun handleSlashCommand(command: String): Boolean {
+        val parts = command.split("\\s+".toRegex(), 2)
+        return when (parts[0].lowercase()) {
+            "/compact" -> {
+                compactConversation()
+                true
+            }
+            "/list-remotes" -> {
+                val hostname = parts.getOrNull(1)?.trim()?.takeIf { it.isNotEmpty() }
+                _slashCommandEvent.tryEmit(SlashCommandEvent.ListRemotes(hostname))
+                true
+            }
+            else -> false
+        }
     }
 
     /**

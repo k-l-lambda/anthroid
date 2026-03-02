@@ -1134,3 +1134,32 @@ Fix three issues preventing OpenClaw from working out-of-the-box on fresh instal
 - `ClaudeViewModel.kt` — auto mode priority: `openclawAvailable && apiConfigured → OPENCLAW`
 - `TermuxInstaller.java` — `.install_deps.sh` adds `--ignore-scripts` and `node create-stubs.mjs`
 - `OpenClawLocalClient.kt` — `ensureDependencies()` checks stub marker, adds `runCreateStubs()` helper
+
+#### Sub-phase 16.9: Remote Agent View (In Progress)
+
+View and interact with remote AI agent sessions directly from Anthroid.
+
+**Architecture:**
+- `/list-remotes` slash command — lists OpenClaw sessions (no args) or tmux sessions on a host (with hostname arg)
+- `RemoteAgentFragment` — full-screen overlay with message list (OpenClaw) or terminal view (SSH+tmux)
+- `RemoteAgentViewModel` — state management for both modes
+
+**Two remote agent sources:**
+1. **OpenClaw sessions** — subscribe to gateway events filtered by sessionKey, send via `chat.inject`
+2. **SSH+tmux sessions** — periodic `tmux capture-pane` via SSH, send via `tmux send-keys`
+
+**New files:**
+- `remote/RemoteSessionInfo.kt` — data model for remote sessions
+- `remote/SshTmuxClient.kt` — SSH + tmux interaction helper
+- `remote/RemoteAgentFragment.kt` — full-screen overlay Fragment
+- `remote/RemoteAgentViewModel.kt` — state management
+- `res/layout/fragment_remote_agent.xml` — layout
+
+**Modified files:**
+- `ClaudeViewModel.kt` — slash command framework (`/list-remotes`, `/compact`)
+- `ClaudeFragment.kt` — observe slash command events, session list dialog, fragment transaction
+- `GatewayManager.kt` — `listSessions()`, `injectMessage()`, `onRemoteSessionEvent` callback
+
+**Dependencies:**
+- Gateway API: `session.list` RPC (needs server-side verification)
+- SSH keys configured in Termux `~/.ssh/`

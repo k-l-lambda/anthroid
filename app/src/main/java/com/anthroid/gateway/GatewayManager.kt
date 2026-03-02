@@ -2,6 +2,7 @@ package com.anthroid.gateway
 
 import android.content.Context
 import android.util.Log
+import com.anthroid.remote.RemoteSessionInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -43,6 +44,7 @@ class GatewayManager(
 
   var onNotification: ((title: String, body: String) -> Unit)? = null
   var onChatMessage: ((sessionKey: String, displayName: String?, messageText: String) -> Unit)? = null
+  var onRemoteSessionEvent: ((sessionKey: String, role: String, content: String) -> Unit)? = null
 
   private var session: GatewaySession? = null
 
@@ -147,6 +149,60 @@ class GatewayManager(
     }
   }
 
+  /**
+   * List active sessions from the gateway.
+   */
+  suspend fun listSessions(): List<RemoteSessionInfo> {
+    val gatewaySession = session ?: throw IllegalStateException("Not connected to gateway")
+    return try {
+      val response = gatewaySession.request("session.list", null, timeoutMs = 10_000)
+      parseSessionList(response)
+    } catch (err: Throwable) {
+      Log.w(TAG, "listSessions failed: ${err.message}")
+      throw err
+    }
+  }
+
+  private fun parseSessionList(responseJson: String): List<RemoteSessionInfo> {
+    if (responseJson.isBlank()) return emptyList()
+    val result = mutableListOf<RemoteSessionInfo>()
+    try {
+      val obj = JSONObject(responseJson)
+      val sessions = obj.optJSONArray("sessions") ?: return emptyList()
+      for (i in 0 until sessions.length()) {
+        val s = sessions.optJSONObject(i) ?: continue
+        result.add(RemoteSessionInfo(
+          sessionKey = s.optString("key", ""),
+          displayName = s.optString("displayName", "").takeIf { it.isNotEmpty() },
+          lastActivity = s.optLong("lastActivity", 0),
+          status = s.optString("status", "unknown"),
+          source = RemoteSessionInfo.Source.OPENCLAW,
+        ))
+      }
+    } catch (err: Throwable) {
+      Log.w(TAG, "parseSessionList failed: ${err.message}")
+    }
+    return result
+  }
+
+  /**
+   * Inject a user message into a specific gateway session.
+   */
+  suspend fun injectMessage(sessionKey: String, text: String) {
+    val gatewaySession = session ?: throw IllegalStateException("Not connected to gateway")
+    val params = JSONObject().apply {
+      put("sessionKey", sessionKey)
+      put("messages", JSONArray().apply {
+        put(JSONObject().apply {
+          put("role", "user")
+          put("content", text)
+        })
+      })
+    }
+    gatewaySession.request("chat.inject", params.toString(), timeoutMs = 10_000)
+    Log.d(TAG, "Injected message to session $sessionKey: ${text.take(50)}")
+  }
+
   // Buffer assistant text per runId for agent events
   private val agentTextBuffers = mutableMapOf<String, StringBuilder>()
   private val agentSessionKeys = mutableMapOf<String, String>()
@@ -193,6 +249,7 @@ class GatewayManager(
           if (messageText.isEmpty()) return
           Log.i(TAG, "Chat message: session=$sessionKey, len=${messageText.length}")
           onChatMessage?.invoke(sessionKey, null, messageText)
+          onRemoteSessionEvent?.invoke(sessionKey, "assistant", messageText)
         } catch (err: Throwable) {
           Log.w(TAG, "Failed to parse chat event: ${err.message}")
         }
@@ -222,9 +279,11 @@ class GatewayManager(
                 val buffered = agentTextBuffers.remove(runId)?.toString()?.trim()
                 agentSessionKeys.remove(runId)
                 if (!buffered.isNullOrEmpty()) {
-                  Log.i(TAG, "Agent run complete: runId=$runId, len=${buffered.length}")
+                  val effectiveSessionKey = agentSessionKeys[runId] ?: "gateway"
+                  Log.i(TAG, "Agent run complete: runId=$runId, session=$effectiveSessionKey, len=${buffered.length}")
                   // Use fixed key so all agent messages share one notification
                   onChatMessage?.invoke("gateway", "Gateway", buffered)
+                  onRemoteSessionEvent?.invoke(effectiveSessionKey, "assistant", buffered)
                 }
                 // Keep processedAgentRuns bounded (max 100 entries)
                 if (processedAgentRuns.size > 100) {

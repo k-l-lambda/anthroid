@@ -51,7 +51,11 @@ import com.anthroid.claude.ui.ConversationAdapter
 import com.anthroid.claude.ui.QuickSendAdapter
 import com.anthroid.claude.AskUserQuestionActivity
 import com.anthroid.claude.QuickSendManager
+import com.anthroid.gateway.GatewayForegroundService
 import com.anthroid.mcp.McpServer
+import com.anthroid.remote.RemoteAgentFragment
+import com.anthroid.remote.RemoteSessionInfo
+import com.anthroid.remote.SshTmuxClient
 
 /**
  * Fragment for Claude AI chat interface.
@@ -835,6 +839,20 @@ class ClaudeFragment : Fragment() {
             }
         }
 
+        // Observe slash command events
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewModel.slashCommandEvent.collect { event ->
+                when (event) {
+                    is ClaudeViewModel.SlashCommandEvent.ListRemotes -> {
+                        showRemoteSessionsDialog(event.hostname)
+                    }
+                    is ClaudeViewModel.SlashCommandEvent.ConnectRemote -> {
+                        openRemoteAgentView(event.session)
+                    }
+                }
+            }
+        }
+
         // Observe pending images
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.pendingImages.collect { images ->
@@ -1207,6 +1225,83 @@ class ClaudeFragment : Fragment() {
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    // ── Remote Agent View ──────────────────────────────────────────────
+
+    private val sshTmuxClient = SshTmuxClient()
+
+    private fun showRemoteSessionsDialog(hostname: String?) {
+        val progressDialog = AlertDialog.Builder(requireContext())
+            .setTitle("Discovering remote agents...")
+            .setView(ProgressBar(requireContext()).apply {
+                setPadding(48, 48, 48, 48)
+            })
+            .setCancelable(true)
+            .show()
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val sessions = if (hostname != null) {
+                    // SSH mode: list tmux sessions on hostname
+                    sshTmuxClient.listSessions(hostname)
+                } else {
+                    // OpenClaw mode: list gateway sessions
+                    val manager = GatewayForegroundService.instance?.gatewayManager
+                    if (manager?.isConnected?.value != true) {
+                        throw IllegalStateException("Gateway not connected")
+                    }
+                    manager.listSessions()
+                }
+
+                progressDialog.dismiss()
+
+                if (sessions.isEmpty()) {
+                    Toast.makeText(requireContext(),
+                        if (hostname != null) "No tmux sessions found on $hostname"
+                        else "No gateway sessions found",
+                        Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+
+                showSessionListDialog(sessions, hostname)
+            } catch (e: Exception) {
+                progressDialog.dismiss()
+                Log.w(TAG, "Failed to list remote sessions: ${e.message}")
+                Toast.makeText(requireContext(), "Error: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun showSessionListDialog(sessions: List<RemoteSessionInfo>, hostname: String?) {
+        val title = if (hostname != null) "tmux sessions on $hostname" else "Gateway sessions"
+        val items = sessions.map { s ->
+            val elapsed = if (s.lastActivity > 0) {
+                val ago = (System.currentTimeMillis() - s.lastActivity) / 1000
+                when {
+                    ago < 60 -> "${ago}s ago"
+                    ago < 3600 -> "${ago / 60}m ago"
+                    else -> "${ago / 3600}h ago"
+                }
+            } else ""
+            "[${s.sourceTag}] ${s.label}${if (elapsed.isNotEmpty()) " — $elapsed" else ""}"
+        }.toTypedArray()
+
+        AlertDialog.Builder(requireContext())
+            .setTitle(title)
+            .setItems(items) { _, which ->
+                openRemoteAgentView(sessions[which])
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun openRemoteAgentView(session: RemoteSessionInfo) {
+        val fragment = RemoteAgentFragment.newInstance(session)
+        parentFragmentManager.beginTransaction()
+            .add(R.id.fragment_container, fragment)
+            .addToBackStack("remote_agent")
+            .commit()
     }
 
 }
