@@ -105,6 +105,9 @@ class GatewayForegroundService : Service() {
     }
 
     private fun startGateway(host: String, port: Int, token: String?) {
+        // Null out callbacks before disconnect to prevent stale events from old session
+        gatewayManager?.onNotification = null
+        gatewayManager?.onChatMessage = null
         gatewayManager?.disconnect()
 
         val manager = GatewayManager(applicationContext, serviceScope)

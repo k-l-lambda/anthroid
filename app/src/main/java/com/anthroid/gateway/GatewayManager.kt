@@ -147,6 +147,11 @@ class GatewayManager(
     }
   }
 
+  // Buffer assistant text per runId for agent events
+  private val agentTextBuffers = mutableMapOf<String, StringBuilder>()
+  private val agentSessionKeys = mutableMapOf<String, String>()
+  private val processedAgentRuns = mutableSetOf<String>()
+
   private fun handleGatewayEvent(event: String, payloadJson: String?) {
     when (event) {
       "notification.push" -> {
@@ -190,6 +195,47 @@ class GatewayManager(
           onChatMessage?.invoke(sessionKey, null, messageText)
         } catch (err: Throwable) {
           Log.w(TAG, "Failed to parse chat event: ${err.message}")
+        }
+      }
+      "agent" -> {
+        try {
+          val obj = if (payloadJson != null) JSONObject(payloadJson) else return
+          val runId = obj.optString("runId", "").takeIf { it.isNotEmpty() } ?: return
+          val stream = obj.optString("stream", "")
+          val sessionKey = obj.optString("sessionKey", "").takeIf { it.isNotEmpty() }
+          if (sessionKey != null) {
+            agentSessionKeys[runId] = sessionKey
+          }
+          val data = obj.optJSONObject("data")
+          when (stream) {
+            "assistant" -> {
+              val text = data?.optString("text", "") ?: ""
+              if (text.isNotEmpty()) {
+                agentTextBuffers.getOrPut(runId) { StringBuilder() }.append(text)
+              }
+            }
+            "lifecycle" -> {
+              val phase = data?.optString("phase", "") ?: ""
+              if (phase == "end" || phase == "error") {
+                // Guard against duplicate lifecycle end events for the same runId
+                if (!processedAgentRuns.add(runId)) return
+                val buffered = agentTextBuffers.remove(runId)?.toString()?.trim()
+                agentSessionKeys.remove(runId)
+                if (!buffered.isNullOrEmpty()) {
+                  Log.i(TAG, "Agent run complete: runId=$runId, len=${buffered.length}")
+                  // Use fixed key so all agent messages share one notification
+                  onChatMessage?.invoke("gateway", "Gateway", buffered)
+                }
+                // Keep processedAgentRuns bounded (max 100 entries)
+                if (processedAgentRuns.size > 100) {
+                  val iterator = processedAgentRuns.iterator()
+                  repeat(50) { if (iterator.hasNext()) { iterator.next(); iterator.remove() } }
+                }
+              }
+            }
+          }
+        } catch (err: Throwable) {
+          Log.w(TAG, "Failed to parse agent event: ${err.message}")
         }
       }
       else -> {

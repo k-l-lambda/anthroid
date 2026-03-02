@@ -124,8 +124,13 @@ class GatewayNotificationHelper(private val context: Context) {
 
     fun clearAll() {
         val manager = NotificationManagerCompat.from(context)
+        // Cancel tracked notifications
         sessionNotifications.values.forEach { manager.cancel(it.notificationId) }
         manager.cancel(SUMMARY_NOTIFICATION_ID)
         sessionNotifications.clear()
+        // Also cancel any stale notifications from previous process by known ID range
+        for (id in SESSION_ID_BASE until SESSION_ID_BASE + 50) {
+            manager.cancel(id)
+        }
     }
 }
