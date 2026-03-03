@@ -1,5 +1,6 @@
 package com.anthroid.remote
 
+import android.util.Base64
 import android.util.Log
 import com.anthroid.claude.TerminalCommandBridge
 import kotlinx.coroutines.Dispatchers
@@ -62,8 +63,14 @@ class SshTmuxClient {
 
     /**
      * Send keystrokes to a tmux pane on the remote host.
-     * Clears the current input line (C-u), types the text literally (-l), then presses Enter.
-     * Uses three separate tmux send-keys calls for reliable shell quoting.
+     * Sequence:
+     *   1. Send literal "0" — dismisses Claude Code feedback prompt if showing
+     *      (feedback expects 0-3 as input; if no feedback, "0" is typed into input)
+     *   2. Sleep 0.3s to let feedback dismiss
+     *   3. End + 100 BSpace — move to end and clear any input (removes the "0" if typed)
+     *   4. Send actual text via -l (literal) flag using base64 to avoid all quoting issues
+     *   5. Sleep 1s to let the TUI process the text before Enter
+     *   6. Enter to submit
      */
     suspend fun sendKeys(hostname: String, session: String, text: String) = withContext(Dispatchers.IO) {
         if (!TerminalCommandBridge.isAvailable()) {
@@ -72,15 +79,18 @@ class SshTmuxClient {
 
         Log.i(TAG, "sendKeys: host=$hostname session=$session text='${text.take(30)}'")
 
-        // Escape single quotes for shell
-        val escaped = text.replace("'", "'\\''")
-        // All in one tmux send-keys call: End + 100 BSpace clears input, then "text" Enter.
-        // Without -l, tmux sends non-key-name strings character by character.
+        // Base64-encode text to avoid all shell quoting issues
+        val b64 = Base64.encodeToString(text.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
         val bspaces = List(100) { "BSpace" }.joinToString(" ")
         val cmd = "ssh -o ConnectTimeout=5 $hostname " +
-            "'tmux send-keys -t $session End $bspaces \"$escaped\" Enter'"
+            "'tmux send-keys -t $session -l 0 ; " +
+            "sleep 0.3 ; " +
+            "tmux send-keys -t $session End $bspaces ; " +
+            "tmux send-keys -t $session -l \"\$(echo $b64 | base64 -d)\" ; " +
+            "sleep 1 ; " +
+            "tmux send-keys -t $session Enter'"
         Log.d(TAG, "sendKeys cmd: $cmd")
-        val result = TerminalCommandBridge.executeCommand(cmd, timeout = 15000)
+        val result = TerminalCommandBridge.executeCommand(cmd, timeout = 20000)
 
         if (!result.success) {
             Log.w(TAG, "send-keys failed: ${result.output}")
