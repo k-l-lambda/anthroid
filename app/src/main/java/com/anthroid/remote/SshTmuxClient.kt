@@ -62,24 +62,31 @@ class SshTmuxClient {
 
     /**
      * Send keystrokes to a tmux pane on the remote host.
-     * This types the text and presses Enter.
+     * Clears the current input line (C-u), types the text literally (-l), then presses Enter.
+     * Uses three separate tmux send-keys calls for reliable shell quoting.
      */
     suspend fun sendKeys(hostname: String, session: String, text: String) = withContext(Dispatchers.IO) {
         if (!TerminalCommandBridge.isAvailable()) {
             throw IllegalStateException("Terminal bridge not available")
         }
 
+        Log.i(TAG, "sendKeys: host=$hostname session=$session text='${text.take(30)}'")
+
         // Escape single quotes for shell
         val escaped = text.replace("'", "'\\''")
-        val result = TerminalCommandBridge.executeCommand(
-            "ssh -o ConnectTimeout=5 $hostname 'tmux send-keys -t $session \"$escaped\" Enter 2>/dev/null'",
-            timeout = 15000
-        )
+        // All in one tmux send-keys call: End + 100 BSpace clears input, then "text" Enter.
+        // Without -l, tmux sends non-key-name strings character by character.
+        val bspaces = List(100) { "BSpace" }.joinToString(" ")
+        val cmd = "ssh -o ConnectTimeout=5 $hostname " +
+            "'tmux send-keys -t $session End $bspaces \"$escaped\" Enter'"
+        Log.d(TAG, "sendKeys cmd: $cmd")
+        val result = TerminalCommandBridge.executeCommand(cmd, timeout = 15000)
 
         if (!result.success) {
             Log.w(TAG, "send-keys failed: ${result.output}")
             throw IllegalStateException("send-keys failed: ${result.output.take(200)}")
         }
+        Log.i(TAG, "sendKeys: success")
     }
 
     private fun parseTmuxListOutput(output: String, hostname: String): List<RemoteSessionInfo> {

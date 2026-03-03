@@ -110,6 +110,7 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
     // ── Message Sending ────────────────────────────────────────────
 
     fun sendMessage(text: String) {
+        Log.i(TAG, "sendMessage: mode=$mode, text='${text.take(30)}'")
         when (mode) {
             RemoteSessionInfo.Source.OPENCLAW -> sendOpenClawMessage(text)
             RemoteSessionInfo.Source.SSH_TMUX -> sendTmuxMessage(text)
@@ -136,9 +137,14 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private fun sendTmuxMessage(text: String) {
-        val hostname = tmuxHostname ?: return
-        val sessionName = tmuxSessionName ?: return
+        val hostname = tmuxHostname
+        val sessionName = tmuxSessionName
+        if (hostname == null || sessionName == null) {
+            Log.w(TAG, "sendTmuxMessage: hostname=$hostname sessionName=$sessionName — aborting")
+            return
+        }
 
+        Log.i(TAG, "sendTmuxMessage: sending to $hostname:$sessionName")
         viewModelScope.launch {
             try {
                 sshClient.sendKeys(hostname, sessionName, text)
