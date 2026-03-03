@@ -111,22 +111,15 @@ class GatewayManager(
     scope.launch {
       try {
         val sessionKey = gatewaySession.currentMainSessionKey() ?: "Anthroid"
-        val messages = JSONArray().apply {
-          put(JSONObject().apply {
-            put("role", "user")
-            put("content", userMessage)
-          })
-          put(JSONObject().apply {
-            put("role", "assistant")
-            put("content", assistantResponse)
-          })
+        // chat.inject: sessionKey + message (plain string) per call
+        listOf(userMessage, assistantResponse).forEach { content ->
+          val params = JSONObject().apply {
+            put("sessionKey", sessionKey)
+            put("message", content)
+          }
+          gatewaySession.request("chat.inject", params.toString(), timeoutMs = 10_000)
         }
-        val params = JSONObject().apply {
-          put("sessionKey", sessionKey)
-          put("messages", messages)
-        }
-        gatewaySession.request("chat.inject", params.toString(), timeoutMs = 10_000)
-        Log.d(TAG, "Session sync: injected ${messages.length()} messages to Anthroid session")
+        Log.d(TAG, "Session sync: injected 2 messages to Anthroid session")
       } catch (err: Throwable) {
         Log.w(TAG, "Session sync failed: ${err.message}")
       }
@@ -196,12 +189,7 @@ class GatewayManager(
     val gatewaySession = session ?: throw IllegalStateException("Not connected to gateway")
     val params = JSONObject().apply {
       put("sessionKey", sessionKey)
-      put("messages", JSONArray().apply {
-        put(JSONObject().apply {
-          put("role", "user")
-          put("content", text)
-        })
-      })
+      put("message", text)
     }
     gatewaySession.request("chat.inject", params.toString(), timeoutMs = 10_000)
     Log.d(TAG, "Injected message to session $sessionKey: ${text.take(50)}")
