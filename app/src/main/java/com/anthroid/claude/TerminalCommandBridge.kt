@@ -119,63 +119,53 @@ object TerminalCommandBridge {
         val marker = "===ANTHROID_END_${UUID.randomUUID().toString().take(8)}==="
         Log.d(TAG, "Using marker: $marker")
 
-        // Get current transcript length before command
-        val transcriptBefore = ShellUtils.getTerminalSessionTranscriptText(session, true, false)
-        val startPos = transcriptBefore?.length ?: 0
-        Log.d(TAG, "Transcript before length: $startPos")
-
         // Execute command with end marker
         // Use write() to send command directly to terminal
         val fullCommand = "$command; echo '$marker'\n"
         Log.d(TAG, "Sending command via write()")
         session.write(fullCommand)
 
-        // Wait for marker to appear in output
+        // Wait for marker to appear in transcript
+        // Note: transcript is a circular buffer — we search the FULL transcript for the
+        // unique marker rather than tracking by position, since old content gets pushed out.
         val startTime = System.currentTimeMillis()
         var output: String? = null
         var lastLogTime = 0L
+        val markerLineRegex = Regex("^\\s*" + Regex.escape(marker) + "\\s*$", RegexOption.MULTILINE)
 
         while (System.currentTimeMillis() - startTime < timeout) {
             delay(100) // Check every 100ms
 
-            val transcriptNow = ShellUtils.getTerminalSessionTranscriptText(session, true, false) ?: ""
-            val newContent = if (transcriptNow.length > startPos) {
-                transcriptNow.substring(startPos)
-            } else ""
+            val transcript = ShellUtils.getTerminalSessionTranscriptText(session, true, false) ?: ""
 
             // Log progress every 2 seconds
             val now = System.currentTimeMillis()
             if (now - lastLogTime > 2000) {
-                Log.d(TAG, "Waiting... newContent len=${newContent.length}, hasMarker=${newContent.contains(marker)}")
-                if (newContent.isNotEmpty() && newContent.length < 500) {
-                    Log.d(TAG, "Content: $newContent")
-                }
+                Log.d(TAG, "Waiting... transcript len=${transcript.length}, hasMarker=${transcript.contains(marker)}")
                 lastLogTime = now
             }
 
-            // Check if marker appears on its own line (not within the echo command)
-            val markerLineRegex = Regex("^\\s*" + Regex.escape(marker) + "\\s*$", RegexOption.MULTILINE)
-            if (markerLineRegex.containsMatchIn(newContent)) {
-                // Extract output before marker line
-                val lines = newContent.lines()
-                val markerLineIndex = lines.indexOfFirst { it.trim() == marker }
+            if (markerLineRegex.containsMatchIn(transcript)) {
+                // Find marker position and extract output between command echo and marker
+                val lines = transcript.lines()
+                val markerLineIndex = lines.indexOfLast { it.trim() == marker }
 
                 if (markerLineIndex >= 0) {
-                    // Get lines before marker
-                    val outputLines = lines.take(markerLineIndex)
-
-                    // Remove the echoed command from beginning
-                    val cmdLine = command.trim()
-
-                    // Find where actual output starts (skip command echoes)
-                    val outputStartIndex = outputLines.indexOfFirst { line ->
-                        !line.contains(cmdLine) && !line.contains("echo '$marker'")
+                    // Search backwards from marker to find the command echo line
+                    val echoPattern = "echo '$marker'"
+                    var cmdLineIndex = markerLineIndex - 1
+                    while (cmdLineIndex >= 0) {
+                        if (lines[cmdLineIndex].contains(echoPattern)) break
+                        cmdLineIndex--
                     }
 
-                    output = if (outputStartIndex >= 0) {
-                        outputLines.drop(outputStartIndex).joinToString("\n").trim()
+                    if (cmdLineIndex >= 0) {
+                        // Output is between command echo line and marker line
+                        val outputLines = lines.subList(cmdLineIndex + 1, markerLineIndex)
+                        output = outputLines.joinToString("\n").trim()
                     } else {
-                        "" // No actual output
+                        // Fallback: couldn't find command echo, take some lines before marker
+                        output = ""
                     }
                 }
                 break
