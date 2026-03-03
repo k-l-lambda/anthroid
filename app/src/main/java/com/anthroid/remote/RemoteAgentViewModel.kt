@@ -49,6 +49,13 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
 
     private val sshClient = SshTmuxClient()
 
+    // Track injected messages to suppress the gateway echo.
+    // chat.inject stores the message as assistant content and the gateway
+    // immediately broadcasts it back as a final chat event. We skip the
+    // first matching echo received within ECHO_SUPPRESS_MS of injection.
+    private val pendingEchoes = mutableMapOf<String, Long>()
+    private val ECHO_SUPPRESS_MS = 5_000L
+
     // ── OpenClaw Mode ──────────────────────────────────────────────
 
     fun connectToOpenClawSession(sessionKey: String) {
@@ -64,11 +71,22 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
         // Register event callback filtered by session key
         manager.onRemoteSessionEvent = { eventSessionKey, role, content ->
             if (eventSessionKey == sessionKey) {
-                val msgRole = when (role) {
-                    "user" -> MessageRole.USER
-                    else -> MessageRole.ASSISTANT
+                // Suppress gateway echo: chat.inject broadcasts the injected
+                // text back as role=assistant immediately. Skip the first
+                // matching echo within the suppression window.
+                val sentAt = pendingEchoes[content]
+                val isEcho = sentAt != null &&
+                    (System.currentTimeMillis() - sentAt) < ECHO_SUPPRESS_MS
+                if (isEcho) {
+                    pendingEchoes.remove(content)
+                    Log.d(TAG, "Suppressed gateway echo: '${content.take(30)}'")
+                } else {
+                    val msgRole = when (role) {
+                        "user" -> MessageRole.USER
+                        else -> MessageRole.ASSISTANT
+                    }
+                    appendMessage(msgRole, content)
                 }
-                appendMessage(msgRole, content)
             }
         }
 
@@ -123,6 +141,9 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
 
         // Add to local message list immediately
         appendMessage(MessageRole.USER, text)
+        // Register echo suppression before the inject so the gateway's
+        // immediate broadcast is caught even if it arrives before inject returns
+        pendingEchoes[text] = System.currentTimeMillis()
 
         viewModelScope.launch {
             try {
@@ -131,6 +152,7 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
                 Log.d(TAG, "Injected message to $sessionKey: ${text.take(50)}")
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to inject message: ${e.message}")
+                pendingEchoes.remove(text)
                 appendMessage(MessageRole.SYSTEM, "Failed to send: ${e.message}")
             }
         }
