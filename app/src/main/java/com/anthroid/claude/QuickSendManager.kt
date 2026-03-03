@@ -15,7 +15,7 @@ class QuickSendManager private constructor(context: Context) {
         private const val TAG = "QuickSendManager"
         private const val PREFS_NAME = "quick_send_stats"
         private const val KEY_STATS = "message_stats"
-        private const val MAX_MESSAGE_LENGTH = 16
+        private const val MAX_MESSAGE_LENGTH = 30
         private const val MIN_COUNT_THRESHOLD = 5
         private const val MAX_CANDIDATES = 5
         private const val VOICE_INPUT_PREFIX = "🎤 "

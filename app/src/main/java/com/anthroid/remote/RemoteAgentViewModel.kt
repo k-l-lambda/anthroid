@@ -148,8 +148,8 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch {
             try {
                 val manager = GatewayForegroundService.instance?.gatewayManager
-                manager?.injectMessage(sessionKey, text)
-                Log.d(TAG, "Injected message to $sessionKey: ${text.take(50)}")
+                manager?.sendChatMessage(sessionKey, text)
+                Log.d(TAG, "Sent user message to $sessionKey: ${text.take(50)}")
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to inject message: ${e.message}")
                 pendingEchoes.remove(text)

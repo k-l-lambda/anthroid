@@ -124,6 +124,9 @@ class RemoteAgentFragment : Fragment() {
     }
 
     private fun setupOpenClawMode(sessionKey: String) {
+        // Light red background for OpenClaw remote sessions
+        view?.setBackgroundColor(0xFFFFF0F0.toInt())
+
         // Show message list, hide terminal
         messageList.visibility = View.VISIBLE
         terminalScroll.visibility = View.GONE

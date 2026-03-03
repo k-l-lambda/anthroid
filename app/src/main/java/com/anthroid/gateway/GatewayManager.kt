@@ -195,6 +195,21 @@ class GatewayManager(
     Log.d(TAG, "Injected message to session $sessionKey: ${text.take(50)}")
   }
 
+  /**
+   * Send a user message to a specific gateway session, triggering agent processing.
+   * Unlike injectMessage (chat.inject), this uses chat.send which delivers the message
+   * as a user turn and causes the remote agent to process and respond.
+   */
+  suspend fun sendChatMessage(sessionKey: String, text: String) {
+    val gatewaySession = session ?: throw IllegalStateException("Not connected to gateway")
+    val params = JSONObject().apply {
+      put("sessionKey", sessionKey)
+      put("message", text)
+    }
+    gatewaySession.request("chat.send", params.toString(), timeoutMs = 30_000)
+    Log.d(TAG, "Sent user message to session $sessionKey: ${text.take(50)}")
+  }
+
   // Track observed sessions from gateway events for fallback listing
   private data class ObservedSession(val sessionKey: String, var lastActivity: Long)
   private val observedSessions = mutableMapOf<String, ObservedSession>()
