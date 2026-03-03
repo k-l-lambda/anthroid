@@ -6,8 +6,10 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
+import android.graphics.Color
 import android.widget.EditText
 import android.widget.ImageButton
+import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.fragment.app.Fragment
@@ -50,6 +52,7 @@ class RemoteAgentFragment : Fragment() {
 
     private lateinit var viewModel: RemoteAgentViewModel
 
+    private lateinit var headerBar: LinearLayout
     private lateinit var sessionNameView: TextView
     private lateinit var statusIndicator: TextView
     private lateinit var messageList: RecyclerView
@@ -74,6 +77,7 @@ class RemoteAgentFragment : Fragment() {
 
         viewModel = ViewModelProvider(this)[RemoteAgentViewModel::class.java]
 
+        headerBar = view.findViewById(R.id.header_bar)
         sessionNameView = view.findViewById(R.id.session_name)
         statusIndicator = view.findViewById(R.id.status_indicator)
         messageList = view.findViewById(R.id.message_list)
@@ -123,9 +127,17 @@ class RemoteAgentFragment : Fragment() {
         }
     }
 
+    private fun applyBannerStyle(bgColor: Int) {
+        headerBar.setBackgroundColor(bgColor)
+        sessionNameView.setTextColor(Color.WHITE)
+        btnBack.setColorFilter(Color.WHITE)
+        statusIndicator.setTextColor(0xFFA7F3D0.toInt()) // light green on dark bg
+    }
+
     private fun setupOpenClawMode(sessionKey: String) {
-        // Light red background for OpenClaw remote sessions
+        // Light red background for content area; dark red banner
         view?.setBackgroundColor(0xFFFFF0F0.toInt())
+        applyBannerStyle(0xFF7F1D1D.toInt()) // dark red
 
         // Show message list, hide terminal
         messageList.visibility = View.VISIBLE
@@ -157,6 +169,9 @@ class RemoteAgentFragment : Fragment() {
     }
 
     private fun setupSshTmuxMode(sessionName: String, hostname: String) {
+        // Dark blue banner for tmux mode
+        applyBannerStyle(0xFF0F172A.toInt()) // near-black dark blue
+
         // Show terminal, hide message list
         messageList.visibility = View.GONE
         terminalScroll.visibility = View.VISIBLE
