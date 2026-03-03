@@ -202,9 +202,11 @@ class GatewayManager(
    */
   suspend fun sendChatMessage(sessionKey: String, text: String) {
     val gatewaySession = session ?: throw IllegalStateException("Not connected to gateway")
+    val idempotencyKey = "android-${System.currentTimeMillis()}"
     val params = JSONObject().apply {
       put("sessionKey", sessionKey)
       put("message", text)
+      put("idempotencyKey", idempotencyKey)
     }
     gatewaySession.request("chat.send", params.toString(), timeoutMs = 30_000)
     Log.d(TAG, "Sent user message to session $sessionKey: ${text.take(50)}")
