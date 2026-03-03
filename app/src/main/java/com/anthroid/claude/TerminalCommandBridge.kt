@@ -7,6 +7,8 @@ import com.anthroid.shared.termux.shell.command.runner.terminal.TermuxSession
 import com.anthroid.terminal.TerminalSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
@@ -20,6 +22,9 @@ object TerminalCommandBridge {
 
     private var termuxService: TermuxService? = null
     private var currentSessionGetter: (() -> TerminalSession?)? = null
+
+    // Mutex to serialize terminal command execution — only one command at a time
+    private val commandMutex = Mutex()
 
     /**
      * Register the bridge with TermuxService.
@@ -62,6 +67,19 @@ object TerminalCommandBridge {
         val service = termuxService
             ?: return@withContext CommandResult.error("Termux service not available")
 
+        // Serialize commands — only one at a time on the shared terminal session
+        commandMutex.withLock {
+            executeCommandLocked(service, command, sessionId, timeout)
+        }
+    }
+
+    private suspend fun executeCommandLocked(
+        service: TermuxService,
+        command: String,
+        sessionId: String?,
+        timeout: Long
+    ): CommandResult {
+
         // Get target session (with retry for sessions still being created)
         var targetSessionId: String = ""
         var session: TerminalSession? = null
@@ -86,7 +104,7 @@ object TerminalCommandBridge {
         }
 
         if (session == null || !session.isRunning) {
-            return@withContext CommandResult.error(
+            return CommandResult.error(
                 "No active terminal session (sessions=${service.termuxSessions.size})",
                 sessionId = targetSessionId
             )
@@ -107,7 +125,7 @@ object TerminalCommandBridge {
         }
         if (emulator == null) {
             Log.e(TAG, "Terminal emulator not initialized for session '$targetSessionId' after waiting")
-            return@withContext CommandResult.error(
+            return CommandResult.error(
                 "Terminal emulator not initialized. Please open Termux first.",
                 sessionId = targetSessionId
             )
@@ -136,7 +154,10 @@ object TerminalCommandBridge {
         while (System.currentTimeMillis() - startTime < timeout) {
             delay(100) // Check every 100ms
 
-            val transcript = ShellUtils.getTerminalSessionTranscriptText(session, true, false) ?: ""
+            // Use non-joined transcript (linesJoined=false) so each terminal row is a
+            // separate line. The joined version merges full-width rows, which can fuse
+            // the marker with the preceding SSH output line.
+            val transcript = ShellUtils.getTerminalSessionTranscriptText(session, false, false) ?: ""
 
             // Log progress every 2 seconds
             val now = System.currentTimeMillis()
@@ -172,7 +193,7 @@ object TerminalCommandBridge {
             }
         }
 
-        if (output == null) {
+        return if (output == null) {
             Log.w(TAG, "Command timed out after ${timeout}ms")
             CommandResult(
                 success = false,
