@@ -151,6 +151,7 @@ class GatewayManager(
 
   /**
    * List active sessions from the gateway.
+   * Falls back to locally observed sessions if the RPC fails (e.g., missing admin scope).
    */
   suspend fun listSessions(): List<RemoteSessionInfo> {
     val gatewaySession = session ?: throw IllegalStateException("Not connected to gateway")
@@ -158,8 +159,8 @@ class GatewayManager(
       val response = gatewaySession.request("session.list", null, timeoutMs = 10_000)
       parseSessionList(response)
     } catch (err: Throwable) {
-      Log.w(TAG, "listSessions failed: ${err.message}")
-      throw err
+      Log.w(TAG, "listSessions RPC failed (${err.message}), falling back to observed sessions")
+      getObservedSessions()
     }
   }
 
@@ -203,6 +204,30 @@ class GatewayManager(
     Log.d(TAG, "Injected message to session $sessionKey: ${text.take(50)}")
   }
 
+  // Track observed sessions from gateway events for fallback listing
+  private data class ObservedSession(val sessionKey: String, var lastActivity: Long)
+  private val observedSessions = mutableMapOf<String, ObservedSession>()
+
+  private fun trackObservedSession(sessionKey: String) {
+    if (sessionKey.isNotEmpty() && sessionKey != "gateway") {
+      observedSessions[sessionKey] = ObservedSession(sessionKey, System.currentTimeMillis())
+    }
+  }
+
+  fun getObservedSessions(): List<RemoteSessionInfo> {
+    return observedSessions.values
+      .sortedByDescending { it.lastActivity }
+      .map { s ->
+        RemoteSessionInfo(
+          sessionKey = s.sessionKey,
+          displayName = s.sessionKey.substringAfterLast(":").takeIf { it != s.sessionKey },
+          lastActivity = s.lastActivity,
+          status = "observed",
+          source = RemoteSessionInfo.Source.OPENCLAW,
+        )
+      }
+  }
+
   // Buffer assistant text per runId for agent events
   private val agentTextBuffers = mutableMapOf<String, StringBuilder>()
   private val agentSessionKeys = mutableMapOf<String, String>()
@@ -223,10 +248,11 @@ class GatewayManager(
       "chat" -> {
         try {
           val obj = if (payloadJson != null) JSONObject(payloadJson) else return
+          val sessionKey = obj.optString("sessionKey", "").takeIf { it.isNotEmpty() } ?: return
+          trackObservedSession(sessionKey)
           val state = obj.optString("state", "")
           // Only notify on final messages, not streaming deltas
           if (state != "final") return
-          val sessionKey = obj.optString("sessionKey", "").takeIf { it.isNotEmpty() } ?: return
           val msgObj = obj.optJSONObject("message") ?: return
           val role = msgObj.optString("role", "")
           if (role != "assistant") return
@@ -259,9 +285,12 @@ class GatewayManager(
           val obj = if (payloadJson != null) JSONObject(payloadJson) else return
           val runId = obj.optString("runId", "").takeIf { it.isNotEmpty() } ?: return
           val stream = obj.optString("stream", "")
-          val sessionKey = obj.optString("sessionKey", "").takeIf { it.isNotEmpty() }
+          // Try both "sessionKey" and nested "sessionId" for session tracking
+          val sessionKey = (obj.optString("sessionKey", "").takeIf { it.isNotEmpty() }
+            ?: obj.optString("sessionId", "").takeIf { it.isNotEmpty() })
           if (sessionKey != null) {
             agentSessionKeys[runId] = sessionKey
+            trackObservedSession(sessionKey)
           }
           val data = obj.optJSONObject("data")
           when (stream) {
@@ -277,10 +306,10 @@ class GatewayManager(
                 // Guard against duplicate lifecycle end events for the same runId
                 if (!processedAgentRuns.add(runId)) return
                 val buffered = agentTextBuffers.remove(runId)?.toString()?.trim()
-                agentSessionKeys.remove(runId)
+                val effectiveSessionKey = agentSessionKeys.remove(runId) ?: "gateway"
                 if (!buffered.isNullOrEmpty()) {
-                  val effectiveSessionKey = agentSessionKeys[runId] ?: "gateway"
                   Log.i(TAG, "Agent run complete: runId=$runId, session=$effectiveSessionKey, len=${buffered.length}")
+                  trackObservedSession(effectiveSessionKey)
                   // Use fixed key so all agent messages share one notification
                   onChatMessage?.invoke("gateway", "Gateway", buffered)
                   onRemoteSessionEvent?.invoke(effectiveSessionKey, "assistant", buffered)
@@ -298,6 +327,16 @@ class GatewayManager(
         }
       }
       else -> {
+        // Track sessions from any event that has sessionKey
+        if (payloadJson != null) {
+          try {
+            val obj = JSONObject(payloadJson)
+            val sessionKey = obj.optString("sessionKey", "").takeIf { it.isNotEmpty() }
+            if (sessionKey != null) {
+              trackObservedSession(sessionKey)
+            }
+          } catch (_: Throwable) {}
+        }
         Log.d(TAG, "Unhandled gateway event: $event")
       }
     }
