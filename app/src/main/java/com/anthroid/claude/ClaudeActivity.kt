@@ -65,8 +65,15 @@ class ClaudeActivity : AppCompatActivity() {
                 // Ensure at least one session exists for command execution
                 if (svc.termuxSessions.isEmpty()) {
                     Log.d(TAG, "No terminal sessions, creating one for Claude")
-                    svc.createTermuxSession(null, null, null, null, false, "claude-session")
-                    Log.d(TAG, "Terminal session created")
+                    val termuxSession = svc.createTermuxSession(null, null, null, null, false, "claude-session")
+                    // Force-initialize emulator with default dimensions (80x24)
+                    termuxSession?.terminalSession?.let { ts ->
+                        if (ts.emulator == null) {
+                            Log.d(TAG, "Initializing terminal emulator with default 80x24")
+                            ts.updateSize(80, 24, 0, 0)
+                        }
+                    }
+                    Log.d(TAG, "Terminal session created and initialized")
                 }
             }
         }

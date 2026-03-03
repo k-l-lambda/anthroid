@@ -128,9 +128,24 @@ class MainPagerActivity : AppCompatActivity() {
                 // Ensure at least one session exists for command execution
                 if (svc.termuxSessions.isEmpty()) {
                     Log.d(TAG, "No terminal sessions, creating one for Claude")
-                    // Create a default session for Claude to use
-                    svc.createTermuxSession(null, null, null, null, false, "claude-session")
-                    Log.d(TAG, "Terminal session created")
+                    val termuxSession = svc.createTermuxSession(null, null, null, null, false, "claude-session")
+                    // Force-initialize emulator with default dimensions (80x24)
+                    // Without this, the emulator stays null until a TerminalView is attached
+                    termuxSession?.terminalSession?.let { ts ->
+                        if (ts.emulator == null) {
+                            Log.d(TAG, "Initializing terminal emulator with default 80x24")
+                            ts.updateSize(80, 24, 0, 0)
+                        }
+                    }
+                    Log.d(TAG, "Terminal session created and initialized")
+                } else {
+                    // Ensure existing session has emulator initialized
+                    svc.termuxSessions.firstOrNull()?.terminalSession?.let { ts ->
+                        if (ts.emulator == null) {
+                            Log.d(TAG, "Initializing existing session emulator with default 80x24")
+                            ts.updateSize(80, 24, 0, 0)
+                        }
+                    }
                 }
             }
         }

@@ -62,30 +62,51 @@ object TerminalCommandBridge {
         val service = termuxService
             ?: return@withContext CommandResult.error("Termux service not available")
 
-        // Get target session
-        val targetSessionId: String
-        val session: TerminalSession? = if (sessionId != null) {
-            // Find session by name
-            val termuxSession = findSessionByName(service, sessionId)
-            targetSessionId = sessionId
-            termuxSession?.terminalSession
-        } else {
-            // Use current session
-            val currentSession = currentSessionGetter?.invoke()
-            targetSessionId = currentSession?.mSessionName ?: getDefaultSessionId(service)
-            currentSession
+        // Get target session (with retry for sessions still being created)
+        var targetSessionId: String = ""
+        var session: TerminalSession? = null
+
+        for (attempt in 1..20) { // Wait up to 2 seconds for session
+            if (sessionId != null) {
+                val termuxSession = findSessionByName(service, sessionId)
+                targetSessionId = sessionId
+                session = termuxSession?.terminalSession
+            } else {
+                val currentSession = currentSessionGetter?.invoke()
+                targetSessionId = currentSession?.mSessionName ?: getDefaultSessionId(service)
+                session = currentSession
+            }
+
+            if (session != null && session.isRunning) break
+
+            if (attempt == 1) {
+                Log.d(TAG, "No active session yet (sessions=${service.termuxSessions.size}), waiting...")
+            }
+            delay(100)
         }
 
         if (session == null || !session.isRunning) {
             return@withContext CommandResult.error(
-                "No active terminal session",
+                "No active terminal session (sessions=${service.termuxSessions.size})",
                 sessionId = targetSessionId
             )
         }
 
-        val emulator = session.emulator
+        // Wait for emulator to initialize (may take a moment after session creation)
+        var emulator = session.emulator
         if (emulator == null) {
-            Log.e(TAG, "Terminal emulator not initialized for session '$targetSessionId'")
+            Log.d(TAG, "Emulator null for session '$targetSessionId', waiting for initialization...")
+            for (i in 1..30) { // Wait up to 3 seconds
+                delay(100)
+                emulator = session.emulator
+                if (emulator != null) {
+                    Log.d(TAG, "Emulator initialized after ${i * 100}ms")
+                    break
+                }
+            }
+        }
+        if (emulator == null) {
+            Log.e(TAG, "Terminal emulator not initialized for session '$targetSessionId' after waiting")
             return@withContext CommandResult.error(
                 "Terminal emulator not initialized. Please open Termux first.",
                 sessionId = targetSessionId
