@@ -80,6 +80,7 @@ class GatewaySession(
     val port: Int,
     val token: String?,
     val options: GatewayConnectOptions,
+    val useTls: Boolean = true,
   )
 
   private var desired: DesiredConnection? = null
@@ -94,8 +95,9 @@ class GatewaySession(
     port: Int,
     token: String?,
     options: GatewayConnectOptions,
+    useTls: Boolean = true,
   ) {
-    desired = DesiredConnection(host, port, token, options)
+    desired = DesiredConnection(host, port, token, options, useTls)
     if (job == null) {
       job = scope.launch(Dispatchers.IO) { runLoop() }
     }
@@ -161,6 +163,7 @@ class GatewaySession(
     private val port: Int,
     private val token: String?,
     private val options: GatewayConnectOptions,
+    private val useTls: Boolean = true,
   ) {
     private val connectDeferred = CompletableDeferred<Unit>()
     private val closedDeferred = CompletableDeferred<Unit>()
@@ -171,9 +174,7 @@ class GatewaySession(
     val remoteAddress: String = "$host:$port"
 
     suspend fun connect() {
-      // Use wss:// for non-loopback connections to protect auth tokens and chat data
-      val isLocal = host == "127.0.0.1" || host == "localhost" || host == "::1"
-      val scheme = if (isLocal) "ws" else "wss"
+      val scheme = if (useTls) "wss" else "ws"
       val url = "$scheme://$host:$port"
       val request = Request.Builder().url(url).build()
       socket = httpClient.newWebSocket(request, Listener())
@@ -453,7 +454,7 @@ class GatewaySession(
   }
 
   private suspend fun connectOnce(target: DesiredConnection) = withContext(Dispatchers.IO) {
-    val conn = Connection(target.host, target.port, target.token, target.options)
+    val conn = Connection(target.host, target.port, target.token, target.options, target.useTls)
     currentConnection = conn
     try {
       conn.connect()

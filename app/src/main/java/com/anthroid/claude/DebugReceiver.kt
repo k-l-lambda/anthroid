@@ -44,6 +44,7 @@ class DebugReceiver : BroadcastReceiver() {
         const val EXTRA_GATEWAY_HOST = "host"
         const val EXTRA_GATEWAY_PORT = "port"
         const val EXTRA_GATEWAY_TOKEN = "token"
+        const val EXTRA_GATEWAY_USE_TLS = "tls"
 
         // Global event flow for debug messages (replay=1 ensures late collectors get the message)
         private val _debugMessageFlow = MutableSharedFlow<String>(replay = 1, extraBufferCapacity = 1)
@@ -110,7 +111,8 @@ class DebugReceiver : BroadcastReceiver() {
     data class GatewayConfig(
         val host: String,
         val port: Int,
-        val token: String?
+        val token: String?,
+        val useTls: Boolean = true,
     )
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -168,6 +170,8 @@ class DebugReceiver : BroadcastReceiver() {
 
         val port = intent.getStringExtra(EXTRA_GATEWAY_PORT)?.toIntOrNull() ?: 40445
         val token = intent.getStringExtra(EXTRA_GATEWAY_TOKEN)
+        // Default useTls=true unless caller passes --ez tls false
+        val useTls = intent.getBooleanExtra(EXTRA_GATEWAY_USE_TLS, true)
 
         // Save to SharedPreferences
         val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
@@ -175,13 +179,14 @@ class DebugReceiver : BroadcastReceiver() {
             putBoolean("gateway_enabled", true)
             putString("gateway_host", host)
             putString("gateway_port", port.toString())
+            putBoolean("gateway_use_tls", useTls)
             token?.let { putString("gateway_token", it) }
             apply()
         }
 
-        Log.i(TAG, "Gateway config saved: host=$host, port=$port, token=${if (token != null) "(set)" else "(none)"}")
+        Log.i(TAG, "Gateway config saved: host=$host, port=$port, tls=$useTls, token=${if (token != null) "(set)" else "(none)"}")
 
-        emitGatewayConfig(GatewayConfig(host, port, token))
+        emitGatewayConfig(GatewayConfig(host, port, token, useTls))
     }
 
     private fun handleReadConversation(context: Context) {

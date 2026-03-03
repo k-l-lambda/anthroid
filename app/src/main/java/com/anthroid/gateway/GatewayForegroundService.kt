@@ -34,6 +34,7 @@ class GatewayForegroundService : Service() {
         private const val EXTRA_HOST = "host"
         private const val EXTRA_PORT = "port"
         private const val EXTRA_TOKEN = "token"
+        private const val EXTRA_USE_TLS = "use_tls"
 
         @Volatile
         var instance: GatewayForegroundService? = null
@@ -41,11 +42,12 @@ class GatewayForegroundService : Service() {
 
         fun isRunning(): Boolean = instance != null
 
-        fun start(context: Context, host: String, port: Int, token: String?) {
+        fun start(context: Context, host: String, port: Int, token: String?, useTls: Boolean = true) {
             val intent = Intent(context, GatewayForegroundService::class.java).apply {
                 action = ACTION_START
                 putExtra(EXTRA_HOST, host)
                 putExtra(EXTRA_PORT, port)
+                putExtra(EXTRA_USE_TLS, useTls)
                 token?.let { putExtra(EXTRA_TOKEN, it) }
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -84,7 +86,8 @@ class GatewayForegroundService : Service() {
                 }
                 val port = intent.getIntExtra(EXTRA_PORT, 40445)
                 val token = intent.getStringExtra(EXTRA_TOKEN)
-                startGateway(host, port, token)
+                val useTls = intent.getBooleanExtra(EXTRA_USE_TLS, true)
+                startGateway(host, port, token, useTls)
             }
             ACTION_STOP -> stopSelf()
         }
@@ -104,7 +107,7 @@ class GatewayForegroundService : Service() {
         super.onDestroy()
     }
 
-    private fun startGateway(host: String, port: Int, token: String?) {
+    private fun startGateway(host: String, port: Int, token: String?, useTls: Boolean = true) {
         // Null out callbacks before disconnect to prevent stale events from old session
         gatewayManager?.onNotification = null
         gatewayManager?.onChatMessage = null
@@ -142,8 +145,8 @@ class GatewayForegroundService : Service() {
             }
         }
 
-        manager.connect(host, port, token)
-        Log.i(TAG, "Gateway started: $host:$port")
+        manager.connect(host, port, token, useTls)
+        Log.i(TAG, "Gateway started: $host:$port (tls=$useTls)")
     }
 
     private fun createServiceChannel() {

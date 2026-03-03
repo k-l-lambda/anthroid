@@ -897,9 +897,9 @@ class ClaudeFragment : Fragment() {
         // Observe gateway config changes from adb
         viewLifecycleOwner.lifecycleScope.launch {
             DebugReceiver.gatewayConfigFlow.collect { config ->
-                Log.i(TAG, "Gateway config received: host=${config.host}, port=${config.port}")
+                Log.i(TAG, "Gateway config received: host=${config.host}, port=${config.port}, tls=${config.useTls}")
                 com.anthroid.gateway.GatewayForegroundService.start(
-                    requireContext(), config.host, config.port, config.token
+                    requireContext(), config.host, config.port, config.token, config.useTls
                 )
                 Toast.makeText(requireContext(), "Gateway connecting to ${config.host}:${config.port}", Toast.LENGTH_SHORT).show()
             }

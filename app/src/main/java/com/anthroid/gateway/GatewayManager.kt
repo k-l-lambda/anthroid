@@ -30,7 +30,7 @@ class GatewayManager(
     private const val CLIENT_VERSION = "0.10.9"
     private const val CLIENT_PLATFORM = "android"
     private const val DEFAULT_ROLE = "operator"
-    private val DEFAULT_SCOPES = listOf("operator.read", "operator.write")
+    private val DEFAULT_SCOPES = listOf("operator.read", "operator.write", "operator.admin")
   }
 
   private val identityStore = DeviceIdentityStore(context)
@@ -48,7 +48,7 @@ class GatewayManager(
 
   private var session: GatewaySession? = null
 
-  fun connect(host: String, port: Int, token: String? = null) {
+  fun connect(host: String, port: Int, token: String? = null, useTls: Boolean = true) {
     disconnect()
 
     val gatewaySession = GatewaySession(
@@ -89,8 +89,8 @@ class GatewayManager(
     )
 
     session = gatewaySession
-    gatewaySession.connect(host, port, token, options)
-    Log.i(TAG, "Connecting to gateway at $host:$port...")
+    gatewaySession.connect(host, port, token, options, useTls)
+    Log.i(TAG, "Connecting to gateway at $host:$port (tls=$useTls)...")
   }
 
   fun disconnect() {
@@ -156,7 +156,7 @@ class GatewayManager(
   suspend fun listSessions(): List<RemoteSessionInfo> {
     val gatewaySession = session ?: throw IllegalStateException("Not connected to gateway")
     return try {
-      val response = gatewaySession.request("session.list", null, timeoutMs = 10_000)
+      val response = gatewaySession.request("sessions.list", null, timeoutMs = 10_000)
       parseSessionList(response)
     } catch (err: Throwable) {
       Log.w(TAG, "listSessions RPC failed (${err.message}), falling back to observed sessions")
@@ -172,11 +172,14 @@ class GatewayManager(
       val sessions = obj.optJSONArray("sessions") ?: return emptyList()
       for (i in 0 until sessions.length()) {
         val s = sessions.optJSONObject(i) ?: continue
+        val displayName = s.optString("displayName", "")
+          .takeIf { it.isNotEmpty() }
+          ?: s.optString("label", "").takeIf { it.isNotEmpty() }
         result.add(RemoteSessionInfo(
           sessionKey = s.optString("key", ""),
-          displayName = s.optString("displayName", "").takeIf { it.isNotEmpty() },
-          lastActivity = s.optLong("lastActivity", 0),
-          status = s.optString("status", "unknown"),
+          displayName = displayName,
+          lastActivity = s.optLong("updatedAt", s.optLong("lastActivity", 0)),
+          status = "active",
           source = RemoteSessionInfo.Source.OPENCLAW,
         ))
       }

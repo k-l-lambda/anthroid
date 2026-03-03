@@ -222,9 +222,10 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         val gatewayPort = prefs.getString("gateway_port", "40445")?.trim()?.toIntOrNull() ?: 40445
         val gatewayToken = prefs.getString("gateway_token", null)?.trim()
         val gatewayEnabled = prefs.getBoolean("gateway_enabled", false)
+        val gatewayUseTls = prefs.getBoolean("gateway_use_tls", true)
         if (gatewayEnabled && !gatewayHost.isNullOrBlank() && !GatewayForegroundService.isRunning()) {
-            Log.i(TAG, "Starting gateway service: $gatewayHost:$gatewayPort")
-            GatewayForegroundService.start(getApplication(), gatewayHost, gatewayPort, gatewayToken)
+            Log.i(TAG, "Starting gateway service: $gatewayHost:$gatewayPort (tls=$gatewayUseTls)")
+            GatewayForegroundService.start(getApplication(), gatewayHost, gatewayPort, gatewayToken, gatewayUseTls)
         }
     }
 
