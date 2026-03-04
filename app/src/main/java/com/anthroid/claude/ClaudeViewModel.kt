@@ -121,8 +121,11 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         checkClaudeInstallation()
 
         // Set up MCP server callback to handle tool completion events
-        McpServer.onToolComplete = { toolName, isError, result ->
+        McpServer.onToolComplete = onToolComplete@{ toolName, isError, result ->
             Log.d(TAG, "MCP onToolComplete: tool=$toolName, isError=$isError, resultLen=${result.length}")
+            // Skip callbacks for unknown tools (e.g. "exec" which is handled by pi-embedded-runner,
+            // not AndroidTools). The ToolResult event will handle these instead.
+            if (result.startsWith("Unknown tool:")) return@onToolComplete
             viewModelScope.launch {
                 if (isError) {
                     // Update the most recent tool message with this name to show error

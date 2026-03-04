@@ -340,7 +340,7 @@ class OpenClawLocalClient(private val context: Context) {
                         while (isActive && reader.readLine().also { line = it } != null) {
                             val l = line ?: continue
                             if (l.isBlank()) continue
-                            Log.d(TAG, "Event: ${l.take(100)}")
+                            Log.d(TAG, "Event: ${l.take(300)}")
                             parseStreamEvent(l, { isInThinkingBlock }, { isInThinkingBlock = it })?.let { event ->
                                 send(event)
                             }
@@ -551,7 +551,7 @@ class OpenClawLocalClient(private val context: Context) {
                             }
                             val isError = event.optBoolean("is_error", false)
                             val inputHint = event.optString("input_hint", "").takeIf { it.isNotEmpty() }
-                            Log.i(TAG, "Tool result: id=$toolUseId, error=$isError, len=${content.length}")
+                            Log.i(TAG, "Tool result: id=$toolUseId, error=$isError, len=${content.length}, inputHint=$inputHint")
                             if (toolUseId.isNotEmpty()) ClaudeEvent.ToolResult(toolUseId, content, isError, inputHint) else null
                         }
 
