@@ -111,13 +111,15 @@ function emitToolUse(toolCallId, toolName, input) {
   });
 }
 
-function emitToolResultEvent(toolCallId, content, isError) {
-  emitStreamEvent({
+function emitToolResultEvent(toolCallId, content, isError, inputHint) {
+  const event = {
     type: "tool_result",
     tool_use_id: toolCallId,
     content: content || "",
     is_error: isError || false,
-  });
+  };
+  if (inputHint) event.input_hint = inputHint;
+  emitStreamEvent(event);
 }
 
 // ---------------------------------------------------------------------------
@@ -402,10 +404,13 @@ async function runAgent(prompt, images) {
             toolResultText = "";
             emitToolUse(evt.data.toolCallId, evt.data.name);
           } else if (evt.data.phase === "result") {
+            // Include meta (the command/label) as input_hint so UI can show what ran
+            const inputHint = typeof evt.data.meta === "string" ? evt.data.meta : undefined;
             emitToolResultEvent(
               evt.data.toolCallId,
               toolResultText.slice(0, 2000),
               evt.data.isError || false,
+              inputHint,
             );
             activeToolCallId = null;
             toolResultText = "";

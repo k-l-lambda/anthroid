@@ -550,8 +550,9 @@ class OpenClawLocalClient(private val context: Context) {
                                 else -> ""
                             }
                             val isError = event.optBoolean("is_error", false)
+                            val inputHint = event.optString("input_hint", "").takeIf { it.isNotEmpty() }
                             Log.i(TAG, "Tool result: id=$toolUseId, error=$isError, len=${content.length}")
-                            if (toolUseId.isNotEmpty()) ClaudeEvent.ToolResult(toolUseId, content, isError) else null
+                            if (toolUseId.isNotEmpty()) ClaudeEvent.ToolResult(toolUseId, content, isError, inputHint) else null
                         }
 
                         else -> null

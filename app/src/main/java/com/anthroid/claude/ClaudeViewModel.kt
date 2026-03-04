@@ -614,7 +614,9 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                         msg.copy(
                             isStreaming = false,
                             isError = event.isError,
-                            toolOutput = event.content
+                            toolOutput = event.content,
+                            // Use inputHint to fill in the actual input (e.g. the command run)
+                            toolInput = if (!event.inputHint.isNullOrEmpty() && (msg.toolInput.isNullOrEmpty() || msg.toolInput == "{}")) event.inputHint else msg.toolInput
                         )
                     } else {
                         msg
@@ -632,7 +634,8 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                             msg.copy(
                                 isStreaming = false,
                                 isError = event.isError,
-                                toolOutput = event.content
+                                toolOutput = event.content,
+                                toolInput = if (!event.inputHint.isNullOrEmpty() && (msg.toolInput.isNullOrEmpty() || msg.toolInput == "{}")) event.inputHint else msg.toolInput
                             )
                         } else {
                             msg
