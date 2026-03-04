@@ -96,8 +96,31 @@ class GatewayForegroundService : Service() {
                 startGateway(host, port, token, useTls)
             }
             ACTION_STOP -> stopSelf()
+            else -> {
+                // START_STICKY restart (null intent) or unknown action.
+                // Must call startForeground() to avoid ANR on Android 8+.
+                startForeground(NOTIFICATION_ID, createServiceNotification("Reconnecting..."))
+                tryStartGatewayFromPrefs()
+            }
         }
         return START_STICKY
+    }
+
+    private fun tryStartGatewayFromPrefs() {
+        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+        if (!prefs.getBoolean("gateway_enabled", false)) {
+            Log.i(TAG, "Auto-restart skipped: gateway_enabled=false")
+            return
+        }
+        val host = prefs.getString("gateway_host", null) ?: run {
+            Log.w(TAG, "Auto-restart skipped: no saved host")
+            return
+        }
+        val port = prefs.getString("gateway_port", "40445")?.toIntOrNull() ?: 40445
+        val token = prefs.getString("gateway_token", null)
+        val useTls = prefs.getBoolean("gateway_use_tls", true)
+        Log.i(TAG, "Auto-restarting gateway from prefs: $host:$port (tls=$useTls)")
+        startGateway(host, port, token, useTls)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
