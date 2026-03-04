@@ -531,10 +531,27 @@ class OpenClawLocalClient(private val context: Context) {
 
                         "tool_result" -> {
                             val toolUseId = event.optString("tool_use_id", "")
-                            val content = event.optString("content", "")
+                            // content can be a plain string or a JSON array of text blocks
+                            val rawContent = event.opt("content")
+                            val content = when (rawContent) {
+                                is String -> rawContent
+                                is JSONArray -> {
+                                    // [{"type":"text","text":"..."},...]
+                                    val sb = StringBuilder()
+                                    for (i in 0 until rawContent.length()) {
+                                        val block = rawContent.optJSONObject(i)
+                                        if (block?.optString("type") == "text") {
+                                            if (sb.isNotEmpty()) sb.append("\n")
+                                            sb.append(block.optString("text", ""))
+                                        }
+                                    }
+                                    sb.toString()
+                                }
+                                else -> ""
+                            }
                             val isError = event.optBoolean("is_error", false)
                             Log.i(TAG, "Tool result: id=$toolUseId, error=$isError, len=${content.length}")
-                            ClaudeEvent.ToolResult(toolUseId, content, isError)
+                            if (toolUseId.isNotEmpty()) ClaudeEvent.ToolResult(toolUseId, content, isError) else null
                         }
 
                         else -> null
