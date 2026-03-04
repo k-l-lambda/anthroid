@@ -389,10 +389,11 @@ async function runAgent(prompt, images) {
         }
       },
 
-      // Tool result text — accumulate for the active tool call
+      // onToolResult fires twice: 1st with label only, 2nd with full output.
+      // Use REPLACE so the last (complete) value wins.
       onToolResult: (payload) => {
         if (payload.text && activeToolCallId) {
-          toolResultText += payload.text;
+          toolResultText = payload.text;
         }
       },
 
@@ -404,16 +405,20 @@ async function runAgent(prompt, images) {
             toolResultText = "";
             emitToolUse(evt.data.toolCallId, evt.data.name);
           } else if (evt.data.phase === "result") {
-            // Include meta (the command/label) as input_hint so UI can show what ran
+            // Defer 100ms so the 2nd onToolResult (with full output) fires first
+            const toolCallIdForEmit = evt.data.toolCallId;
+            const isError = evt.data.isError || false;
             const inputHint = typeof evt.data.meta === "string" ? evt.data.meta : undefined;
-            emitToolResultEvent(
-              evt.data.toolCallId,
-              toolResultText.slice(0, 2000),
-              evt.data.isError || false,
-              inputHint,
-            );
-            activeToolCallId = null;
-            toolResultText = "";
+            setTimeout(() => {
+              emitToolResultEvent(
+                toolCallIdForEmit,
+                toolResultText.slice(0, 2000),
+                isError,
+                inputHint,
+              );
+              activeToolCallId = null;
+              toolResultText = "";
+            }, 100);
           }
         }
       },

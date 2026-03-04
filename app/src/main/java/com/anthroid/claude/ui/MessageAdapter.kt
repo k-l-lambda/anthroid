@@ -279,10 +279,10 @@ class MessageAdapter(
                 .removePrefix("mcp__anthroid__")
                 .removePrefix("mcp__")
             toolName.text = displayName
-            // If toolOutput is a short execution label (e.g. "🛠️ Exec: `pwd`"), use the
-            // text part (after stripping leading emoji) as bar description instead of raw input.
+            // If toolOutput is an execution label/output (e.g. "🛠️ Exec: `pwd`\n...path..."),
+            // use the text part (after stripping leading emoji) as bar description.
             val outputLabel = message.toolOutput?.trim()
-                ?.takeIf { it.length <= 60 && !it.startsWith("{") && !it.startsWith("Error") && !it.startsWith("Unknown") }
+                ?.takeIf { !it.startsWith("{") && !it.startsWith("Error") && !it.startsWith("Unknown") }
                 ?.let { label ->
                     // Strip leading emoji: find first space, take the text after it
                     val spaceIdx = label.indexOfFirst { c -> c == ' ' }
