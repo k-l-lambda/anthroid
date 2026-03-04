@@ -61,6 +61,12 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
     private val pendingEchoes = mutableMapOf<String, Long>()
     private val ECHO_SUPPRESS_MS = 5_000L
 
+    // Dedup: same message can arrive via both `agent.lifecycle.end` AND `chat.final`
+    // events on the same connection. Track recently delivered (role, content) pairs
+    // and discard within DEDUP_WINDOW_MS.
+    private val recentDelivered = mutableMapOf<String, Long>()
+    private val DEDUP_WINDOW_MS = 8_000L
+
     // ── OpenClaw Mode ──────────────────────────────────────────────
 
     fun connectToOpenClawSession(sessionKey: String) {
@@ -84,18 +90,25 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
                     // Register event callback filtered by session key
                     manager.onRemoteSessionEvent = { eventSessionKey, role, content ->
                         if (eventSessionKey == sessionKey) {
+                            val now = System.currentTimeMillis()
                             val sentAt = pendingEchoes[content]
-                            val isEcho = sentAt != null &&
-                                (System.currentTimeMillis() - sentAt) < ECHO_SUPPRESS_MS
-                            if (isEcho) {
-                                pendingEchoes.remove(content)
-                                Log.d(TAG, "Suppressed echo: '${content.take(30)}'")
-                            } else {
-                                val msgRole = when (role) {
-                                    "user" -> MessageRole.USER
-                                    else -> MessageRole.ASSISTANT
+                            val isEcho = sentAt != null && (now - sentAt) < ECHO_SUPPRESS_MS
+                            val dedupKey = "$role:$content"
+                            val lastSeen = recentDelivered[dedupKey]
+                            val isDuplicate = lastSeen != null && (now - lastSeen) < DEDUP_WINDOW_MS
+                            when {
+                                isEcho -> {
+                                    pendingEchoes.remove(content)
+                                    Log.d(TAG, "Suppressed echo: '${content.take(30)}'")
                                 }
-                                appendMessage(msgRole, content)
+                                isDuplicate -> {
+                                    Log.d(TAG, "Suppressed duplicate: '${content.take(30)}'")
+                                }
+                                else -> {
+                                    recentDelivered[dedupKey] = now
+                                    val msgRole = if (role == "user") MessageRole.USER else MessageRole.ASSISTANT
+                                    appendMessage(msgRole, content)
+                                }
                             }
                         }
                     }
