@@ -47,7 +47,8 @@
                 android:id="@+id/status_indicator"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textSize="12sp"
+                android:text="●"
+                android:textSize="18sp"
                 android:textColor="#22C55E" />
 
         </LinearLayout>

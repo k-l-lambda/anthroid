@@ -121,14 +121,14 @@ class RemoteAgentFragment : Fragment() {
             } else false
         }
 
-        // Observe connection status
+        // Observe connection status — show as colored dot only
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.connectionStatus.collectLatest { status ->
-                statusIndicator.text = status
-                statusIndicator.setTextColor(
-                    if (status.startsWith("error")) 0xFFEF4444.toInt()
-                    else 0xFF22C55E.toInt()
-                )
+                statusIndicator.setTextColor(when {
+                    status.startsWith("error") || status == "disconnected" -> 0xFFEF4444.toInt() // red
+                    status.startsWith("connect") -> 0xFFFBBF24.toInt()                           // yellow
+                    else -> 0xFF22C55E.toInt()                                                   // green
+                })
             }
         }
     }
