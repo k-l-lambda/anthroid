@@ -1188,3 +1188,128 @@ View and interact with remote AI agent sessions directly from Anthroid.
 **Files to modify:**
 - Android: `app/src/main/java/com/anthroid/gateway/GatewayManager.kt` (1-line change)
 - Gateway server: wherever `"ui"` mode is defined and mapped to channel attributes
+
+---
+
+#### Sub-phase 16.11: Remote Agent Session Result as Local Tool Bar (Planned)
+
+**Context:** When the user sends a message to a remote agent via the Remote Agent View, the remote agent processes it and generates a response. Currently the response only appears in the Remote Agent View. It would be useful to embed the result back into the current local conversation as a tool bar item, giving the local context awareness of remote session activity.
+
+**Behavior:**
+- After a remote agent conversation exchange completes (user sends + agent responds), a tool bar entry is added to the **current local conversation** in `ClaudeActivity`
+- Tool bar **input**: the remote session's entry info (session key, agent display name, user message sent)
+- Tool bar **output**: the final response content from the remote agent session
+- The tool bar is non-interactive (read-only annotation); tapping shows the detail dialog with full content
+- Multiple back-and-forth exchanges in the remote view each create one tool bar entry in the local conversation
+
+**Architecture:**
+```
+RemoteAgentViewModel.sendMessage()
+  ↓ user sends to remote session
+GatewayManager.sendChatMessage()
+  ↓ agent responds (onRemoteSessionEvent)
+RemoteAgentViewModel.onResponse()
+  ↓ emit RemoteAgentResultEvent(sessionKey, userMessage, responseText)
+ClaudeViewModel.onRemoteAgentResult()
+  ↓ append Message(role=TOOL, toolName="remote:$displayName", toolInput=userMessage, toolOutput=response)
+ClaudeActivity MessageAdapter renders tool bar
+```
+
+**New components:**
+- `RemoteAgentResultEvent` broadcast (LocalBroadcastManager or SharedFlow)
+- `ClaudeViewModel.remoteAgentResultFlow` collector
+- Tool bar display uses existing `ToolViewHolder` — `toolName` = remote agent label, `toolInput` = sent text, `toolOutput` = agent response
+
+**Files to modify:**
+- `remote/RemoteAgentViewModel.kt` — emit result event after response received
+- `claude/ClaudeViewModel.kt` — collect remote result events, append TOOL messages
+- `claude/ui/MessageAdapter.kt` — possibly add special styling for remote tool bars
+- `remote/RemoteAgentFragment.kt` — pass activity reference or use shared flow
+
+---
+
+### Phase 17: OpenClaw Local Agent — Independent Workspace with Gateway Sync (Planned)
+
+**Vision:** The local Anthroid OpenClaw agent runs as a fully independent agent on the Android device with its own persistent workspace, memory, and skill set. It can optionally synchronize data with gateway agents through preset sync skills, enabling a "distributed agent" model.
+
+#### 17.1 Independent Local Workspace
+
+**Current state:** The local agent (`pi-embedded-runner`) uses a single `.sessions/` directory for conversation history and no persistent workspace or memory.
+
+**Goal:** Treat the local agent as a first-class agent peer with:
+- **Workspace**: a dedicated directory (`~/workspace/` or `~/agent-workspace/`) that persists across sessions, for files, notes, and agent-generated content
+- **Memory**: local memory store (similar to OpenClaw's gateway memory), persisted in SQLite or JSONL
+- **Skills**: a set of local skills that the agent can invoke, including sync skills
+- **Identity**: a local agent ID and profile that distinguishes it from gateway agents
+
+**Architecture:**
+```
+Android device
+├─ openclaw-agent-local/
+│   ├─ run.mjs                        (entry point)
+│   ├─ agent/                         (pi-embedded-runner bundle)
+│   ├─ .sessions/                     (conversation history)
+│   └─ workspace/                     (persistent agent workspace)
+│       ├─ memory/                    (local memory store)
+│       ├─ skills/                    (local skill definitions)
+│       └─ data/                      (agent-generated files)
+```
+
+**Initialization:**
+- When the user first sets up the local agent, they can optionally select a gateway agent to copy baseline settings from
+- Copied items: skill definitions, agent profile/persona, tool configurations
+- NOT copied: conversation history, diary entries, memory entries (fresh start)
+- The user can also start from scratch without copying from any gateway agent
+
+#### 17.2 Gateway-Local Data Sync via Preset Skills
+
+**Concept:** Define a set of "sync skills" that can be triggered manually or on a schedule:
+
+| Skill | Direction | What syncs |
+|-------|-----------|-----------|
+| `sync-memory-pull` | Gateway → Local | Pull selected memory entries from a gateway agent |
+| `sync-memory-push` | Local → Gateway | Push local memory entries to a gateway agent |
+| `sync-workspace-pull` | Gateway → Local | Pull specific workspace files from a gateway agent |
+| `sync-workspace-push` | Local → Gateway | Push local workspace files to a gateway agent |
+| `sync-skills-pull` | Gateway → Local | Update local skills from a gateway agent's skill set |
+
+**Sync mechanism:**
+- Sync skills use the existing `GatewayManager.sendChatMessage()` / `chat.inject` to communicate with the gateway agent
+- The gateway agent has corresponding "sync handler" skills that respond to sync requests
+- Sync state is tracked locally (last sync timestamp per item type)
+
+**Sync trigger options:**
+- Manual: user triggers sync from settings or a slash command (`/sync-memory`, `/sync-workspace`)
+- Scheduled: configurable interval (e.g. daily) using Android `WorkManager`
+- Event-driven: sync after certain actions (e.g. after local conversation ends, push summary to gateway)
+
+#### 17.3 Baseline Initialization from Gateway Agent
+
+**Flow:**
+1. User opens Anthroid for first time (or resets local agent)
+2. App checks if gateway is connected
+3. If connected and gateway has agents: offer to copy baseline from a selected agent
+4. User selects an agent (or "start fresh")
+5. App fetches agent's skill definitions and profile via gateway RPC
+6. Creates local workspace with those settings
+7. Local agent starts with the copied baseline, fresh conversation history
+
+**Gateway RPCs needed:**
+- `agent.getProfile(agentId)` — fetch agent profile/persona
+- `agent.getSkills(agentId)` — fetch skill definitions
+- These are read-only; no write to gateway agent
+
+#### 17.4 Implementation Notes
+
+**Priority order:**
+1. Independent workspace directory (minimal change to `buildEnvironment()`)
+2. Local memory store (extend ConversationManager or add MemoryManager)
+3. Sync skills (implement as built-in slash commands)
+4. Gateway initialization flow (UI in settings/onboarding)
+
+**Key files:**
+- `claude/OpenClawLocalClient.kt` — add `WORKSPACE_DIR`, memory config to environment
+- `claude/ConversationManager.kt` — or new `MemoryManager.kt` for local memory
+- `main/ClaudeFragment.kt` — sync slash commands (`/sync-memory`, `/sync-workspace`)
+- `gateway/GatewayManager.kt` — new RPCs for agent profile/skill fetch
+- Settings UI — baseline initialization wizard
