@@ -15,6 +15,9 @@ import com.anthroid.R
 import com.anthroid.accessibility.ScreenAutomationOverlay
 import com.anthroid.main.MainPagerActivity
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 
 /**
@@ -65,6 +68,9 @@ class GatewayForegroundService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     var gatewayManager: GatewayManager? = null
         private set
+
+    private val _gatewayManagerFlow = MutableStateFlow<GatewayManager?>(null)
+    val gatewayManagerFlow: StateFlow<GatewayManager?> = _gatewayManagerFlow.asStateFlow()
     var notificationHelper: GatewayNotificationHelper? = null
         private set
 
@@ -100,6 +106,7 @@ class GatewayForegroundService : Service() {
         Log.i(TAG, "Service destroyed")
         gatewayManager?.disconnect()
         gatewayManager = null
+        _gatewayManagerFlow.value = null
         notificationHelper?.clearAll()
         notificationHelper = null
         serviceScope.cancel()
@@ -115,6 +122,7 @@ class GatewayForegroundService : Service() {
 
         val manager = GatewayManager(applicationContext, serviceScope)
         gatewayManager = manager
+        _gatewayManagerFlow.value = manager
 
         // Wire up notification.push events
         manager.onNotification = { title, body ->

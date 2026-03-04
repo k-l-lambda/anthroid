@@ -216,6 +216,41 @@ class GatewayManager(
     Log.d(TAG, "Sent user message to session $sessionKey: ${text.take(50)}")
   }
 
+  /**
+   * Load recent conversation history for a session via sessions.preview RPC.
+   * Returns list of (role, text) pairs ordered oldest-first, or empty list on failure.
+   */
+  suspend fun loadSessionHistory(sessionKey: String, limit: Int = 40): List<Pair<String, String>> {
+    val gs = session ?: return emptyList()
+    return try {
+      val params = JSONObject().apply {
+        put("keys", JSONArray().apply { put(sessionKey) })
+        put("limit", limit)
+        put("maxChars", 2000)
+      }
+      val response = gs.request("sessions.preview", params.toString(), timeoutMs = 10_000)
+      if (response == null) return emptyList()
+      val obj = JSONObject(response)
+      val previews = obj.optJSONArray("previews") ?: return emptyList()
+      val preview = previews.optJSONObject(0) ?: return emptyList()
+      val items = preview.optJSONArray("items") ?: return emptyList()
+      val result = mutableListOf<Pair<String, String>>()
+      for (i in 0 until items.length()) {
+        val item = items.optJSONObject(i) ?: continue
+        val role = item.optString("role", "")
+        val text = item.optString("text", "").trim()
+        if (text.isNotEmpty() && (role == "user" || role == "assistant")) {
+          result.add(role to text)
+        }
+      }
+      Log.d(TAG, "Loaded ${result.size} history items for session $sessionKey")
+      result
+    } catch (e: Exception) {
+      Log.w(TAG, "loadSessionHistory failed for $sessionKey: ${e.message}")
+      emptyList()
+    }
+  }
+
   // Track observed sessions from gateway events for fallback listing
   private data class ObservedSession(val sessionKey: String, var lastActivity: Long)
   private val observedSessions = mutableMapOf<String, ObservedSession>()

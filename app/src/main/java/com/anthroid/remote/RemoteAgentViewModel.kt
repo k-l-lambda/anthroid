@@ -13,8 +13,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 
 /**
  * ViewModel for Remote Agent View.
@@ -64,43 +67,80 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
         mode = RemoteSessionInfo.Source.OPENCLAW
         targetSessionKey = sessionKey
 
-        val manager = GatewayForegroundService.instance?.gatewayManager
-        if (manager == null) {
+        val service = GatewayForegroundService.instance
+        if (service == null) {
             _connectionStatus.value = "error: gateway service unavailable"
             return
         }
 
-        // Register event callback filtered by session key
-        manager.onRemoteSessionEvent = { eventSessionKey, role, content ->
-            if (eventSessionKey == sessionKey) {
-                // Suppress gateway echo: chat.send broadcasts the injected
-                // text back as role=assistant immediately. Skip the first
-                // matching echo within the suppression window.
-                val sentAt = pendingEchoes[content]
-                val isEcho = sentAt != null &&
-                    (System.currentTimeMillis() - sentAt) < ECHO_SUPPRESS_MS
-                if (isEcho) {
-                    pendingEchoes.remove(content)
-                    Log.d(TAG, "Suppressed gateway echo: '${content.take(30)}'")
-                } else {
-                    val msgRole = when (role) {
-                        "user" -> MessageRole.USER
-                        else -> MessageRole.ASSISTANT
+        var historyLoaded = false
+
+        // Watch for manager (re)creation — re-register callback on every new instance
+        connectionWatchJob?.cancel()
+        connectionWatchJob = viewModelScope.launch {
+            service.gatewayManagerFlow.filterNotNull().collectLatest { manager ->
+                Log.i(TAG, "Manager (re)attached for session $sessionKey")
+
+                // Register event callback filtered by session key
+                manager.onRemoteSessionEvent = { eventSessionKey, role, content ->
+                    if (eventSessionKey == sessionKey) {
+                        val sentAt = pendingEchoes[content]
+                        val isEcho = sentAt != null &&
+                            (System.currentTimeMillis() - sentAt) < ECHO_SUPPRESS_MS
+                        if (isEcho) {
+                            pendingEchoes.remove(content)
+                            Log.d(TAG, "Suppressed echo: '${content.take(30)}'")
+                        } else {
+                            val msgRole = when (role) {
+                                "user" -> MessageRole.USER
+                                else -> MessageRole.ASSISTANT
+                            }
+                            appendMessage(msgRole, content)
+                        }
                     }
-                    appendMessage(msgRole, content)
+                }
+
+                // Load history once on first connection
+                if (!historyLoaded && manager.isConnected.value) {
+                    historyLoaded = true
+                    loadHistory(manager, sessionKey)
+                }
+
+                // Watch connection state of this manager instance
+                manager.isConnected.collectLatest { connected ->
+                    _connectionStatus.value = if (connected) "connected" else "reconnecting..."
+                    // Load history after first reconnect if not yet loaded
+                    if (connected && !historyLoaded) {
+                        historyLoaded = true
+                        loadHistory(manager, sessionKey)
+                    }
                 }
             }
         }
 
-        // Observe gateway connection state and reflect in UI status
-        connectionWatchJob?.cancel()
-        connectionWatchJob = viewModelScope.launch {
-            manager.isConnected.collectLatest { connected ->
-                _connectionStatus.value = if (connected) "connected" else "reconnecting..."
+        Log.i(TAG, "Watching manager flow for session: $sessionKey")
+    }
+
+    private fun loadHistory(manager: com.anthroid.gateway.GatewayManager, sessionKey: String) {
+        viewModelScope.launch {
+            try {
+                val items = withContext(Dispatchers.IO) {
+                    manager.loadSessionHistory(sessionKey, limit = 40)
+                }
+                if (items.isNotEmpty() && _messages.value.isEmpty()) {
+                    val messages = items.map { (role, text) ->
+                        Message(
+                            role = if (role == "user") MessageRole.USER else MessageRole.ASSISTANT,
+                            content = text,
+                        )
+                    }
+                    _messages.value = messages
+                    Log.i(TAG, "Loaded ${messages.size} history messages for $sessionKey")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to load history: ${e.message}")
             }
         }
-
-        Log.i(TAG, "Registered for OpenClaw session: $sessionKey")
     }
 
     // ── SSH+tmux Mode ──────────────────────────────────────────────
