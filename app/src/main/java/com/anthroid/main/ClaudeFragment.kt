@@ -1284,7 +1284,8 @@ class ClaudeFragment : Fragment() {
                     else -> "${ago / 3600}h ago"
                 }
             } else ""
-            "[${s.sourceTag}] ${s.label}${if (elapsed.isNotEmpty()) " — $elapsed" else ""}"
+            val agentSuffix = s.agentId?.let { " [$it]" } ?: ""
+            "[${s.sourceTag}] ${s.label}$agentSuffix${if (elapsed.isNotEmpty()) " — $elapsed" else ""}"
         }.toTypedArray()
 
         AlertDialog.Builder(requireContext())

@@ -168,12 +168,16 @@ class GatewayManager(
         val displayName = s.optString("displayName", "")
           .takeIf { it.isNotEmpty() }
           ?: s.optString("label", "").takeIf { it.isNotEmpty() }
+        val key = s.optString("key", "")
+        // Parse agentId from "agent:{agentId}:{sessionName}" format
+        val agentId = Regex("^agent:([^:]+):.+$").find(key)?.groupValues?.get(1)
         result.add(RemoteSessionInfo(
-          sessionKey = s.optString("key", ""),
+          sessionKey = key,
           displayName = displayName,
           lastActivity = s.optLong("updatedAt", s.optLong("lastActivity", 0)),
           status = "active",
           source = RemoteSessionInfo.Source.OPENCLAW,
+          agentId = agentId,
         ))
       }
     } catch (err: Throwable) {

@@ -10,6 +10,7 @@ data class RemoteSessionInfo(
     val status: String,
     val source: Source,
     val hostname: String? = null,
+    val agentId: String? = null,
 ) {
     enum class Source { OPENCLAW, SSH_TMUX }
 
