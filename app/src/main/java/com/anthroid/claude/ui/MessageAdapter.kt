@@ -279,7 +279,12 @@ class MessageAdapter(
                 .removePrefix("mcp__anthroid__")
                 .removePrefix("mcp__")
             toolName.text = displayName
-            toolInput.text = message.toolInput ?: message.content
+            // If toolOutput is a short execution label (e.g. "🔧 Exec: `pwd`"), use it
+            // stripped of the emoji prefix as the bar description instead of raw input
+            val outputLabel = message.toolOutput?.trim()
+                ?.takeIf { it.startsWith("🔧 ") }
+                ?.removePrefix("🔧 ")
+            toolInput.text = outputLabel ?: (message.toolInput ?: message.content)
             streamingIndicator?.visibility = if (message.isStreaming) View.VISIBLE else View.GONE
 
             // Update colors based on state
