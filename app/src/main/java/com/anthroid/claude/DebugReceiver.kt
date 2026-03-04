@@ -35,6 +35,8 @@ class DebugReceiver : BroadcastReceiver() {
         const val ACTION_CONFIG_GATEWAY = "com.anthroid.DEBUG_CONFIG_GATEWAY"
         const val ACTION_READ_CONVERSATION = "com.anthroid.DEBUG_READ_CONVERSATION"
         const val ACTION_TOOL_CALL = "com.anthroid.TOOL_CALL"
+        const val ACTION_OPEN_REMOTE_SESSION = "com.anthroid.DEBUG_OPEN_REMOTE_SESSION"
+        const val EXTRA_SESSION_KEY = "session_key"
         const val EXTRA_MESSAGE = "message"
         const val EXTRA_TOOL = "tool"
         const val EXTRA_INPUT = "input"
@@ -61,6 +63,10 @@ class DebugReceiver : BroadcastReceiver() {
         // Global event flow for read conversation requests
         private val _readConversationFlow = MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1)
         val readConversationFlow = _readConversationFlow.asSharedFlow()
+
+        // Global event flow for opening remote sessions
+        private val _openRemoteSessionFlow = MutableSharedFlow<String>(replay = 1, extraBufferCapacity = 1)
+        val openRemoteSessionFlow = _openRemoteSessionFlow.asSharedFlow()
 
         // Store last conversation for writing to file
         @Volatile
@@ -95,6 +101,13 @@ class DebugReceiver : BroadcastReceiver() {
         }
 
         /**
+         * Emit a session key to open in Remote Agent View (called from receiver).
+         */
+        fun emitOpenRemoteSession(sessionKey: String) {
+            _openRemoteSessionFlow.tryEmit(sessionKey)
+        }
+
+        /**
          * Update conversation content (called from ViewModel).
          */
         fun updateConversation(conversation: String) {
@@ -122,6 +135,13 @@ class DebugReceiver : BroadcastReceiver() {
             ACTION_CONFIG_GATEWAY -> handleConfigGateway(context, intent)
             ACTION_READ_CONVERSATION -> handleReadConversation(context)
             ACTION_TOOL_CALL -> handleToolCall(context, intent)
+            ACTION_OPEN_REMOTE_SESSION -> {
+                val sessionKey = intent.getStringExtra(EXTRA_SESSION_KEY)
+                if (!sessionKey.isNullOrBlank()) {
+                    Log.i(TAG, "Opening remote session: $sessionKey")
+                    emitOpenRemoteSession(sessionKey)
+                }
+            }
         }
     }
 

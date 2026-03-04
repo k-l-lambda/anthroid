@@ -309,6 +309,7 @@
                 <action android:name="com.anthroid.DEBUG_CONFIG_GATEWAY" />
                 <action android:name="com.anthroid.DEBUG_READ_CONVERSATION" />
                 <action android:name="com.anthroid.TOOL_CALL" />
+                <action android:name="com.anthroid.DEBUG_OPEN_REMOTE_SESSION" />
             </intent-filter>
         </receiver>
 

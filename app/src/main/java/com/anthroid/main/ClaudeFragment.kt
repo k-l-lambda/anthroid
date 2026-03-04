@@ -905,6 +905,21 @@ class ClaudeFragment : Fragment() {
             }
         }
 
+        // Observe debug open-remote-session commands from adb
+        viewLifecycleOwner.lifecycleScope.launch {
+            DebugReceiver.openRemoteSessionFlow.collect { sessionKey ->
+                Log.i(TAG, "Debug: opening remote session $sessionKey")
+                val session = RemoteSessionInfo(
+                    sessionKey = sessionKey,
+                    displayName = sessionKey.substringAfterLast(":").takeIf { it != sessionKey },
+                    lastActivity = System.currentTimeMillis(),
+                    status = "active",
+                    source = RemoteSessionInfo.Source.OPENCLAW,
+                )
+                openRemoteAgentView(session)
+            }
+        }
+
         // Observe read conversation requests from adb
         viewLifecycleOwner.lifecycleScope.launch {
             DebugReceiver.readConversationFlow.collect {
