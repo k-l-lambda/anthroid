@@ -1163,3 +1163,28 @@ View and interact with remote AI agent sessions directly from Anthroid.
 **Dependencies:**
 - Gateway API: `session.list` RPC (needs server-side verification)
 - SSH keys configured in Termux `~/.ssh/`
+
+---
+
+#### Sub-phase 16.10: Gateway "anthroid" Mode (Planned — Server-Side)
+
+**Problem:** `chat.send` messages from Anthroid appear as `channel="webchat"` on the remote agent because the gateway maps `CLIENT_MODE="ui"` → webchat channel/provider/surface. Passing `channel` in `chat.send` params is rejected by the API (`unexpected property`).
+
+**Solution:** Register a dedicated `mode="anthroid"` in the OpenClaw gateway server.
+
+**Requirements for the new mode:**
+- `channel`: `"anthroid"`
+- `provider`: `"KL"`
+- `surface`: `"anthroid"`
+- Markdown rendering: **enabled** (same as `"ui"` mode — Anthroid renders markdown)
+
+**Android client change:**
+- `GatewayManager.kt`: change `CLIENT_MODE = "ui"` → `CLIENT_MODE = "anthroid"`
+
+**Gateway server change:**
+- Register surface/channel mapping for `mode="anthroid"` in the gateway's client mode registry
+- Ensure markdown flag is set (same as `"ui"`)
+
+**Files to modify:**
+- Android: `app/src/main/java/com/anthroid/gateway/GatewayManager.kt` (1-line change)
+- Gateway server: wherever `"ui"` mode is defined and mapped to channel attributes
