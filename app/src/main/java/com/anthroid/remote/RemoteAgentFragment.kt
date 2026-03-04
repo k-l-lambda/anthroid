@@ -63,6 +63,7 @@ class RemoteAgentFragment : Fragment() {
     private lateinit var btnBack: ImageButton
 
     private lateinit var messageAdapter: MessageAdapter
+    private var sessionDisplayName = ""   // stored for onDestroyView injection
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -89,6 +90,7 @@ class RemoteAgentFragment : Fragment() {
 
         val sessionKey = arguments?.getString(ARG_SESSION_KEY) ?: ""
         val displayName = arguments?.getString(ARG_DISPLAY_NAME) ?: sessionKey
+        sessionDisplayName = displayName   // save for onDestroyView injection
         val sourceName = arguments?.getString(ARG_SOURCE) ?: "OPENCLAW"
         val hostname = arguments?.getString(ARG_HOSTNAME)
         val source = RemoteSessionInfo.Source.valueOf(sourceName)
@@ -205,6 +207,20 @@ class RemoteAgentFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        // Inject session summary into local conversation when Remote Agent View closes
+        val msgs = viewModel.messages.value
+        val userMsgs = msgs.filter { it.role == com.anthroid.claude.MessageRole.USER }
+            .joinToString("\n---\n") { it.content }
+        val agentMsgs = msgs.filter { it.role == com.anthroid.claude.MessageRole.ASSISTANT }
+            .joinToString("\n---\n") { it.content }
+        if (userMsgs.isNotEmpty() || agentMsgs.isNotEmpty()) {
+            try {
+                val claudeVm = ViewModelProvider(requireActivity())[com.anthroid.claude.ClaudeViewModel::class.java]
+                claudeVm.injectRemoteResult(sessionDisplayName, userMsgs, agentMsgs)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to inject remote result: ${e.message}")
+            }
+        }
         viewModel.disconnect()
         super.onDestroyView()
     }

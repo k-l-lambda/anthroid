@@ -1250,6 +1250,22 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
+     * Inject a remote agent session result as a TOOL message into the local conversation.
+     * Called when the Remote Agent View is closed. If no local conversation exists,
+     * this becomes the first message (implicitly starting a new conversation).
+     */
+    fun injectRemoteResult(agentName: String, userMessages: String, agentMessages: String) {
+        val toolMsg = Message(
+            role = MessageRole.TOOL,
+            toolName = agentName,
+            toolInput = userMessages.ifEmpty { null },
+            toolOutput = agentMessages.ifEmpty { null },
+            content = userMessages
+        )
+        _messages.value = _messages.value + toolMsg
+    }
+
+    /**
      * Clear all messages.
      */
     fun clearMessages() {
