@@ -691,12 +691,10 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                     showDirectResponseNotification(assistantContent)
                 }
 
-                // Sync conversation to gateway if connected
-                if (gatewayManager?.isConnected?.value == true && lastUserMessageContent.isNotEmpty()) {
-                    if (assistantContent.isNotEmpty()) {
-                        gatewayManager?.syncMessages(lastUserMessageContent, assistantContent)
-                    }
-                }
+                // Do NOT sync local conversations to the gateway.
+                // CLI/API/OPENCLAW modes all run locally; syncing to gateway would
+                // inject local messages into the shared openclaw channel (wrong).
+                // Remote interactions go through RemoteAgentViewModel.sendChatMessage().
             }
         }
     }
