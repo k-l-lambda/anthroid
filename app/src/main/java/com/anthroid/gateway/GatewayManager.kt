@@ -211,6 +211,9 @@ class GatewayManager(
       put("sessionKey", sessionKey)
       put("message", text)
       put("idempotencyKey", idempotencyKey)
+      put("channel", "anthroid")
+      put("provider", "KL")
+      put("surface", "anthroid")
     }
     gatewaySession.request("chat.send", params.toString(), timeoutMs = 30_000)
     Log.d(TAG, "Sent user message to session $sessionKey: ${text.take(50)}")
