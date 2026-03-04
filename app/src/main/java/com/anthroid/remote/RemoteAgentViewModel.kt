@@ -12,6 +12,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -46,6 +47,7 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
     private var tmuxHostname: String? = null
     private var tmuxSessionName: String? = null
     private var tmuxSyncJob: Job? = null
+    private var connectionWatchJob: Job? = null
 
     private val sshClient = SshTmuxClient()
 
@@ -63,15 +65,15 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
         targetSessionKey = sessionKey
 
         val manager = GatewayForegroundService.instance?.gatewayManager
-        if (manager?.isConnected?.value != true) {
-            _connectionStatus.value = "error: gateway not connected"
+        if (manager == null) {
+            _connectionStatus.value = "error: gateway service unavailable"
             return
         }
 
         // Register event callback filtered by session key
         manager.onRemoteSessionEvent = { eventSessionKey, role, content ->
             if (eventSessionKey == sessionKey) {
-                // Suppress gateway echo: chat.inject broadcasts the injected
+                // Suppress gateway echo: chat.send broadcasts the injected
                 // text back as role=assistant immediately. Skip the first
                 // matching echo within the suppression window.
                 val sentAt = pendingEchoes[content]
@@ -90,8 +92,15 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
             }
         }
 
-        _connectionStatus.value = "connected"
-        Log.i(TAG, "Connected to OpenClaw session: $sessionKey")
+        // Observe gateway connection state and reflect in UI status
+        connectionWatchJob?.cancel()
+        connectionWatchJob = viewModelScope.launch {
+            manager.isConnected.collectLatest { connected ->
+                _connectionStatus.value = if (connected) "connected" else "reconnecting..."
+            }
+        }
+
+        Log.i(TAG, "Registered for OpenClaw session: $sessionKey")
     }
 
     // ── SSH+tmux Mode ──────────────────────────────────────────────
@@ -191,6 +200,8 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
     fun disconnect() {
         tmuxSyncJob?.cancel()
         tmuxSyncJob = null
+        connectionWatchJob?.cancel()
+        connectionWatchJob = null
 
         // Clear remote session event callback
         GatewayForegroundService.instance?.gatewayManager?.onRemoteSessionEvent = null
