@@ -94,12 +94,7 @@ class RemoteAgentFragment : Fragment() {
         val source = RemoteSessionInfo.Source.valueOf(sourceName)
 
         sessionNameView.text = when (source) {
-            RemoteSessionInfo.Source.OPENCLAW -> {
-                val parts = sessionKey.split(":")
-                val sessionName = parts.getOrNull(2)?.takeIf { it.isNotEmpty() }
-                    ?: parts.getOrNull(1)?.takeIf { it.isNotEmpty() }
-                if (sessionName != null) "openclaw - $sessionName" else displayName
-            }
+            RemoteSessionInfo.Source.OPENCLAW -> "openclaw - $displayName"
             RemoteSessionInfo.Source.SSH_TMUX -> displayName
         }
 
