@@ -94,7 +94,11 @@ class RemoteAgentFragment : Fragment() {
         val source = RemoteSessionInfo.Source.valueOf(sourceName)
 
         sessionNameView.text = when (source) {
-            RemoteSessionInfo.Source.OPENCLAW -> "openclaw - $displayName"
+            RemoteSessionInfo.Source.OPENCLAW -> {
+                val agentId = Regex("^agent:([^:]+):.+$").find(sessionKey)?.groupValues?.get(1)
+                val suffix = agentId?.let { " [$it]" } ?: ""
+                "🦞 $displayName$suffix"
+            }
             RemoteSessionInfo.Source.SSH_TMUX -> displayName
         }
 
@@ -123,8 +127,8 @@ class RemoteAgentFragment : Fragment() {
             viewModel.connectionStatus.collectLatest { status ->
                 statusIndicator.setTextColor(when {
                     status.startsWith("error") || status == "disconnected" -> 0xFFEF4444.toInt() // red
-                    status.startsWith("connect") -> 0xFFFBBF24.toInt()                           // yellow
-                    else -> 0xFF22C55E.toInt()                                                   // green
+                    status == "connected" -> 0xFF22C55E.toInt()                                  // green
+                    else -> 0xFFFBBF24.toInt()                                                   // yellow (connecting/reconnecting)
                 })
             }
         }
