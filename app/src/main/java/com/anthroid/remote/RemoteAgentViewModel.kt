@@ -80,40 +80,45 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
         connectionWatchJob = viewModelScope.launch {
             service.gatewayManagerFlow.filterNotNull().collectLatest { manager ->
                 Log.i(TAG, "Manager (re)attached for session $sessionKey")
-
-                // Register event callback filtered by session key
-                manager.onRemoteSessionEvent = { eventSessionKey, role, content ->
-                    if (eventSessionKey == sessionKey) {
-                        val sentAt = pendingEchoes[content]
-                        val isEcho = sentAt != null &&
-                            (System.currentTimeMillis() - sentAt) < ECHO_SUPPRESS_MS
-                        if (isEcho) {
-                            pendingEchoes.remove(content)
-                            Log.d(TAG, "Suppressed echo: '${content.take(30)}'")
-                        } else {
-                            val msgRole = when (role) {
-                                "user" -> MessageRole.USER
-                                else -> MessageRole.ASSISTANT
+                try {
+                    // Register event callback filtered by session key
+                    manager.onRemoteSessionEvent = { eventSessionKey, role, content ->
+                        if (eventSessionKey == sessionKey) {
+                            val sentAt = pendingEchoes[content]
+                            val isEcho = sentAt != null &&
+                                (System.currentTimeMillis() - sentAt) < ECHO_SUPPRESS_MS
+                            if (isEcho) {
+                                pendingEchoes.remove(content)
+                                Log.d(TAG, "Suppressed echo: '${content.take(30)}'")
+                            } else {
+                                val msgRole = when (role) {
+                                    "user" -> MessageRole.USER
+                                    else -> MessageRole.ASSISTANT
+                                }
+                                appendMessage(msgRole, content)
                             }
-                            appendMessage(msgRole, content)
                         }
                     }
-                }
 
-                // Load history once on first connection
-                if (!historyLoaded && manager.isConnected.value) {
-                    historyLoaded = true
-                    loadHistory(manager, sessionKey)
-                }
-
-                // Watch connection state of this manager instance
-                manager.isConnected.collectLatest { connected ->
-                    _connectionStatus.value = if (connected) "connected" else "reconnecting..."
-                    // Load history after first reconnect if not yet loaded
-                    if (connected && !historyLoaded) {
+                    // Load history once on first connection
+                    if (!historyLoaded && manager.isConnected.value) {
                         historyLoaded = true
                         loadHistory(manager, sessionKey)
                     }
+
+                    // Watch connection state of this manager instance
+                    manager.isConnected.collectLatest { connected ->
+                        _connectionStatus.value = if (connected) "connected" else "reconnecting..."
+                        // Load history after first reconnect if not yet loaded
+                        if (connected && !historyLoaded) {
+                            historyLoaded = true
+                            loadHistory(manager, sessionKey)
+                        }
+                    }
+                } finally {
+                    // Clear callback when this manager is superseded or ViewModel is cleared
+                    manager.onRemoteSessionEvent = null
+                    Log.d(TAG, "Cleared onRemoteSessionEvent for superseded manager")
                 }
             }
         }
