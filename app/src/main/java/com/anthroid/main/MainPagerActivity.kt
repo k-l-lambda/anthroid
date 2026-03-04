@@ -23,6 +23,7 @@ import com.anthroid.accessibility.ScreenAutomationOverlay
 import com.anthroid.app.TermuxService
 import com.anthroid.app.activities.SettingsActivity
 import com.anthroid.claude.CameraCaptureActivity
+import com.anthroid.claude.DebugReceiver
 import com.anthroid.claude.TerminalCommandBridge
 import com.anthroid.gateway.GatewayForegroundService
 import com.anthroid.gateway.GatewayNotificationHelper
@@ -229,6 +230,7 @@ class MainPagerActivity : AppCompatActivity() {
         if (sessionKey != null) {
             Log.d(TAG, "Notification deep-link to session: $sessionKey")
             GatewayForegroundService.instance?.notificationHelper?.clearSession(sessionKey)
+            DebugReceiver.emitOpenRemoteSession(sessionKey)
         }
     }
 
