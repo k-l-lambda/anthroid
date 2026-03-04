@@ -26,7 +26,7 @@ class GatewayManager(
   companion object {
     private const val TAG = "GatewayManager"
     private const val CLIENT_ID = "openclaw-android"
-    private const val CLIENT_MODE = "ui"
+    private const val CLIENT_MODE = "mobile"
     private const val CLIENT_VERSION = "0.10.9"
     private const val CLIENT_PLATFORM = "android"
     private const val DEFAULT_ROLE = "operator"
