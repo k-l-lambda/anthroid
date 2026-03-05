@@ -1336,23 +1336,67 @@ Android device
 
 ---
 
-#### Bug Fix: Anthroid Timed Message Delivery Not Supported (Known Limitation)
+#### Sub-phase 16.12: Anthroid Timed Message Delivery — Polling Queue (Planned)
 
-**Problem:** The `message` tool's scheduled delivery cannot push to Anthroid clients. Error chain:
-1. Agent sees `channel="anthroid"` in context
-2. `normalizeMessageChannel("anthroid")` → "webchat" ✓
-3. `isKnownChannel("webchat")` → `false` (webchat not in `listDeliverableMessageChannels`)
-4. → `Unknown channel: webchat`
+**Problem:** The `message` tool's scheduled delivery cannot push to Anthroid clients.
+Root cause: "webchat" (internal WebSocket) has no persistent delivery mechanism.
 
-**Root cause:** "webchat" (internal WebSocket channel) has no persistent delivery mechanism. External channels (telegram, feishu) work because they have server-side push APIs. Anthroid uses a live WebSocket that may be disconnected.
+**Solution: Pending message queue + 60s foreground-service polling**
+- Target latency: ≤ 60s (max poll interval)
+- No FCM/GMS dependency (works on OPPO/ColorOS)
+- Uses existing `GatewayForegroundService` (already a foreground service → no battery restriction)
 
-**Current behavior:**
-- Direct replies (agent → connected Anthroid client) ✓ work
-- Timed/scheduled delivery via `message` tool ✗ fails
+**Architecture:**
 
-**Future fix options (in priority order):**
-1. **Pending message queue**: Store scheduled messages; deliver on next Anthroid reconnect
-2. **FCM push notifications**: Add Firebase Cloud Messaging to Anthroid app for offline delivery
-3. **`message` tool graceful fallback**: When channel=webchat, fall back to queuing for next connect
+```
+[agent message tool, timer fires]
+        ↓
+  channel-selection.ts: detect "anthroid"/"webchat" internal channel
+        ↓
+  Store in pending_messages table (gateway SQLite/memory)
+        ↓  ← no "Unknown channel" error
+  Response: { ok: true, queued: true }
 
-**Impact:** Agent cannot proactively remind/message Anthroid user unless they're currently connected.
+[Anthroid app, every 60s or on WebSocket reconnect]
+        ↓
+  session.drainPending(sessionKey) RPC
+        ↓
+  Gateway returns pending messages + marks delivered
+        ↓
+  Android: append to message list + show system notification
+```
+
+**Gateway changes (openclaw `kl/develop`):**
+
+1. `src/infra/outbound/channel-selection.ts`:
+   - When `normalized === INTERNAL_MESSAGE_CHANNEL` and context is a gateway session:
+     store message in pending queue, return `{ channel: "anthroid", queued: true }`
+
+2. New `src/gateway/server-methods/pending.ts`:
+   - `session.drainPending({ sessionKey })` RPC
+   - Returns array of pending messages for that session
+   - Marks them as delivered (idempotent)
+   - Backed by in-memory store (Map<sessionKey, PendingMessage[]>) — simple, no persistence needed for now
+
+3. `src/gateway/server.ts` or existing router: register the new handler
+
+**Android changes (`anthroid-openclaw`):**
+
+1. `GatewayManager.kt`:
+   - `suspend fun drainPendingMessages(sessionKey: String): List<PendingMessage>` — calls `session.drainPending` RPC
+   - Data class `PendingMessage(id: String, content: String, createdAt: Long)`
+
+2. `GatewayForegroundService.kt`:
+   - Add `startPollingLoop()` coroutine (60s interval) in `serviceScope`
+   - Polls all observed sessions: `gatewayManager.drainPendingMessages(sessionKey)`
+   - Sends results as `RemoteSessionEvent` to `GatewayManager.remoteSessionEventFlow`
+   - Also trigger on WebSocket reconnect (for immediate delivery after offline)
+
+3. `ClaudeActivity.kt` or `GatewayForegroundService.kt`:
+   - Show Android system notification when pending messages arrive while app is in background
+
+**Files to modify:**
+- openclaw: `src/infra/outbound/channel-selection.ts`, new `src/gateway/server-methods/pending.ts`
+- Android: `gateway/GatewayManager.kt`, `gateway/GatewayForegroundService.kt`, `claude/ClaudeActivity.kt`
+
+**Note:** In-memory pending store resets on gateway restart. For persistence, a SQLite-backed store can be added later.
