@@ -1191,6 +1191,26 @@ View and interact with remote AI agent sessions directly from Anthroid.
 
 ---
 
+#### Bug Fix: OpenClaw Mode Image Input — HTTP 400 Error (Planned)
+
+**Problem:** In OpenClaw mode, when the user attaches an image to a message, the gateway/API returns HTTP 400. Plain text messages work fine.
+
+**Hypothesis:** The `chat()` call in `OpenClawLocalClient` passes images as base64 blocks in the stdin JSON, but the underlying `pi-embedded-runner` agent or the API endpoint rejects the image format (wrong media type, oversized payload, unsupported model, or the `run.mjs` protocol doesn't pass images to the API correctly).
+
+**Investigation steps:**
+1. Reproduce: attach a photo, send in OpenClaw mode, capture logcat for the 400 response body
+2. Check `OpenClawLocalClient.chat(message, images)` — how images are serialized in the stdin JSON
+3. Check `run.mjs` — does it forward image blocks to `runEmbeddedPiAgent`? (it supports `images` param)
+4. Check if the model in use supports vision (e.g. `claude-sonnet-4-6` does; some proxy models may not)
+5. Check if `ANTHROPIC_BASE_URL` (ppinfra proxy) supports image inputs
+
+**Files likely involved:**
+- `claude/OpenClawLocalClient.kt` — image encoding and stdin protocol
+- `assets/openclaw-agent-local/run.mjs` — image forwarding to agent runner
+- `claude/ImageUtils.kt` — image processing (resize, format)
+
+---
+
 #### Sub-phase 16.11: Remote Agent Session Result as Local Tool Bar (Planned)
 
 **Context:** When the user sends a message to a remote agent via the Remote Agent View, the remote agent processes it and generates a response. Currently the response only appears in the Remote Agent View. It would be useful to embed the result back into the current local conversation as a tool bar item, giving the local context awareness of remote session activity.
