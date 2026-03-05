@@ -1333,3 +1333,26 @@ Android device
 - `main/ClaudeFragment.kt` — sync slash commands (`/sync-memory`, `/sync-workspace`)
 - `gateway/GatewayManager.kt` — new RPCs for agent profile/skill fetch
 - Settings UI — baseline initialization wizard
+
+---
+
+#### Bug Fix: Anthroid Timed Message Delivery Not Supported (Known Limitation)
+
+**Problem:** The `message` tool's scheduled delivery cannot push to Anthroid clients. Error chain:
+1. Agent sees `channel="anthroid"` in context
+2. `normalizeMessageChannel("anthroid")` → "webchat" ✓
+3. `isKnownChannel("webchat")` → `false` (webchat not in `listDeliverableMessageChannels`)
+4. → `Unknown channel: webchat`
+
+**Root cause:** "webchat" (internal WebSocket channel) has no persistent delivery mechanism. External channels (telegram, feishu) work because they have server-side push APIs. Anthroid uses a live WebSocket that may be disconnected.
+
+**Current behavior:**
+- Direct replies (agent → connected Anthroid client) ✓ work
+- Timed/scheduled delivery via `message` tool ✗ fails
+
+**Future fix options (in priority order):**
+1. **Pending message queue**: Store scheduled messages; deliver on next Anthroid reconnect
+2. **FCM push notifications**: Add Firebase Cloud Messaging to Anthroid app for offline delivery
+3. **`message` tool graceful fallback**: When channel=webchat, fall back to queuing for next connect
+
+**Impact:** Agent cannot proactively remind/message Anthroid user unless they're currently connected.
