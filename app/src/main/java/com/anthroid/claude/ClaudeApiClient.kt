@@ -317,6 +317,40 @@ class ClaudeApiClient(private val context: Context) {
     fun getHistorySize(): Int = conversationHistory.size
 
     /**
+     * Inject a synthetic tool_use + tool_result pair into conversation history.
+     * Used to inject remote agent session results so the local agent can see them.
+     */
+    fun injectToolContext(toolName: String, toolInput: String, toolOutput: String) {
+        val toolUseId = "injected_${System.currentTimeMillis()}"
+        // Synthetic assistant message: tool_use block
+        conversationHistory.add(JSONObject().apply {
+            put("role", "assistant")
+            put("content", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("type", "tool_use")
+                    put("id", toolUseId)
+                    put("name", toolName)
+                    put("input", JSONObject().apply {
+                        put("entry", toolInput)
+                    })
+                })
+            })
+        })
+        // Synthetic user message: tool_result block
+        conversationHistory.add(JSONObject().apply {
+            put("role", "user")
+            put("content", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("type", "tool_result")
+                    put("tool_use_id", toolUseId)
+                    put("content", toolOutput)
+                })
+            })
+        })
+        Log.i(TAG, "Injected tool context: $toolName (history=${conversationHistory.size})")
+    }
+
+    /**
      * Compact conversation history by summarizing it.
      * Returns a Flow that emits progress events and the final summary.
      */

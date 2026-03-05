@@ -98,6 +98,9 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
     private enum class AgentMode { CLI, API, OPENCLAW }
     private var agentMode = AgentMode.API
 
+    // Pending context to prepend to next message (used for OPENCLAW/CLI mode remote result injection)
+    private var pendingContext: String? = null
+
     // Current session job
     private var sessionJob: Job? = null
 
@@ -388,6 +391,14 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         sessionJob?.cancel()
         sessionJob = viewModelScope.launch {
             try {
+                // Prepend any pending remote-agent context for CLI/OPENCLAW modes
+                val ctx = pendingContext
+                val effectiveContent = if (ctx != null && agentMode != AgentMode.API) {
+                    pendingContext = null
+                    "$ctx\n\n$content"
+                } else {
+                    content
+                }
                 val hasImages = images.isNotEmpty()
 
                 if (hasImages) {
@@ -416,7 +427,7 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                             val cliImages = imageDataList.map { (base64, mimeType) ->
                                 ClaudeCliClient.ImageData(base64, mimeType)
                             }
-                            openclawClient.chat(content, cliImages)
+                            openclawClient.chat(effectiveContent, cliImages)
                                 .collect { event -> handleEvent(event) }
                         }
                         AgentMode.CLI -> {
@@ -425,7 +436,7 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                                 val cliImages = imageDataList.map { (base64, mimeType) ->
                                     ClaudeCliClient.ImageData(base64, mimeType)
                                 }
-                                cliClient.chatWithImages(content, cliImages)
+                                cliClient.chatWithImages(effectiveContent, cliImages)
                                     .collect { event -> handleEvent(event) }
                             } else {
                                 _error.value = "Claude CLI not available"
@@ -440,7 +451,7 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                                 val apiImages = imageDataList.map { (base64, mimeType) ->
                                     ClaudeApiClient.ImageContent(base64, mimeType)
                                 }
-                                apiClient.chat(content, apiImages)
+                                apiClient.chat(effectiveContent, apiImages)
                                     .collect { event -> handleEvent(event) }
                             } else {
                                 _error.value = "API key not configured"
@@ -465,15 +476,15 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                                     return@launch
                                 }
                             }
-                            openclawClient.chat(content)
+                            openclawClient.chat(effectiveContent)
                                 .collect { event -> handleEvent(event) }
                         }
                         AgentMode.CLI -> {
-                            cliClient.chatStreaming(content, emptyList())
+                            cliClient.chatStreaming(effectiveContent, emptyList())
                                 .collect { event -> handleEvent(event) }
                         }
                         AgentMode.API -> {
-                            apiClient.chat(content, emptyList())
+                            apiClient.chat(effectiveContent, emptyList())
                                 .collect { event -> handleEvent(event) }
                         }
                     }
@@ -1263,6 +1274,15 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             content = userMessages
         )
         _messages.value = _messages.value + toolMsg
+        // Inject into conversation history so the local agent can see the result
+        if (agentMode == AgentMode.API) {
+            apiClient.injectToolContext(agentName, userMessages, agentMessages)
+            Log.i(TAG, "Injected remote result into API history: $agentName")
+        } else {
+            // For CLI/OPENCLAW: prepend context to the next user message
+            pendingContext = "<remote_agent_result>\nEntry: $userMessages\n$agentMessages\n</remote_agent_result>"
+            Log.i(TAG, "Stored pending context for next message: $agentName")
+        }
     }
 
     /**
