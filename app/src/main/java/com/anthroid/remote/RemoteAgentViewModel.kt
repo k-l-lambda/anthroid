@@ -7,11 +7,13 @@ import androidx.lifecycle.viewModelScope
 import com.anthroid.claude.Message
 import com.anthroid.claude.MessageRole
 import com.anthroid.gateway.GatewayForegroundService
+import com.anthroid.gateway.GatewayManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.isActive
@@ -67,6 +69,12 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
     private val recentDelivered = mutableMapOf<String, Long>()
     private val DEDUP_WINDOW_MS = 8_000L
 
+    /** Evict stale entries from both maps to prevent unbounded growth. */
+    private fun evictStaleMaps(now: Long) {
+        pendingEchoes.entries.removeIf { now - it.value > ECHO_SUPPRESS_MS }
+        recentDelivered.entries.removeIf { now - it.value > DEDUP_WINDOW_MS }
+    }
+
     // ── OpenClaw Mode ──────────────────────────────────────────────
 
     fun connectToOpenClawSession(sessionKey: String) {
@@ -87,27 +95,33 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
             service.gatewayManagerFlow.filterNotNull().collectLatest { manager ->
                 Log.i(TAG, "Manager (re)attached for session $sessionKey")
                 try {
-                    // Register event callback filtered by session key
-                    manager.onRemoteSessionEvent = { eventSessionKey, role, content ->
-                        if (eventSessionKey == sessionKey) {
-                            val now = System.currentTimeMillis()
-                            val sentAt = pendingEchoes[content]
-                            val isEcho = sentAt != null && (now - sentAt) < ECHO_SUPPRESS_MS
-                            val dedupKey = "$role:$content"
-                            val lastSeen = recentDelivered[dedupKey]
-                            val isDuplicate = lastSeen != null && (now - lastSeen) < DEDUP_WINDOW_MS
-                            when {
-                                isEcho -> {
-                                    pendingEchoes.remove(content)
-                                    Log.d(TAG, "Suppressed echo: '${content.take(30)}'")
-                                }
-                                isDuplicate -> {
-                                    Log.d(TAG, "Suppressed duplicate: '${content.take(30)}'")
-                                }
-                                else -> {
-                                    recentDelivered[dedupKey] = now
-                                    val msgRole = if (role == "user") MessageRole.USER else MessageRole.ASSISTANT
-                                    appendMessage(msgRole, content)
+                    // Collect remote session events from the SharedFlow
+                    val eventJob = viewModelScope.launch {
+                        manager.remoteSessionEventFlow.collect { evt ->
+                            val eventSessionKey = evt.sessionKey
+                            val role = evt.role
+                            val content = evt.content
+                            if (eventSessionKey == sessionKey) {
+                                val now = System.currentTimeMillis()
+                                evictStaleMaps(now)
+                                val sentAt = pendingEchoes[content]
+                                val isEcho = sentAt != null && (now - sentAt) < ECHO_SUPPRESS_MS
+                                val dedupKey = "$role:$content"
+                                val lastSeen = recentDelivered[dedupKey]
+                                val isDuplicate = lastSeen != null && (now - lastSeen) < DEDUP_WINDOW_MS
+                                when {
+                                    isEcho -> {
+                                        pendingEchoes.remove(content)
+                                        Log.d(TAG, "Suppressed echo: '${content.take(30)}'")
+                                    }
+                                    isDuplicate -> {
+                                        Log.d(TAG, "Suppressed duplicate: '${content.take(30)}'")
+                                    }
+                                    else -> {
+                                        recentDelivered[dedupKey] = now
+                                        val msgRole = if (role == "user") MessageRole.USER else MessageRole.ASSISTANT
+                                        appendMessage(msgRole, content)
+                                    }
                                 }
                             }
                         }
@@ -120,18 +134,21 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
                     }
 
                     // Watch connection state of this manager instance
-                    manager.isConnected.collectLatest { connected ->
-                        _connectionStatus.value = if (connected) "connected" else "reconnecting..."
-                        // Load history after first reconnect if not yet loaded
-                        if (connected && !historyLoaded) {
-                            historyLoaded = true
-                            loadHistory(manager, sessionKey)
+                    try {
+                        manager.isConnected.collectLatest { connected ->
+                            _connectionStatus.value = if (connected) "connected" else "reconnecting..."
+                            // Load history after first reconnect if not yet loaded
+                            if (connected && !historyLoaded) {
+                                historyLoaded = true
+                                loadHistory(manager, sessionKey)
+                            }
                         }
+                    } finally {
+                        eventJob.cancel()
+                        Log.d(TAG, "Cancelled event collection for superseded manager")
                     }
-                } finally {
-                    // Clear callback when this manager is superseded or ViewModel is cleared
-                    manager.onRemoteSessionEvent = null
-                    Log.d(TAG, "Cleared onRemoteSessionEvent for superseded manager")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error in manager reattach block: ${e.message}")
                 }
             }
         }
@@ -260,9 +277,6 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
         tmuxSyncJob = null
         connectionWatchJob?.cancel()
         connectionWatchJob = null
-
-        // Clear remote session event callback
-        GatewayForegroundService.instance?.gatewayManager?.onRemoteSessionEvent = null
 
         _connectionStatus.value = "disconnected"
         Log.i(TAG, "Disconnected")

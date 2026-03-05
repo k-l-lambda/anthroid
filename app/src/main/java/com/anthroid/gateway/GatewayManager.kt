@@ -4,8 +4,11 @@ import android.content.Context
 import android.util.Log
 import com.anthroid.remote.RemoteSessionInfo
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -30,7 +33,10 @@ class GatewayManager(
     private const val CLIENT_VERSION = "0.10.9"
     private const val CLIENT_PLATFORM = "android"
     private const val DEFAULT_ROLE = "operator"
-    private val DEFAULT_SCOPES = listOf("operator.read", "operator.write", "operator.admin")
+    // operator.admin is NOT included by default (least privilege).
+    // sessions.list falls back to observed sessions when admin scope is unavailable.
+    private val DEFAULT_SCOPES = listOf("operator.read", "operator.write")
+    private val ADMIN_SCOPES = DEFAULT_SCOPES + "operator.admin"
   }
 
   private val identityStore = DeviceIdentityStore(context)
@@ -44,7 +50,10 @@ class GatewayManager(
 
   var onNotification: ((title: String, body: String) -> Unit)? = null
   var onChatMessage: ((sessionKey: String, displayName: String?, messageText: String) -> Unit)? = null
-  var onRemoteSessionEvent: ((sessionKey: String, role: String, content: String) -> Unit)? = null
+
+  data class RemoteSessionEvent(val sessionKey: String, val role: String, val content: String)
+  private val _remoteSessionEventFlow = MutableSharedFlow<RemoteSessionEvent>(extraBufferCapacity = 64)
+  val remoteSessionEventFlow: SharedFlow<RemoteSessionEvent> = _remoteSessionEventFlow.asSharedFlow()
 
   private var session: GatewaySession? = null
 
@@ -322,7 +331,7 @@ class GatewayManager(
           if (messageText.isEmpty()) return
           Log.i(TAG, "Chat message: session=$sessionKey, len=${messageText.length}")
           onChatMessage?.invoke(sessionKey, null, messageText)
-          onRemoteSessionEvent?.invoke(sessionKey, "assistant", messageText)
+          scope.launch { _remoteSessionEventFlow.emit(RemoteSessionEvent(sessionKey, "assistant", messageText)) }
         } catch (err: Throwable) {
           Log.w(TAG, "Failed to parse chat event: ${err.message}")
         }
@@ -359,7 +368,7 @@ class GatewayManager(
                   trackObservedSession(effectiveSessionKey)
                   // Use fixed key so all agent messages share one notification
                   onChatMessage?.invoke("gateway", "Gateway", buffered)
-                  onRemoteSessionEvent?.invoke(effectiveSessionKey, "assistant", buffered)
+                  scope.launch { _remoteSessionEventFlow.emit(RemoteSessionEvent(effectiveSessionKey, "assistant", buffered)) }
                 }
                 // Keep processedAgentRuns bounded (max 100 entries)
                 if (processedAgentRuns.size > 100) {

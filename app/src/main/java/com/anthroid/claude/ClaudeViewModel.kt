@@ -98,8 +98,9 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
     private enum class AgentMode { CLI, API, OPENCLAW }
     private var agentMode = AgentMode.API
 
-    // Pending context to prepend to next message (used for OPENCLAW/CLI mode remote result injection)
-    private var pendingContext: String? = null
+    // Pending contexts to prepend to next message (used for OPENCLAW/CLI mode remote result injection).
+    // Queue so multiple remote session closes don't overwrite each other.
+    private val pendingContextQueue = ArrayDeque<String>()
 
     // Current session job
     private var sessionJob: Job? = null
@@ -391,10 +392,10 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         sessionJob?.cancel()
         sessionJob = viewModelScope.launch {
             try {
-                // Prepend any pending remote-agent context for CLI/OPENCLAW modes
-                val ctx = pendingContext
-                val effectiveContent = if (ctx != null && agentMode != AgentMode.API) {
-                    pendingContext = null
+                // Prepend any pending remote-agent context(s) for CLI/OPENCLAW modes
+                val effectiveContent = if (pendingContextQueue.isNotEmpty() && agentMode != AgentMode.API) {
+                    val ctx = pendingContextQueue.joinToString("\n\n")
+                    pendingContextQueue.clear()
                     "$ctx\n\n$content"
                 } else {
                     content
@@ -1276,12 +1277,14 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         _messages.value = _messages.value + toolMsg
         // Inject into conversation history so the local agent can see the result
         if (agentMode == AgentMode.API) {
-            apiClient.injectToolContext(agentName, userMessages, agentMessages)
-            Log.i(TAG, "Injected remote result into API history: $agentName")
+            viewModelScope.launch {
+                apiClient.injectToolContext(agentName, userMessages, agentMessages)
+                Log.i(TAG, "Injected remote result into API history: $agentName")
+            }
         } else {
             // For CLI/OPENCLAW: prepend context to the next user message
-            pendingContext = "<remote_agent_result>\nEntry: $userMessages\n$agentMessages\n</remote_agent_result>"
-            Log.i(TAG, "Stored pending context for next message: $agentName")
+            pendingContextQueue.addLast("<remote_agent_result>\nEntry: $userMessages\n$agentMessages\n</remote_agent_result>")
+            Log.i(TAG, "Queued pending context for next message: $agentName (queue size=${pendingContextQueue.size})")
         }
     }
 

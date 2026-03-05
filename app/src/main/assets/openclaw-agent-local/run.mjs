@@ -111,15 +111,13 @@ function emitToolUse(toolCallId, toolName, input) {
   });
 }
 
-function emitToolResultEvent(toolCallId, content, isError, inputHint) {
-  const event = {
+function emitToolResultEvent(toolCallId, content, isError) {
+  emitStreamEvent({
     type: "tool_result",
     tool_use_id: toolCallId,
     content: content || "",
     is_error: isError || false,
-  };
-  if (inputHint) event.input_hint = inputHint;
-  emitStreamEvent(event);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -389,11 +387,10 @@ async function runAgent(prompt, images) {
         }
       },
 
-      // onToolResult fires twice: 1st with label only, 2nd with full output.
-      // Use REPLACE so the last (complete) value wins.
+      // Tool result text — accumulate for the active tool call
       onToolResult: (payload) => {
         if (payload.text && activeToolCallId) {
-          toolResultText = payload.text;
+          toolResultText += payload.text;
         }
       },
 
@@ -405,20 +402,13 @@ async function runAgent(prompt, images) {
             toolResultText = "";
             emitToolUse(evt.data.toolCallId, evt.data.name);
           } else if (evt.data.phase === "result") {
-            // Defer 100ms so the 2nd onToolResult (with full output) fires first
-            const toolCallIdForEmit = evt.data.toolCallId;
-            const isError = evt.data.isError || false;
-            const inputHint = typeof evt.data.meta === "string" ? evt.data.meta : undefined;
-            setTimeout(() => {
-              emitToolResultEvent(
-                toolCallIdForEmit,
-                toolResultText.slice(0, 2000),
-                isError,
-                inputHint,
-              );
-              activeToolCallId = null;
-              toolResultText = "";
-            }, 100);
+            emitToolResultEvent(
+              evt.data.toolCallId,
+              toolResultText.slice(0, 2000),
+              evt.data.isError || false,
+            );
+            activeToolCallId = null;
+            toolResultText = "";
           }
         }
       },

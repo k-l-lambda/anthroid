@@ -209,31 +209,36 @@ class RemoteAgentFragment : Fragment() {
     }
 
     override fun onDestroyView() {
-        val msgs = viewModel.messages.value
-        if (msgs.isNotEmpty()) {
-            try {
-                // Entry info: "openclaw [host:port], [displayName] [agentId]"
-                val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(requireContext())
-                val host = prefs.getString("gateway_host", "") ?: ""
-                val port = prefs.getString("gateway_port", "40445") ?: "40445"
-                val gatewayAddr = if (host.isNotEmpty()) "$host:$port" else "gateway"
-                val agentSuffix = if (sessionAgentId.isNotEmpty()) " [$sessionAgentId]" else ""
-                val entryInfo = "openclaw $gatewayAddr, $sessionDisplayName$agentSuffix"
+        // Only inject when the fragment is truly being removed (user pressed Back),
+        // NOT on config changes or when pushed onto the back stack.
+        if (isRemoving) {
+            val msgs = viewModel.messages.value
+            if (msgs.isNotEmpty()) {
+                try {
+                    // Entry info: "openclaw [host:port], [displayName] [agentId]"
+                    val ctx = context ?: return
+                    val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(ctx)
+                    val host = prefs.getString("gateway_host", "") ?: ""
+                    val port = prefs.getString("gateway_port", "40445") ?: "40445"
+                    val gatewayAddr = if (host.isNotEmpty()) "$host:$port" else "gateway"
+                    val agentSuffix = if (sessionAgentId.isNotEmpty()) " [$sessionAgentId]" else ""
+                    val entryInfo = "openclaw $gatewayAddr, $sessionDisplayName$agentSuffix"
 
-                // Full conversation history with role labels, capped at 5000 chars
-                val history = msgs.joinToString("\n") { msg ->
-                    val label = when (msg.role) {
-                        com.anthroid.claude.MessageRole.USER -> "[user]"
-                        com.anthroid.claude.MessageRole.ASSISTANT -> "[assistant]"
-                        else -> "[system]"
-                    }
-                    "$label: ${msg.content}"
-                }.take(5000)
+                    // Full conversation history with role labels, capped at 5000 chars
+                    val history = msgs.joinToString("\n") { msg ->
+                        val label = when (msg.role) {
+                            com.anthroid.claude.MessageRole.USER -> "[user]"
+                            com.anthroid.claude.MessageRole.ASSISTANT -> "[assistant]"
+                            else -> "[system]"
+                        }
+                        "$label: ${msg.content}"
+                    }.take(5000)
 
-                val claudeVm = ViewModelProvider(requireActivity())[com.anthroid.claude.ClaudeViewModel::class.java]
-                claudeVm.injectRemoteResult("remote-agent", entryInfo, history)
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to inject remote result: ${e.message}")
+                    val claudeVm = ViewModelProvider(requireActivity())[com.anthroid.claude.ClaudeViewModel::class.java]
+                    claudeVm.injectRemoteResult("remote-agent", entryInfo, history)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to inject remote result: ${e.message}")
+                }
             }
         }
         viewModel.disconnect()
