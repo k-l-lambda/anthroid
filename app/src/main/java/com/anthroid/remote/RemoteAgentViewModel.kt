@@ -120,8 +120,14 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
                                     }
                                     else -> {
                                         recentDelivered[dedupKey] = now
-                                        val msgRole = if (role == "user") MessageRole.USER else MessageRole.ASSISTANT
-                                        appendMessage(msgRole, content)
+                                        when (role) {
+                                            "streaming" -> appendStreamingDelta(content)
+                                            "user" -> appendMessage(MessageRole.USER, content)
+                                            else -> {
+                                                // Final assistant message: replace any in-progress streaming message
+                                                finalizeStreamingMessage(content)
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -268,11 +274,37 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
     // ── Helpers ─────────────────────────────────────────────────────
 
     private fun appendMessage(role: MessageRole, content: String) {
-        val message = Message(
-            role = role,
-            content = content,
-        )
+        val message = Message(role = role, content = content)
         _messages.value = _messages.value + message
+    }
+
+    /** Append a streaming delta to the last ASSISTANT message (or create one if none exists). */
+    private fun appendStreamingDelta(delta: String) {
+        val msgs = _messages.value
+        val last = msgs.lastOrNull()
+        if (last != null && last.role == MessageRole.ASSISTANT && last.isStreaming) {
+            // Append delta to in-progress streaming message
+            _messages.value = msgs.dropLast(1) + last.copy(content = last.content + delta)
+        } else {
+            // Create new streaming message
+            _messages.value = msgs + Message(
+                role = MessageRole.ASSISTANT,
+                content = delta,
+                isStreaming = true,
+            )
+        }
+    }
+
+    /** Replace in-progress streaming message with clean final content, or append if none. */
+    private fun finalizeStreamingMessage(content: String) {
+        val msgs = _messages.value
+        val last = msgs.lastOrNull()
+        if (last != null && last.role == MessageRole.ASSISTANT && last.isStreaming) {
+            // Replace streaming placeholder with final clean message
+            _messages.value = msgs.dropLast(1) + last.copy(content = content, isStreaming = false)
+        } else {
+            appendMessage(MessageRole.ASSISTANT, content)
+        }
     }
 
     fun disconnect() {

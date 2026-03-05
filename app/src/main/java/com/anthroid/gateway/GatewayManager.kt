@@ -287,8 +287,8 @@ class GatewayManager(
       }
   }
 
-  // Buffer assistant text per runId for agent events
-  private val agentTextBuffers = mutableMapOf<String, StringBuilder>()
+  // Cumulative assistant text per runId (data.text from agent/assistant is cumulative, not delta)
+  private val agentTextBuffers = mutableMapOf<String, String>()
   private val agentSessionKeys = mutableMapOf<String, String>()
   private val processedAgentRuns = mutableSetOf<String>()
 
@@ -354,9 +354,16 @@ class GatewayManager(
           val data = obj.optJSONObject("data")
           when (stream) {
             "assistant" -> {
-              val text = data?.optString("text", "") ?: ""
-              if (text.isNotEmpty()) {
-                agentTextBuffers.getOrPut(runId) { StringBuilder() }.append(text)
+              val cumulative = data?.optString("text", "") ?: ""
+              if (cumulative.isNotEmpty() && sessionKey != null) {
+                // data.text is cumulative — compute delta from last known position
+                val prev = agentTextBuffers[runId] ?: ""
+                val delta = if (cumulative.length > prev.length) cumulative.substring(prev.length) else ""
+                agentTextBuffers[runId] = cumulative
+                // Emit delta for streaming display in Remote Agent View
+                if (delta.isNotEmpty()) {
+                  _remoteSessionEventFlow.tryEmit(RemoteSessionEvent(sessionKey, "streaming", delta))
+                }
               }
             }
             "lifecycle" -> {
@@ -364,14 +371,15 @@ class GatewayManager(
               if (phase == "end" || phase == "error") {
                 // Guard against duplicate lifecycle end events for the same runId
                 if (!processedAgentRuns.add(runId)) return
-                val buffered = agentTextBuffers.remove(runId)?.toString()?.trim()
+                val buffered = agentTextBuffers.remove(runId)?.trim()
                 val effectiveSessionKey = agentSessionKeys.remove(runId) ?: "gateway"
                 if (!buffered.isNullOrEmpty()) {
                   Log.i(TAG, "Agent run complete: runId=$runId, session=$effectiveSessionKey, len=${buffered.length}")
                   trackObservedSession(effectiveSessionKey)
                   // Use fixed key so all agent messages share one notification
+                  // NOTE: do NOT emit to remoteSessionEventFlow here — the chat event
+                  // provides the clean final message and will emit separately.
                   onChatMessage?.invoke("gateway", "Gateway", buffered)
-                  _remoteSessionEventFlow.tryEmit(RemoteSessionEvent(effectiveSessionKey, "assistant", buffered))
                 }
                 // Keep processedAgentRuns bounded (max 100 entries)
                 if (processedAgentRuns.size > 100) {
