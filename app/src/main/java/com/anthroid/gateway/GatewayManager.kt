@@ -71,6 +71,8 @@ class GatewayManager(
         Log.i(TAG, "Connected to gateway: server=$serverName, remote=$remoteAddress, session=$mainSessionKey")
         _connectionStatus.value = "Connected to ${serverName ?: remoteAddress}"
         _isConnected.value = true
+        // Track main session so it gets polled for pending messages
+        if (!mainSessionKey.isNullOrBlank()) trackObservedSession(mainSessionKey)
       },
       onDisconnected = { message ->
         Log.i(TAG, "Gateway disconnected: $message")
