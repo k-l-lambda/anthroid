@@ -8,6 +8,7 @@ import com.anthroid.claude.Message
 import com.anthroid.claude.MessageRole
 import com.anthroid.gateway.GatewayForegroundService
 import com.anthroid.gateway.GatewayManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -147,6 +148,8 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
                         eventJob.cancel()
                         Log.d(TAG, "Cancelled event collection for superseded manager")
                     }
+                } catch (e: CancellationException) {
+                    throw e  // propagate cancellation normally
                 } catch (e: Exception) {
                     Log.w(TAG, "Error in manager reattach block: ${e.message}")
                 }
