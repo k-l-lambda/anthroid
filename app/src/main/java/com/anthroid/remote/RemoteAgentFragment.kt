@@ -64,6 +64,7 @@ class RemoteAgentFragment : Fragment() {
 
     private lateinit var messageAdapter: MessageAdapter
     private var sessionDisplayName = ""   // stored for onDestroyView injection
+    private var sessionAgentId = ""       // agentId from sessionKey (e.g. "main" from "agent:main:main")
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -91,6 +92,7 @@ class RemoteAgentFragment : Fragment() {
         val sessionKey = arguments?.getString(ARG_SESSION_KEY) ?: ""
         val displayName = arguments?.getString(ARG_DISPLAY_NAME) ?: sessionKey
         sessionDisplayName = displayName   // save for onDestroyView injection
+        sessionAgentId = Regex("^agent:([^:]+):.+$").find(sessionKey)?.groupValues?.get(1) ?: ""
         val sourceName = arguments?.getString(ARG_SOURCE) ?: "OPENCLAW"
         val hostname = arguments?.getString(ARG_HOSTNAME)
         val source = RemoteSessionInfo.Source.valueOf(sourceName)
@@ -207,16 +209,29 @@ class RemoteAgentFragment : Fragment() {
     }
 
     override fun onDestroyView() {
-        // Inject session summary into local conversation when Remote Agent View closes
         val msgs = viewModel.messages.value
-        val userMsgs = msgs.filter { it.role == com.anthroid.claude.MessageRole.USER }
-            .joinToString("\n---\n") { it.content }
-        val agentMsgs = msgs.filter { it.role == com.anthroid.claude.MessageRole.ASSISTANT }
-            .joinToString("\n---\n") { it.content }
-        if (userMsgs.isNotEmpty() || agentMsgs.isNotEmpty()) {
+        if (msgs.isNotEmpty()) {
             try {
+                // Entry info: "openclaw [host:port], [displayName] [agentId]"
+                val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(requireContext())
+                val host = prefs.getString("gateway_host", "") ?: ""
+                val port = prefs.getString("gateway_port", "40445") ?: "40445"
+                val gatewayAddr = if (host.isNotEmpty()) "$host:$port" else "gateway"
+                val agentSuffix = if (sessionAgentId.isNotEmpty()) " [$sessionAgentId]" else ""
+                val entryInfo = "openclaw $gatewayAddr, $sessionDisplayName$agentSuffix"
+
+                // Full conversation history with role labels, capped at 5000 chars
+                val history = msgs.joinToString("\n") { msg ->
+                    val label = when (msg.role) {
+                        com.anthroid.claude.MessageRole.USER -> "[user]"
+                        com.anthroid.claude.MessageRole.ASSISTANT -> "[assistant]"
+                        else -> "[system]"
+                    }
+                    "$label: ${msg.content}"
+                }.take(5000)
+
                 val claudeVm = ViewModelProvider(requireActivity())[com.anthroid.claude.ClaudeViewModel::class.java]
-                claudeVm.injectRemoteResult(sessionDisplayName, userMsgs, agentMsgs)
+                claudeVm.injectRemoteResult("remote-agent", entryInfo, history)
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to inject remote result: ${e.message}")
             }
