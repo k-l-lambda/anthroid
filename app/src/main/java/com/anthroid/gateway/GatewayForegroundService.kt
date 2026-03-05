@@ -137,6 +137,33 @@ class GatewayForegroundService : Service() {
         super.onDestroy()
     }
 
+    /**
+     * Drain pending messages from the gateway for all observed sessions.
+     * Dispatches them as RemoteSessionEvents so they appear in Remote Agent View
+     * and trigger notifications.
+     */
+    private suspend fun drainAndDeliverPending(manager: GatewayManager) {
+        val observedSessions = manager.getObservedSessionKeys()
+        for (sessionKey in observedSessions) {
+            val messages = manager.drainPendingMessages(sessionKey)
+            for (content in messages) {
+                // Emit as assistant event so RemoteAgentViewModel receives it
+                manager.emitRemoteSessionEvent(
+                    GatewayManager.RemoteSessionEvent(sessionKey, "assistant", content)
+                )
+                // Also show system notification when app is in background
+                if (!ScreenAutomationOverlay.isAppInForeground) {
+                    notificationHelper?.showMessageNotification(
+                        sessionKey = sessionKey,
+                        displayName = "Agent",
+                        messageText = content
+                    )
+                }
+                Log.i(TAG, "Delivered pending message for $sessionKey: ${content.take(60)}")
+            }
+        }
+    }
+
     private fun startGateway(host: String, port: Int, token: String?, useTls: Boolean = true) {
         // Null out callbacks before disconnect to prevent stale events from old session
         gatewayManager?.onNotification = null
@@ -173,6 +200,20 @@ class GatewayForegroundService : Service() {
         serviceScope.launch {
             manager.connectionStatus.collectLatest { status ->
                 updateServiceNotification(status)
+            }
+        }
+
+        // Poll for pending messages every 60s + immediately on connect
+        serviceScope.launch {
+            manager.isConnected.collectLatest { connected ->
+                if (connected) {
+                    // Drain immediately on connect, then every 60s while connected
+                    while (coroutineContext[kotlinx.coroutines.Job]?.isActive == true
+                           && manager.isConnected.value) {
+                        drainAndDeliverPending(manager)
+                        delay(60_000)
+                    }
+                }
             }
         }
 

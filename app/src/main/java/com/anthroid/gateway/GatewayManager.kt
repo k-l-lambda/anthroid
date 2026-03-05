@@ -228,6 +228,40 @@ class GatewayManager(
     Log.d(TAG, "Sent user message to session $sessionKey: ${text.take(50)}")
   }
 
+  /** Returns observed session keys for polling. */
+  fun getObservedSessionKeys(): List<String> = observedSessions.keys.toList()
+
+  /** Emits a synthetic RemoteSessionEvent (used by pending message delivery). */
+  fun emitRemoteSessionEvent(event: RemoteSessionEvent) {
+    _remoteSessionEventFlow.tryEmit(event)
+  }
+
+  /**
+   * Drain pending messages queued by the gateway for this session.
+   * Called by the polling service every ~60s to receive timed/scheduled messages.
+   * Returns list of message strings (content), or empty list on failure.
+   */
+  suspend fun drainPendingMessages(sessionKey: String): List<String> {
+    val gs = session ?: return emptyList()
+    return try {
+      val params = JSONObject().apply { put("sessionKey", sessionKey) }
+      val response = gs.request("session.drainPending", params.toString(), timeoutMs = 10_000)
+      val obj = JSONObject(response)
+      val messages = obj.optJSONArray("messages") ?: return emptyList()
+      val result = mutableListOf<String>()
+      for (i in 0 until messages.length()) {
+        val msg = messages.optJSONObject(i) ?: continue
+        val content = msg.optString("content", "").trim()
+        if (content.isNotEmpty()) result.add(content)
+      }
+      if (result.isNotEmpty()) Log.i(TAG, "Drained ${result.size} pending messages for $sessionKey")
+      result
+    } catch (err: Throwable) {
+      Log.d(TAG, "drainPendingMessages failed (no pending or not connected): ${err.message}")
+      emptyList()
+    }
+  }
+
   /**
    * Load recent conversation history for a session via sessions.preview RPC.
    * Returns list of (role, text) pairs ordered oldest-first, or empty list on failure.
