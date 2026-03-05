@@ -231,6 +231,7 @@ class GatewaySession(
       }
 
       override fun onMessage(webSocket: WebSocket, text: String) {
+        if (isClosed.get()) return  // drop messages arriving after closeQuietly()
         scope.launch { handleMessage(text) }
       }
 
