@@ -18,6 +18,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 
 /**
@@ -203,16 +204,21 @@ class GatewayForegroundService : Service() {
             }
         }
 
-        // Poll for pending messages every 60s + immediately on connect
+        // Immediate drain on connect; periodic drain every 60s
         serviceScope.launch {
-            manager.isConnected.collectLatest { connected ->
+            manager.isConnected.collect { connected: Boolean ->
                 if (connected) {
-                    // Drain immediately on connect, then every 60s while connected
-                    while (coroutineContext[kotlinx.coroutines.Job]?.isActive == true
-                           && manager.isConnected.value) {
-                        drainAndDeliverPending(manager)
-                        delay(60_000)
-                    }
+                    Log.d(TAG, "Gateway connected — draining pending messages immediately")
+                    drainAndDeliverPending(manager)
+                }
+            }
+        }
+        serviceScope.launch {
+            while (isActive) {
+                delay(60_000)
+                val connected = manager.isConnected.value
+                if (connected) {
+                    drainAndDeliverPending(manager)
                 }
             }
         }
