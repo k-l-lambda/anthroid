@@ -51,6 +51,10 @@ class OpenClawLocalClient(private val context: Context) {
     private val agentDir: String
         get() = "${context.filesDir.absolutePath}/home/$AGENT_DIR_NAME"
 
+    /** Public accessor for the workspace directory path. */
+    val workspacePath: String
+        get() = "$agentDir/workspace"
+
     /**
      * Check if the OpenClaw agent is installed (run.mjs exists and node is available).
      */

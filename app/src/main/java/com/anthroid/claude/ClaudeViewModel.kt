@@ -22,6 +22,7 @@ import com.anthroid.main.MainPagerActivity
 import com.anthroid.mcp.McpServer
 import com.anthroid.remote.RemoteSessionInfo
 import com.anthroid.shared.termux.TermuxConstants.TERMUX_APP.TERMUX_SERVICE
+import java.io.File
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -400,6 +401,12 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 } else {
                     content
                 }
+                // Memory sync: pull from gateway before OPENCLAW run, snapshot hash for change detection
+                if (agentMode == AgentMode.OPENCLAW) {
+                    pullMemoryFromGateway()
+                    snapshotMemoryHash()
+                }
+
                 val hasImages = images.isNotEmpty()
 
                 if (hasImages) {
@@ -708,6 +715,13 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 // CLI/API/OPENCLAW modes all run locally; syncing to gateway would
                 // inject local messages into the shared openclaw channel (wrong).
                 // Remote interactions go through RemoteAgentViewModel.sendChatMessage().
+
+                // Memory sync: push updated MEMORY.md to gateway if changed
+                if (agentMode == AgentMode.OPENCLAW) {
+                    viewModelScope.launch {
+                        pushMemoryToGatewayIfChanged()
+                    }
+                }
             }
         }
     }
@@ -1465,6 +1479,62 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             NotificationManagerCompat.from(context).notify(DIRECT_NOTIFICATION_ID, notification)
         } catch (e: SecurityException) {
             Log.w(TAG, "Notification permission not granted: ${e.message}")
+        }
+    }
+
+    // ── Memory sync helpers ──────────────────────────────────────────────
+
+    /** Hash of MEMORY.md content before agent run, for change detection. */
+    private var memoryHashBeforeRun: Int? = null
+
+    /**
+     * Pull memory from gateway agent and write to local workspace/MEMORY.md.
+     * Called before starting an OPENCLAW agent run.
+     * Gateway is source of truth — overwrites local file.
+     */
+    private suspend fun pullMemoryFromGateway() {
+        val manager = gatewayManager ?: return
+        try {
+            val profile = manager.getAgentProfile() ?: return
+            val memoryContent = profile.memoryContent
+            if (memoryContent != null && memoryContent.isNotBlank()) {
+                val memoryFile = File(openclawClient.workspacePath, "MEMORY.md")
+                memoryFile.parentFile?.mkdirs()
+                memoryFile.writeText(memoryContent)
+                Log.i(TAG, "Pulled memory from gateway (${memoryContent.length} chars) → ${memoryFile.path}")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to pull memory from gateway: ${e.message}")
+        }
+    }
+
+    /** Snapshot MEMORY.md hash before agent run for change detection. */
+    private fun snapshotMemoryHash() {
+        val memoryFile = File(openclawClient.workspacePath, "MEMORY.md")
+        memoryHashBeforeRun = if (memoryFile.exists()) memoryFile.readText().hashCode() else null
+    }
+
+    /**
+     * After agent run, check if MEMORY.md changed and push to gateway.
+     * Sends the updated memory content as a structured message.
+     */
+    private suspend fun pushMemoryToGatewayIfChanged() {
+        val manager = gatewayManager ?: return
+        val memoryFile = File(openclawClient.workspacePath, "MEMORY.md")
+        if (!memoryFile.exists()) return
+        val currentContent = memoryFile.readText()
+        val currentHash = currentContent.hashCode()
+        if (currentHash == memoryHashBeforeRun) return // No change
+        if (currentContent.isBlank()) return
+
+        try {
+            // Send memory update to the default gateway agent session
+            val syncMessage = "[MEMORY_SYNC]\nThe Anthroid local agent updated its memory. " +
+                "Please update the gateway MEMORY.md with the following content:\n\n$currentContent"
+            manager.sendChatMessage("main", syncMessage)
+            Log.i(TAG, "Pushed memory update to gateway (${currentContent.length} chars)")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to push memory to gateway: ${e.message}")
         }
     }
 

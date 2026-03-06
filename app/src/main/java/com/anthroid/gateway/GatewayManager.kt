@@ -265,6 +265,36 @@ class GatewayManager(
   }
 
   /**
+   * Fetch agent profile and memory content from the gateway.
+   * Returns a data class with agent identity and memory, or null on failure.
+   */
+  suspend fun getAgentProfile(agentId: String? = null): AgentProfile? {
+    val gs = session ?: return null
+    return try {
+      val params = JSONObject()
+      if (!agentId.isNullOrBlank()) params.put("agentId", agentId)
+      val response = gs.request("agent.getProfile", params.toString(), timeoutMs = 10_000)
+      val obj = JSONObject(response)
+      AgentProfile(
+        agentId = obj.optString("agentId", ""),
+        name = obj.optString("name", null),
+        emoji = obj.optString("emoji", null),
+        memoryContent = obj.optString("memoryContent", null)
+      )
+    } catch (err: Throwable) {
+      Log.d(TAG, "getAgentProfile failed: ${err.message}")
+      null
+    }
+  }
+
+  data class AgentProfile(
+    val agentId: String,
+    val name: String?,
+    val emoji: String?,
+    val memoryContent: String?
+  )
+
+  /**
    * Load recent conversation history for a session via sessions.preview RPC.
    * Returns list of (role, text) pairs ordered oldest-first, or empty list on failure.
    */
