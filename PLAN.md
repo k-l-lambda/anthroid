@@ -1166,7 +1166,7 @@ View and interact with remote AI agent sessions directly from Anthroid.
 
 ---
 
-#### Sub-phase 16.10: Gateway "anthroid" Mode (Planned — Server-Side)
+#### Sub-phase 16.10: Gateway "anthroid" Mode ✅ COMPLETE
 
 **Problem:** `chat.send` messages from Anthroid appear as `channel="webchat"` on the remote agent because the gateway maps `CLIENT_MODE="ui"` → webchat channel/provider/surface. Passing `channel` in `chat.send` params is rejected by the API (`unexpected property`).
 
@@ -1191,7 +1191,7 @@ View and interact with remote AI agent sessions directly from Anthroid.
 
 ---
 
-#### Bug Fix: OpenClaw Mode Image Input — HTTP 400 Error (Planned)
+#### Bug Fix: OpenClaw Mode Image Input — HTTP 400 Error (In Progress)
 
 **Problem:** In OpenClaw mode, when the user attaches an image to a message, the gateway/API returns HTTP 400. Plain text messages work fine.
 
@@ -1211,7 +1211,7 @@ View and interact with remote AI agent sessions directly from Anthroid.
 
 ---
 
-#### Sub-phase 16.11: Remote Agent Session Result as Local Tool Bar (Planned)
+#### Sub-phase 16.11: Remote Agent Session Result as Local Tool Bar ✅ COMPLETE
 
 **Context:** When the user sends a message to a remote agent via the Remote Agent View, the remote agent processes it and generates a response. Currently the response only appears in the Remote Agent View. It would be useful to embed the result back into the current local conversation as a tool bar item, giving the local context awareness of remote session activity.
 
@@ -1336,7 +1336,7 @@ Android device
 
 ---
 
-#### Sub-phase 16.12: Anthroid Timed Message Delivery — Polling Queue (Planned)
+#### Sub-phase 16.12: Anthroid Timed Message Delivery — Polling Queue ✅ COMPLETE
 
 **Problem:** The `message` tool's scheduled delivery cannot push to Anthroid clients.
 Root cause: "webchat" (internal WebSocket) has no persistent delivery mechanism.
