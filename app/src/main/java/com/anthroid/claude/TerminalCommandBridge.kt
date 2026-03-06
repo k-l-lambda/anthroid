@@ -7,6 +7,8 @@ import com.anthroid.shared.termux.shell.command.runner.terminal.TermuxSession
 import com.anthroid.terminal.TerminalSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
@@ -20,6 +22,9 @@ object TerminalCommandBridge {
 
     private var termuxService: TermuxService? = null
     private var currentSessionGetter: (() -> TerminalSession?)? = null
+
+    // Mutex to serialize terminal command execution — only one command at a time
+    private val commandMutex = Mutex()
 
     /**
      * Register the bridge with TermuxService.
@@ -62,31 +67,65 @@ object TerminalCommandBridge {
         val service = termuxService
             ?: return@withContext CommandResult.error("Termux service not available")
 
-        // Get target session
-        val targetSessionId: String
-        val session: TerminalSession? = if (sessionId != null) {
-            // Find session by name
-            val termuxSession = findSessionByName(service, sessionId)
-            targetSessionId = sessionId
-            termuxSession?.terminalSession
-        } else {
-            // Use current session
-            val currentSession = currentSessionGetter?.invoke()
-            targetSessionId = currentSession?.mSessionName ?: getDefaultSessionId(service)
-            currentSession
+        // Serialize commands — only one at a time on the shared terminal session
+        commandMutex.withLock {
+            executeCommandLocked(service, command, sessionId, timeout)
+        }
+    }
+
+    private suspend fun executeCommandLocked(
+        service: TermuxService,
+        command: String,
+        sessionId: String?,
+        timeout: Long
+    ): CommandResult {
+
+        // Get target session (with retry for sessions still being created)
+        var targetSessionId: String = ""
+        var session: TerminalSession? = null
+
+        for (attempt in 1..20) { // Wait up to 2 seconds for session
+            if (sessionId != null) {
+                val termuxSession = findSessionByName(service, sessionId)
+                targetSessionId = sessionId
+                session = termuxSession?.terminalSession
+            } else {
+                val currentSession = currentSessionGetter?.invoke()
+                targetSessionId = currentSession?.mSessionName ?: getDefaultSessionId(service)
+                session = currentSession
+            }
+
+            if (session != null && session.isRunning) break
+
+            if (attempt == 1) {
+                Log.d(TAG, "No active session yet (sessions=${service.termuxSessions.size}), waiting...")
+            }
+            delay(100)
         }
 
         if (session == null || !session.isRunning) {
-            return@withContext CommandResult.error(
-                "No active terminal session",
+            return CommandResult.error(
+                "No active terminal session (sessions=${service.termuxSessions.size})",
                 sessionId = targetSessionId
             )
         }
 
-        val emulator = session.emulator
+        // Wait for emulator to initialize (may take a moment after session creation)
+        var emulator = session.emulator
         if (emulator == null) {
-            Log.e(TAG, "Terminal emulator not initialized for session '$targetSessionId'")
-            return@withContext CommandResult.error(
+            Log.d(TAG, "Emulator null for session '$targetSessionId', waiting for initialization...")
+            for (i in 1..30) { // Wait up to 3 seconds
+                delay(100)
+                emulator = session.emulator
+                if (emulator != null) {
+                    Log.d(TAG, "Emulator initialized after ${i * 100}ms")
+                    break
+                }
+            }
+        }
+        if (emulator == null) {
+            Log.e(TAG, "Terminal emulator not initialized for session '$targetSessionId' after waiting")
+            return CommandResult.error(
                 "Terminal emulator not initialized. Please open Termux first.",
                 sessionId = targetSessionId
             )
@@ -98,70 +137,63 @@ object TerminalCommandBridge {
         val marker = "===ANTHROID_END_${UUID.randomUUID().toString().take(8)}==="
         Log.d(TAG, "Using marker: $marker")
 
-        // Get current transcript length before command
-        val transcriptBefore = ShellUtils.getTerminalSessionTranscriptText(session, true, false)
-        val startPos = transcriptBefore?.length ?: 0
-        Log.d(TAG, "Transcript before length: $startPos")
-
         // Execute command with end marker
         // Use write() to send command directly to terminal
         val fullCommand = "$command; echo '$marker'\n"
         Log.d(TAG, "Sending command via write()")
         session.write(fullCommand)
 
-        // Wait for marker to appear in output
+        // Wait for marker to appear in transcript
+        // Note: transcript is a circular buffer — we search the FULL transcript for the
+        // unique marker rather than tracking by position, since old content gets pushed out.
         val startTime = System.currentTimeMillis()
         var output: String? = null
         var lastLogTime = 0L
+        val markerLineRegex = Regex("^\\s*" + Regex.escape(marker) + "\\s*$", RegexOption.MULTILINE)
 
         while (System.currentTimeMillis() - startTime < timeout) {
             delay(100) // Check every 100ms
 
-            val transcriptNow = ShellUtils.getTerminalSessionTranscriptText(session, true, false) ?: ""
-            val newContent = if (transcriptNow.length > startPos) {
-                transcriptNow.substring(startPos)
-            } else ""
+            // Use non-joined transcript (linesJoined=false) so each terminal row is a
+            // separate line. The joined version merges full-width rows, which can fuse
+            // the marker with the preceding SSH output line.
+            val transcript = ShellUtils.getTerminalSessionTranscriptText(session, false, false) ?: ""
 
             // Log progress every 2 seconds
             val now = System.currentTimeMillis()
             if (now - lastLogTime > 2000) {
-                Log.d(TAG, "Waiting... newContent len=${newContent.length}, hasMarker=${newContent.contains(marker)}")
-                if (newContent.isNotEmpty() && newContent.length < 500) {
-                    Log.d(TAG, "Content: $newContent")
-                }
+                Log.d(TAG, "Waiting... transcript len=${transcript.length}, hasMarker=${transcript.contains(marker)}")
                 lastLogTime = now
             }
 
-            // Check if marker appears on its own line (not within the echo command)
-            val markerLineRegex = Regex("^\\s*" + Regex.escape(marker) + "\\s*$", RegexOption.MULTILINE)
-            if (markerLineRegex.containsMatchIn(newContent)) {
-                // Extract output before marker line
-                val lines = newContent.lines()
-                val markerLineIndex = lines.indexOfFirst { it.trim() == marker }
+            if (markerLineRegex.containsMatchIn(transcript)) {
+                // Find marker position and extract output between command echo and marker
+                val lines = transcript.lines()
+                val markerLineIndex = lines.indexOfLast { it.trim() == marker }
 
                 if (markerLineIndex >= 0) {
-                    // Get lines before marker
-                    val outputLines = lines.take(markerLineIndex)
-
-                    // Remove the echoed command from beginning
-                    val cmdLine = command.trim()
-
-                    // Find where actual output starts (skip command echoes)
-                    val outputStartIndex = outputLines.indexOfFirst { line ->
-                        !line.contains(cmdLine) && !line.contains("echo '$marker'")
+                    // Search backwards from marker to find the command echo line
+                    val echoPattern = "echo '$marker'"
+                    var cmdLineIndex = markerLineIndex - 1
+                    while (cmdLineIndex >= 0) {
+                        if (lines[cmdLineIndex].contains(echoPattern)) break
+                        cmdLineIndex--
                     }
 
-                    output = if (outputStartIndex >= 0) {
-                        outputLines.drop(outputStartIndex).joinToString("\n").trim()
+                    if (cmdLineIndex >= 0) {
+                        // Output is between command echo line and marker line
+                        val outputLines = lines.subList(cmdLineIndex + 1, markerLineIndex)
+                        output = outputLines.joinToString("\n").trim()
                     } else {
-                        "" // No actual output
+                        // Fallback: couldn't find command echo, take some lines before marker
+                        output = ""
                     }
                 }
                 break
             }
         }
 
-        if (output == null) {
+        return if (output == null) {
             Log.w(TAG, "Command timed out after ${timeout}ms")
             CommandResult(
                 success = false,

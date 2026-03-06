@@ -119,6 +119,7 @@ public class SettingsActivity extends AppCompatActivity {
             configureScreenCapturePreference(context);
             configureOverlayPreference(context);
             configureClearQuickSendPreference(context);
+            configureGatewayPreference(context);
 
             new Thread() {
                 @Override
@@ -254,6 +255,89 @@ public class SettingsActivity extends AppCompatActivity {
                         .show();
                     return true;
                 });
+            }
+        }
+
+        private void configureGatewayPreference(@NonNull Context context) {
+            // Show current values in summary for host/port
+            androidx.preference.EditTextPreference hostPref = findPreference("gateway_host");
+            if (hostPref != null) {
+                hostPref.setSummaryProvider(preference -> {
+                    String val = ((androidx.preference.EditTextPreference) preference).getText();
+                    return (val != null && !val.isEmpty()) ? val : "Not set";
+                });
+            }
+
+            androidx.preference.EditTextPreference portPref = findPreference("gateway_port");
+            if (portPref != null) {
+                portPref.setSummaryProvider(preference -> {
+                    String val = ((androidx.preference.EditTextPreference) preference).getText();
+                    return (val != null && !val.isEmpty()) ? val : "40445";
+                });
+            }
+
+            androidx.preference.EditTextPreference tokenPref = findPreference("gateway_token");
+            if (tokenPref != null) {
+                tokenPref.setSummaryProvider(preference -> {
+                    String val = ((androidx.preference.EditTextPreference) preference).getText();
+                    if (val != null && val.length() > 8) {
+                        return val.substring(0, 4) + "****" + val.substring(val.length() - 4);
+                    }
+                    return (val != null && !val.isEmpty()) ? "****" : "Not set (auto-auth)";
+                });
+            }
+
+            // Update connection status
+            Preference statusPref = findPreference("gateway_status");
+            if (statusPref != null) {
+                updateGatewayStatus(statusPref);
+                statusPref.setOnPreferenceClickListener(preference -> {
+                    // Tap to reconnect
+                    com.anthroid.gateway.GatewayForegroundService service =
+                        com.anthroid.gateway.GatewayForegroundService.Companion.getInstance();
+                    if (service != null) {
+                        service.reconnect();
+                        Toast.makeText(context, "Reconnecting to gateway...", Toast.LENGTH_SHORT).show();
+                    } else {
+                        // Start the service
+                        com.anthroid.gateway.GatewayForegroundService.Companion.start(context);
+                        Toast.makeText(context, "Starting gateway service...", Toast.LENGTH_SHORT).show();
+                    }
+                    new Handler(Looper.getMainLooper()).postDelayed(() -> updateGatewayStatus(preference), 2000);
+                    return true;
+                });
+            }
+
+            // When gateway_enabled changes, start/stop service
+            androidx.preference.SwitchPreference enabledPref = findPreference("gateway_enabled");
+            if (enabledPref != null) {
+                enabledPref.setOnPreferenceChangeListener((preference, newValue) -> {
+                    boolean enabled = (boolean) newValue;
+                    if (enabled) {
+                        com.anthroid.gateway.GatewayForegroundService.Companion.start(context);
+                        Toast.makeText(context, "Gateway service starting...", Toast.LENGTH_SHORT).show();
+                    } else {
+                        com.anthroid.gateway.GatewayForegroundService.Companion.stop(context);
+                        Toast.makeText(context, "Gateway service stopped", Toast.LENGTH_SHORT).show();
+                    }
+                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                        Preference sp = findPreference("gateway_status");
+                        if (sp != null) updateGatewayStatus(sp);
+                    }, 1500);
+                    return true;
+                });
+            }
+        }
+
+        private void updateGatewayStatus(Preference pref) {
+            com.anthroid.gateway.GatewayForegroundService service =
+                com.anthroid.gateway.GatewayForegroundService.Companion.getInstance();
+            if (service != null && service.getGatewayManager() != null) {
+                Boolean v = service.getGatewayManager().isConnected().getValue();
+                boolean connected = v != null && v;
+                pref.setSummary(connected ? "Connected — tap to reconnect" : "Disconnected — tap to reconnect");
+            } else {
+                pref.setSummary("Service not running");
             }
         }
 

@@ -279,7 +279,17 @@ class MessageAdapter(
                 .removePrefix("mcp__anthroid__")
                 .removePrefix("mcp__")
             toolName.text = displayName
-            toolInput.text = message.toolInput ?: message.content
+            // Show first line of toolOutput (execution label, e.g. "Exec: `pwd`") stripped of
+            // leading emoji as cover text; fall back to toolInput if not available.
+            val outputLabel = message.toolOutput?.trim()?.let { output ->
+                val firstLine = output.substringBefore("\n").trim()
+                val spaceIdx = firstLine.indexOfFirst { c -> c == ' ' }
+                if (spaceIdx > 0) {
+                    firstLine.substring(spaceIdx + 1)
+                        .takeIf { !it.startsWith("{") && !it.startsWith("Error") && !it.startsWith("Unknown") }
+                } else null
+            }
+            toolInput.text = outputLabel ?: (message.toolInput ?: message.content)
             streamingIndicator?.visibility = if (message.isStreaming) View.VISIBLE else View.GONE
 
             // Update colors based on state

@@ -5,6 +5,8 @@ import android.util.Log
 import com.anthroid.BuildConfig
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -33,6 +35,7 @@ class ClaudeApiClient(private val context: Context) {
     private var apiKey: String = ""
     private var baseUrl: String = BuildConfig.CLAUDE_API_BASE_URL
     private var model: String = BuildConfig.CLAUDE_API_MODEL
+    private val historyMutex = Mutex()
     private val conversationHistory = mutableListOf<JSONObject>()
 
     private var pendingToolId: String? = null
@@ -315,6 +318,43 @@ class ClaudeApiClient(private val context: Context) {
      * Get conversation history size (message count).
      */
     fun getHistorySize(): Int = conversationHistory.size
+
+    /**
+     * Inject a synthetic tool_use + tool_result pair into conversation history.
+     * Used to inject remote agent session results so the local agent can see them.
+     * Must be called from a coroutine (suspend) to safely acquire historyMutex.
+     */
+    suspend fun injectToolContext(toolName: String, toolInput: String, toolOutput: String) {
+        val toolUseId = "injected_${System.currentTimeMillis()}"
+        historyMutex.withLock {
+            // Synthetic assistant message: tool_use block
+            conversationHistory.add(JSONObject().apply {
+                put("role", "assistant")
+                put("content", JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("type", "tool_use")
+                        put("id", toolUseId)
+                        put("name", toolName)
+                        put("input", JSONObject().apply {
+                            put("entry", toolInput)
+                        })
+                    })
+                })
+            })
+            // Synthetic user message: tool_result block
+            conversationHistory.add(JSONObject().apply {
+                put("role", "user")
+                put("content", JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("type", "tool_result")
+                        put("tool_use_id", toolUseId)
+                        put("content", toolOutput)
+                    })
+                })
+            })
+        }
+        Log.i(TAG, "Injected tool context: $toolName (history=${conversationHistory.size})")
+    }
 
     /**
      * Compact conversation history by summarizing it.

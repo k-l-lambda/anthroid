@@ -61,6 +61,7 @@
         android:extractNativeLibs="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/application_name"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:requestLegacyExternalStorage="true"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="false"
@@ -305,8 +306,10 @@
             <intent-filter>
                 <action android:name="com.anthroid.DEBUG_SEND_MESSAGE" />
                 <action android:name="com.anthroid.DEBUG_CONFIG_API" />
+                <action android:name="com.anthroid.DEBUG_CONFIG_GATEWAY" />
                 <action android:name="com.anthroid.DEBUG_READ_CONVERSATION" />
                 <action android:name="com.anthroid.TOOL_CALL" />
+                <action android:name="com.anthroid.DEBUG_OPEN_REMOTE_SESSION" />
             </intent-filter>
         </receiver>
 
@@ -337,6 +340,11 @@
                 android:name="android.net.VpnService.SUPPORTS_ALWAYS_ON"
                 android:value="false" />
         </service>
+
+        <!-- Gateway Foreground Service for persistent WebSocket connection -->
+        <service
+            android:name=".gateway.GatewayForegroundService"
+            android:exported="false" />
 
         <!-- Screen Capture Service for screenshots and audio recording -->
         <service

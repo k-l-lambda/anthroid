@@ -905,7 +905,8 @@ sealed class ClaudeEvent {
     data class ToolResult(
         val toolUseId: String,
         val content: String,
-        val isError: Boolean
+        val isError: Boolean,
+        val inputHint: String? = null  // Optional: human-readable input description (e.g., command run)
     ) : ClaudeEvent()
 
     /** End of a message */

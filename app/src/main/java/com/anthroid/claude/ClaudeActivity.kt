@@ -65,8 +65,15 @@ class ClaudeActivity : AppCompatActivity() {
                 // Ensure at least one session exists for command execution
                 if (svc.termuxSessions.isEmpty()) {
                     Log.d(TAG, "No terminal sessions, creating one for Claude")
-                    svc.createTermuxSession(null, null, null, null, false, "claude-session")
-                    Log.d(TAG, "Terminal session created")
+                    val termuxSession = svc.createTermuxSession(null, null, null, null, false, "claude-session")
+                    // Force-initialize emulator with default dimensions (80x24)
+                    termuxSession?.terminalSession?.let { ts ->
+                        if (ts.emulator == null) {
+                            Log.d(TAG, "Initializing terminal emulator with default 80x24")
+                            ts.updateSize(80, 24, 0, 0)
+                        }
+                    }
+                    Log.d(TAG, "Terminal session created and initialized")
                 }
             }
         }
@@ -208,8 +215,9 @@ class ClaudeActivity : AppCompatActivity() {
             inputText
         }
 
-        // Show tool output if available
-        val outputText = message.toolOutput
+        // Show tool output if available; strip execution header and code fence markers
+        val rawOutput = message.toolOutput
+        val outputText = rawOutput?.let { stripToolOutputHeader(it) }?.takeIf { it.isNotEmpty() } ?: rawOutput
         if (outputText != null && outputText.isNotEmpty()) {
             toolOutputContent.text = outputText
             toolOutputContent.visibility = View.VISIBLE
@@ -233,6 +241,21 @@ class ClaudeActivity : AppCompatActivity() {
             .setView(dialogView)
             .setPositiveButton("Close", null)
             .show()
+    }
+
+    /**
+     * Strip execution header and code fence markers from tool output.
+     * Input:  "🛠️ Exec: `pwd`\n```txt\n/data/data/.../home\n```"
+     * Output: "/data/data/.../home"
+     */
+    private fun stripToolOutputHeader(output: String): String {
+        val fenceIdx = output.indexOf("```")
+        if (fenceIdx == -1) return output.trim()
+        val contentStart = output.indexOf('\n', fenceIdx)
+        if (contentStart == -1) return output.trim()
+        val fenceEnd = output.lastIndexOf("```")
+        if (fenceEnd <= contentStart) return output.trim()
+        return output.substring(contentStart + 1, fenceEnd).trim()
     }
 
     private fun observeViewModel() {

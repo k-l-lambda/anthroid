@@ -1,18 +1,33 @@
 package com.anthroid.claude
 
 import android.app.Application
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.util.Log
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.anthroid.BuildConfig
+import com.anthroid.R
+import com.anthroid.accessibility.ScreenAutomationOverlay
 import com.anthroid.app.TermuxService
+import com.anthroid.gateway.GatewayForegroundService
+import com.anthroid.gateway.GatewayNotificationHelper
+import com.anthroid.main.MainPagerActivity
+import com.anthroid.mcp.McpServer
+import com.anthroid.remote.RemoteSessionInfo
 import com.anthroid.shared.termux.TermuxConstants.TERMUX_APP.TERMUX_SERVICE
+import java.io.File
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import com.anthroid.mcp.McpServer
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Data class for pending ask_user_question tool call.
@@ -31,12 +46,16 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
 
     companion object {
         private const val TAG = "ClaudeViewModel"
+        private const val DIRECT_NOTIFICATION_ID = 49999
     }
 
     private val cliClient = ClaudeCliClient(application)
     private val apiClient = ClaudeApiClient(application)
+    private val openclawClient = OpenClawLocalClient(application)
     private val androidTools = AndroidTools(application)
     private val conversationManager = ConversationManager(application)
+    // Gateway is managed by GatewayForegroundService for background connectivity
+    val gatewayManager get() = GatewayForegroundService.instance?.gatewayManager
 
     // Chat messages
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
@@ -70,8 +89,21 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
     private val _currentTool = MutableStateFlow<String?>(null)
     val currentTool: StateFlow<String?> = _currentTool.asStateFlow()
 
-    // Use CLI or API
-    private var useCliMode = false
+    // Slash command events (consumed by Fragment)
+    sealed class SlashCommandEvent {
+        data class ListRemotes(val hostname: String?) : SlashCommandEvent()
+        data class ConnectRemote(val session: RemoteSessionInfo) : SlashCommandEvent()
+    }
+    private val _slashCommandEvent = MutableSharedFlow<SlashCommandEvent>(extraBufferCapacity = 1)
+    val slashCommandEvent: SharedFlow<SlashCommandEvent> = _slashCommandEvent.asSharedFlow()
+
+    // Agent mode selection
+    private enum class AgentMode { CLI, API, OPENCLAW }
+    private var agentMode = AgentMode.API
+
+    // Pending contexts to prepend to next message (used for OPENCLAW/CLI mode remote result injection).
+    // Queue so multiple remote session closes don't overwrite each other.
+    private val pendingContextQueue = ArrayDeque<String>()
 
     // Current session job
     private var sessionJob: Job? = null
@@ -89,12 +121,18 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
     private var pendingThinkingContent = StringBuilder()
     private var thinkingStartTime = 0L
 
+    // Track last user message for gateway session sync
+    private var lastUserMessageContent = ""
+
     init {
         checkClaudeInstallation()
 
         // Set up MCP server callback to handle tool completion events
-        McpServer.onToolComplete = { toolName, isError, result ->
+        McpServer.onToolComplete = onToolComplete@{ toolName, isError, result ->
             Log.d(TAG, "MCP onToolComplete: tool=$toolName, isError=$isError, resultLen=${result.length}")
+            // Skip callbacks for unknown tools (e.g. "exec" which is handled by pi-embedded-runner,
+            // not AndroidTools). The ToolResult event will handle these instead.
+            if (result.startsWith("Unknown tool:")) return@onToolComplete
             viewModelScope.launch {
                 if (isError) {
                     // Update the most recent tool message with this name to show error
@@ -146,6 +184,7 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
      */
     fun configureApi(apiKey: String, baseUrl: String = BuildConfig.CLAUDE_API_BASE_URL, model: String = BuildConfig.CLAUDE_API_MODEL) {
         apiClient.configure(apiKey, baseUrl, model)
+        openclawClient.configure(apiKey, baseUrl, model)
         checkClaudeInstallation()
     }
 
@@ -154,26 +193,50 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
      * Respects user's claude_mode preference setting.
      */
     fun checkClaudeInstallation() {
+        // Update agent files from APK assets if app version changed
+        openclawClient.updateAgentIfNeeded()
+
         val cliAvailable = cliClient.isClaudeInstalled()
         val apiConfigured = apiClient.isConfigured()
-        
+        val openclawAvailable = openclawClient.isAgentInstalled()
+
         // Read user preference for claude mode
         val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(getApplication())
         val claudeMode = prefs.getString("claude_mode", "auto") ?: "auto"
-        
-        useCliMode = when (claudeMode) {
-            "cli" -> cliAvailable  // Force CLI if available
-            "api" -> false         // Force API mode
-            else -> cliAvailable && !apiConfigured  // Auto: prefer API when configured
+
+        agentMode = when (claudeMode) {
+            "cli" -> if (cliAvailable) AgentMode.CLI else AgentMode.API
+            "api" -> AgentMode.API
+            "openclaw" -> if (openclawAvailable) AgentMode.OPENCLAW else AgentMode.API
+            else -> when {
+                // Auto priority: OpenClaw > API > CLI
+                // OpenClaw needs both agent files AND API key (calls LLM directly)
+                openclawAvailable && apiConfigured -> AgentMode.OPENCLAW
+                apiConfigured -> AgentMode.API
+                cliAvailable -> AgentMode.CLI
+                else -> AgentMode.API
+            }
         }
-        
+
         _isClaudeInstalled.value = when (claudeMode) {
             "cli" -> cliAvailable
             "api" -> apiConfigured
-            else -> cliAvailable || apiConfigured
+            "openclaw" -> openclawAvailable
+            else -> cliAvailable || apiConfigured || openclawAvailable
         }
-        
-        Log.i(TAG, "Claude CLI: $cliAvailable, API: $apiConfigured, mode: $claudeMode, useCliMode: $useCliMode")
+
+        Log.i(TAG, "Claude CLI: $cliAvailable, API: $apiConfigured, OpenClaw: $openclawAvailable, mode: $claudeMode, agentMode: $agentMode")
+
+        // Auto-connect to gateway via ForegroundService if configured
+        val gatewayHost = prefs.getString("gateway_host", null)?.trim()
+        val gatewayPort = prefs.getString("gateway_port", "40445")?.trim()?.toIntOrNull() ?: 40445
+        val gatewayToken = prefs.getString("gateway_token", null)?.trim()
+        val gatewayEnabled = prefs.getBoolean("gateway_enabled", false)
+        val gatewayUseTls = prefs.getBoolean("gateway_use_tls", true)
+        if (gatewayEnabled && !gatewayHost.isNullOrBlank() && !GatewayForegroundService.isRunning()) {
+            Log.i(TAG, "Starting gateway service: $gatewayHost:$gatewayPort (tls=$gatewayUseTls)")
+            GatewayForegroundService.start(getApplication(), gatewayHost, gatewayPort, gatewayToken, gatewayUseTls)
+        }
     }
 
     /**
@@ -245,11 +308,11 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
 
         // Send result to Claude
         viewModelScope.launch {
-            if (useCliMode) {
-                cliClient.sendToolResponse(pending.toolId, result)
-            } else {
-                apiClient.sendToolResult(pending.toolId, pending.toolName, result)
+            when (agentMode) {
+                AgentMode.CLI -> cliClient.sendToolResponse(pending.toolId, result)
+                AgentMode.API -> apiClient.sendToolResult(pending.toolId, pending.toolName, result)
                     .collect { responseEvent -> handleEvent(responseEvent) }
+                AgentMode.OPENCLAW -> Log.w(TAG, "sendToolResponse not supported in OpenClaw mode")
             }
         }
     }
@@ -278,11 +341,11 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         // Send cancellation result to Claude
         viewModelScope.launch {
             val result = "User cancelled the question dialog without answering."
-            if (useCliMode) {
-                cliClient.sendToolResponse(pending.toolId, result)
-            } else {
-                apiClient.sendToolResult(pending.toolId, pending.toolName, result)
+            when (agentMode) {
+                AgentMode.CLI -> cliClient.sendToolResponse(pending.toolId, result)
+                AgentMode.API -> apiClient.sendToolResult(pending.toolId, pending.toolName, result)
                     .collect { responseEvent -> handleEvent(responseEvent) }
+                AgentMode.OPENCLAW -> Log.w(TAG, "sendToolResponse not supported in OpenClaw mode")
             }
         }
     }
@@ -295,13 +358,14 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         val images = _pendingImages.value.toList()
         if (content.isBlank() && images.isEmpty()) return
 
-        // Handle /compact command
-        if (content.trim().lowercase().startsWith("/compact")) {
-            compactConversation()
-            return
+        // Handle slash commands
+        val trimmed = content.trim()
+        if (trimmed.startsWith("/")) {
+            if (handleSlashCommand(trimmed)) return
         }
 
-        Log.i(TAG, "Sending message: ${content.take(50)}... with ${images.size} images (useCliMode=$useCliMode, isFromVoice=$isFromVoice)")
+        Log.i(TAG, "Sending message: ${content.take(50)}... with ${images.size} images (agentMode=$agentMode, isFromVoice=$isFromVoice)")
+        lastUserMessageContent = content
 
         // Add user message with images
         val userMessage = Message(
@@ -331,56 +395,110 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         sessionJob?.cancel()
         sessionJob = viewModelScope.launch {
             try {
+                // Prepend any pending remote-agent context(s) for CLI/OPENCLAW modes
+                val effectiveContent = if (pendingContextQueue.isNotEmpty() && agentMode != AgentMode.API) {
+                    val ctx = pendingContextQueue.joinToString("\n\n")
+                    pendingContextQueue.clear()
+                    "$ctx\n\n$content"
+                } else {
+                    content
+                }
+                // Memory sync: pull memory/ files from gateway before OPENCLAW run
+                if (agentMode == AgentMode.OPENCLAW) {
+                    pullMemoryFiles()
+                    snapshotMemoryFiles()
+                }
+
                 val hasImages = images.isNotEmpty()
 
                 if (hasImages) {
-                    // Images can use CLI with stream-json input, or API mode
+                    // Images can use CLI with stream-json input, OpenClaw, or API mode
                     val imageDataList = images.mapNotNull { image ->
                         val base64 = ImageUtils.processImageForApi(getApplication(), image.uri)
                         if (base64 != null) {
-                            Pair(base64, image.mimeType)
+                            // processImageForApi always compresses to JPEG, regardless of input format
+                            Pair(base64, "image/jpeg")
                         } else null
                     }
 
-                    if (useCliMode && cliClient.isClaudeInstalled()) {
-                        // CLI mode with stream-json input for images
-                        Log.d(TAG, "CLI mode: sending ${imageDataList.size} images via stream-json")
-                        val cliImages = imageDataList.map { (base64, mimeType) ->
-                            ClaudeCliClient.ImageData(base64, mimeType)
-                        }
-                        cliClient.chatWithImages(content, cliImages)
-                            .collect { event ->
-                                handleEvent(event)
+                    when (agentMode) {
+                        AgentMode.OPENCLAW -> {
+                            // Ensure agent dependencies are installed before first use
+                            if (!openclawClient.isAgentInstalled()) {
+                                Log.i(TAG, "OpenClaw agent dependencies not ready, installing...")
+                                val installed = openclawClient.ensureDependencies()
+                                if (!installed) {
+                                    _error.value = "Failed to install OpenClaw agent dependencies"
+                                    _isProcessing.value = false
+                                    _messages.value = _messages.value.filter { it.id != streamingMessageId }
+                                    return@launch
+                                }
                             }
-                    } else if (apiClient.isConfigured()) {
-                        // API mode for images
-                        Log.d(TAG, "API mode: sending ${imageDataList.size} images")
-                        val apiImages = imageDataList.map { (base64, mimeType) ->
-                            ClaudeApiClient.ImageContent(base64, mimeType)
-                        }
-                        apiClient.chat(content, apiImages)
-                            .collect { event ->
-                                handleEvent(event)
+                            Log.d(TAG, "OpenClaw mode: sending ${imageDataList.size} images")
+                            val cliImages = imageDataList.map { (base64, mimeType) ->
+                                ClaudeCliClient.ImageData(base64, mimeType)
                             }
-                    } else {
-                        // Neither CLI nor API available for images
-                        _error.value = "Images require Claude CLI or API key to be configured"
-                        _isProcessing.value = false
-                        _messages.value = _messages.value.filter { it.id != streamingMessageId }
-                        return@launch
+                            openclawClient.chat(effectiveContent, cliImages)
+                                .collect { event -> handleEvent(event) }
+                        }
+                        AgentMode.CLI -> {
+                            if (cliClient.isClaudeInstalled()) {
+                                Log.d(TAG, "CLI mode: sending ${imageDataList.size} images via stream-json")
+                                val cliImages = imageDataList.map { (base64, mimeType) ->
+                                    ClaudeCliClient.ImageData(base64, mimeType)
+                                }
+                                cliClient.chatWithImages(effectiveContent, cliImages)
+                                    .collect { event -> handleEvent(event) }
+                            } else {
+                                _error.value = "Claude CLI not available"
+                                _isProcessing.value = false
+                                _messages.value = _messages.value.filter { it.id != streamingMessageId }
+                                return@launch
+                            }
+                        }
+                        AgentMode.API -> {
+                            if (apiClient.isConfigured()) {
+                                Log.d(TAG, "API mode: sending ${imageDataList.size} images")
+                                val apiImages = imageDataList.map { (base64, mimeType) ->
+                                    ClaudeApiClient.ImageContent(base64, mimeType)
+                                }
+                                apiClient.chat(effectiveContent, apiImages)
+                                    .collect { event -> handleEvent(event) }
+                            } else {
+                                _error.value = "API key not configured"
+                                _isProcessing.value = false
+                                _messages.value = _messages.value.filter { it.id != streamingMessageId }
+                                return@launch
+                            }
+                        }
                     }
-                } else if (useCliMode) {
-                    // CLI mode for text-only messages
-                    cliClient.chatStreaming(content, emptyList())
-                        .collect { event ->
-                            handleEvent(event)
-                        }
                 } else {
-                    // API mode for text-only messages
-                    apiClient.chat(content, emptyList())
-                        .collect { event ->
-                            handleEvent(event)
+                    // Text-only messages
+                    when (agentMode) {
+                        AgentMode.OPENCLAW -> {
+                            // Ensure agent dependencies are installed before first use
+                            if (!openclawClient.isAgentInstalled()) {
+                                Log.i(TAG, "OpenClaw agent dependencies not ready, installing...")
+                                val installed = openclawClient.ensureDependencies()
+                                if (!installed) {
+                                    _error.value = "Failed to install OpenClaw agent dependencies"
+                                    _isProcessing.value = false
+                                    _messages.value = _messages.value.filter { it.id != streamingMessageId }
+                                    return@launch
+                                }
+                            }
+                            openclawClient.chat(effectiveContent)
+                                .collect { event -> handleEvent(event) }
                         }
+                        AgentMode.CLI -> {
+                            cliClient.chatStreaming(effectiveContent, emptyList())
+                                .collect { event -> handleEvent(event) }
+                        }
+                        AgentMode.API -> {
+                            apiClient.chat(effectiveContent, emptyList())
+                                .collect { event -> handleEvent(event) }
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Session error", e)
@@ -521,7 +639,9 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                         msg.copy(
                             isStreaming = false,
                             isError = event.isError,
-                            toolOutput = event.content
+                            toolOutput = event.content,
+                            // Use inputHint to fill in the actual input (e.g. the command run)
+                            toolInput = if (!event.inputHint.isNullOrEmpty() && (msg.toolInput.isNullOrEmpty() || msg.toolInput == "{}")) event.inputHint else msg.toolInput
                         )
                     } else {
                         msg
@@ -539,7 +659,8 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                             msg.copy(
                                 isStreaming = false,
                                 isError = event.isError,
-                                toolOutput = event.content
+                                toolOutput = event.content,
+                                toolInput = if (!event.inputHint.isNullOrEmpty() && (msg.toolInput.isNullOrEmpty() || msg.toolInput == "{}")) event.inputHint else msg.toolInput
                             )
                         } else {
                             msg
@@ -581,6 +702,26 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             is ClaudeEvent.SessionEnded -> {
                 Log.i(TAG, "Session ended with code: ${event.exitCode}")
                 _isProcessing.value = false
+
+                // Collect assistant response content
+                val assistantContent = _currentResponse.value.ifEmpty {
+                    _messages.value.lastOrNull { it.role == MessageRole.ASSISTANT && !it.isStreaming }?.content ?: ""
+                }
+
+                // Notify user if app is backgrounded
+                if (!ScreenAutomationOverlay.isAppInForeground && assistantContent.isNotEmpty()) {
+                    showDirectResponseNotification(assistantContent)
+                }
+
+                // Do NOT sync local conversations to the gateway.
+                // CLI/API/OPENCLAW modes all run locally; syncing to gateway would
+                // inject local messages into the shared openclaw channel (wrong).
+                // Remote interactions go through RemoteAgentViewModel.sendChatMessage().
+
+                // Memory sync: push changed memory/ files to gateway
+                if (agentMode == AgentMode.OPENCLAW) {
+                    viewModelScope.launch { pushChangedMemoryFiles() }
+                }
             }
         }
     }
@@ -701,7 +842,21 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             toolUseId = event.id,  // Store Claude's tool_use ID for matching tool_result
             isStreaming = true
         )
-        _messages.value = _messages.value + toolMessage
+        // Insert tool BEFORE the streaming assistant placeholder so tools appear
+        // before the text response in chronological order
+        val streamMsgId = streamingMessageId
+        if (streamMsgId != null) {
+            val msgs = _messages.value.toMutableList()
+            val streamIdx = msgs.indexOfFirst { it.id == streamMsgId }
+            if (streamIdx >= 0) {
+                msgs.add(streamIdx, toolMessage)
+                _messages.value = msgs
+            } else {
+                _messages.value = _messages.value + toolMessage
+            }
+        } else {
+            _messages.value = _messages.value + toolMessage
+        }
 
         // Set current tool for overlay display
         _currentTool.value = event.name
@@ -722,11 +877,11 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 // Send error result
                 viewModelScope.launch {
                     val errorResult = "Error parsing questions: ${e.message}"
-                    if (useCliMode) {
-                        cliClient.sendToolResponse(event.id, errorResult)
-                    } else {
-                        apiClient.sendToolResult(event.id, event.name, errorResult)
+                    when (agentMode) {
+                        AgentMode.CLI -> cliClient.sendToolResponse(event.id, errorResult)
+                        AgentMode.API -> apiClient.sendToolResult(event.id, event.name, errorResult)
                             .collect { responseEvent -> handleEvent(responseEvent) }
+                        AgentMode.OPENCLAW -> Log.w(TAG, "sendToolResponse not supported in OpenClaw mode")
                     }
                 }
             }
@@ -740,11 +895,11 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
 
-        // In CLI mode, ALL tools are handled by MCP server - don't execute locally!
-        // CLI uses mcp-http-bridge.js which routes all tool calls to McpServer.
+        // In CLI/OpenClaw mode, ALL tools are handled externally - don't execute locally!
+        // CLI uses mcp-http-bridge.js, OpenClaw uses android-tools-bridge.mjs.
         // Executing here would cause DUPLICATE execution.
-        if (useCliMode) {
-            Log.d(TAG, "CLI mode: tool '${event.name}' handled by MCP server, skipping local execution")
+        if (agentMode != AgentMode.API) {
+            Log.d(TAG, "${agentMode.name} mode: tool '${event.name}' handled externally, skipping local execution")
             return
         }
 
@@ -785,14 +940,11 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
             _currentTool.value = null
 
             // Send tool result back to Claude
-            if (useCliMode) {
-                cliClient.sendToolResponse(event.id, result)
-            } else {
-                // Use API client for HTTP mode
-                apiClient.sendToolResult(event.id, event.name, result)
-                    .collect { responseEvent ->
-                        handleEvent(responseEvent)
-                    }
+            when (agentMode) {
+                AgentMode.CLI -> cliClient.sendToolResponse(event.id, result)
+                AgentMode.API -> apiClient.sendToolResult(event.id, event.name, result)
+                    .collect { responseEvent -> handleEvent(responseEvent) }
+                AgentMode.OPENCLAW -> {} // Tools handled internally by agent
             }
         }
     }
@@ -1024,8 +1176,10 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
     fun cancelRequest() {
         Log.i(TAG, "Cancelling request")
         sessionJob?.cancel()
-        if (useCliMode) {
-            cliClient.cancelCurrentRequest()
+        when (agentMode) {
+            AgentMode.CLI -> cliClient.cancelCurrentRequest()
+            AgentMode.OPENCLAW -> openclawClient.cancelCurrentRequest()
+            AgentMode.API -> {} // API cancellation handled by sessionJob?.cancel()
         }
 
         // Mark the streaming message as interrupted
@@ -1123,6 +1277,33 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
+     * Inject a remote agent session result as a TOOL message into the local conversation.
+     * Called when the Remote Agent View is closed. If no local conversation exists,
+     * this becomes the first message (implicitly starting a new conversation).
+     */
+    fun injectRemoteResult(agentName: String, userMessages: String, agentMessages: String) {
+        val toolMsg = Message(
+            role = MessageRole.TOOL,
+            toolName = agentName,
+            toolInput = userMessages.ifEmpty { null },
+            toolOutput = agentMessages.ifEmpty { null },
+            content = userMessages
+        )
+        _messages.value = _messages.value + toolMsg
+        // Inject into conversation history so the local agent can see the result
+        if (agentMode == AgentMode.API) {
+            viewModelScope.launch {
+                apiClient.injectToolContext(agentName, userMessages, agentMessages)
+                Log.i(TAG, "Injected remote result into API history: $agentName")
+            }
+        } else {
+            // For CLI/OPENCLAW: prepend context to the next user message
+            pendingContextQueue.addLast("<remote_agent_result>\nEntry: $userMessages\n$agentMessages\n</remote_agent_result>")
+            Log.i(TAG, "Queued pending context for next message: $agentName (queue size=${pendingContextQueue.size})")
+        }
+    }
+
+    /**
      * Clear all messages.
      */
     fun clearMessages() {
@@ -1133,13 +1314,91 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
+     * Handle slash commands. Returns true if command was recognized and handled.
+     */
+    private fun handleSlashCommand(command: String): Boolean {
+        val parts = command.split("\\s+".toRegex(), 2)
+        return when (parts[0].lowercase()) {
+            "/compact" -> {
+                compactConversation()
+                true
+            }
+            "/list-remotes" -> {
+                val hostname = parts.getOrNull(1)?.trim()?.takeIf { it.isNotEmpty() }
+                _slashCommandEvent.tryEmit(SlashCommandEvent.ListRemotes(hostname))
+                true
+            }
+            "/sync-profile" -> {
+                viewModelScope.launch { syncProfileFromGateway() }
+                true
+            }
+            "/set-gateway" -> {
+                val args = parts.getOrNull(1)?.trim() ?: ""
+                handleSetGateway(args)
+                true
+            }
+            else -> false
+        }
+    }
+
+    /**
+     * Handle /set-gateway host:port [token]
+     * Sets gateway connection params and restarts the service.
+     */
+    private fun handleSetGateway(args: String) {
+        if (args.isEmpty()) {
+            appendMessage(MessageRole.SYSTEM,"/set-gateway <host:port> [token]\nExample: /set-gateway 10.0.0.1:40445 my-token")
+            return
+        }
+        val argParts = args.split("\\s+".toRegex())
+        val hostPort = argParts[0]
+        val token = argParts.getOrNull(1)
+
+        val colonIdx = hostPort.lastIndexOf(':')
+        val host: String
+        val port: String
+        if (colonIdx > 0) {
+            host = hostPort.substring(0, colonIdx)
+            port = hostPort.substring(colonIdx + 1)
+        } else {
+            host = hostPort
+            port = "40445"
+        }
+
+        // Validate port
+        val portInt = port.toIntOrNull()
+        if (portInt == null || portInt < 1 || portInt > 65535) {
+            appendMessage(MessageRole.SYSTEM,"Invalid port: $port")
+            return
+        }
+
+        // Save to default SharedPreferences (not the memory_sync prefs)
+        val defaultPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(getApplication())
+        val editor = defaultPrefs.edit()
+            .putBoolean("gateway_enabled", true)
+            .putString("gateway_host", host)
+            .putString("gateway_port", port)
+        if (token != null) editor.putString("gateway_token", token)
+        editor.apply()
+
+        // Restart gateway service (read TLS setting from prefs)
+        val useTls = defaultPrefs.getBoolean("gateway_use_tls", false)
+        val context = getApplication<Application>()
+        com.anthroid.gateway.GatewayForegroundService.stop(context)
+        com.anthroid.gateway.GatewayForegroundService.start(context, host, portInt, token, useTls = useTls)
+
+        val masked = if (token != null && token.length > 8) "${token.take(4)}****${token.takeLast(4)}" else token ?: "(auto-auth)"
+        appendMessage(MessageRole.SYSTEM,"Gateway set: $host:$port, token=$masked — connecting...")
+    }
+
+    /**
      * Compact conversation history by summarizing it.
      * Only works in API mode.
      */
     fun compactConversation() {
-        if (useCliMode) {
-            Log.w(TAG, "Compact not supported in CLI mode")
-            _error.value = "Compact not supported in CLI mode. Use API mode."
+        if (agentMode != AgentMode.API) {
+            Log.w(TAG, "Compact not supported in ${agentMode.name} mode")
+            _error.value = "Compact only supported in API mode."
             return
         }
 
@@ -1239,10 +1498,210 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /**
+     * Show a notification for direct Claude API response when app is backgrounded.
+     */
+    private fun showDirectResponseNotification(text: String) {
+        val context = getApplication<Application>()
+
+        // Ensure notification channel exists (idempotent)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                GatewayNotificationHelper.CHANNEL_ID,
+                "Messages",
+                NotificationManager.IMPORTANCE_HIGH
+            )
+            context.getSystemService(NotificationManager::class.java)
+                .createNotificationChannel(channel)
+        }
+
+        val intent = Intent(context, MainPagerActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context, DIRECT_NOTIFICATION_ID, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val preview = text.take(500)
+        val notification = NotificationCompat.Builder(context, GatewayNotificationHelper.CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_service_notification)
+            .setContentTitle("Claude")
+            .setContentText(preview)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(preview))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .build()
+
+        try {
+            NotificationManagerCompat.from(context).notify(DIRECT_NOTIFICATION_ID, notification)
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Notification permission not granted: ${e.message}")
+        }
+    }
+
+    // ── Profile sync (manual /sync-profile command) ──────────────────────
+
+    /**
+     * Sync all 5 workspace profile files from gateway to local workspace.
+     * Triggered by /sync-profile slash command.
+     */
+    private suspend fun syncProfileFromGateway() {
+        val manager = gatewayManager
+        if (manager == null) {
+            appendMessage(MessageRole.SYSTEM, "Gateway not connected. Cannot sync profile.")
+            return
+        }
+        try {
+            val profile = manager.getAgentProfile() ?: run {
+                appendMessage(MessageRole.SYSTEM, "Failed to fetch profile from gateway.")
+                return
+            }
+            val workspaceDir = File(openclawClient.workspacePath)
+            workspaceDir.mkdirs()
+
+            var synced = 0
+            val writeIfPresent = { name: String, content: String? ->
+                if (content != null && content.isNotBlank()) {
+                    File(workspaceDir, name).writeText(content)
+                    synced++
+                }
+            }
+
+            writeIfPresent("AGENTS.md", profile.agentsContent)
+            writeIfPresent("MEMORY.md", profile.memoryContent)
+            writeIfPresent("USER.md", profile.userContent)
+            writeIfPresent("IDENTITY.md", profile.identityContent)
+            writeIfPresent("SOUL.md", profile.soulContent)
+
+            val msg = "Profile synced from gateway agent '${profile.name ?: profile.agentId}': $synced files updated."
+            Log.i(TAG, msg)
+            appendMessage(MessageRole.SYSTEM, msg)
+        } catch (e: Exception) {
+            Log.w(TAG, "syncProfileFromGateway failed: ${e.message}")
+            appendMessage(MessageRole.SYSTEM, "Profile sync failed: ${e.message}")
+        }
+    }
+
+    private fun appendMessage(role: MessageRole, text: String) {
+        val msg = Message(role = role, content = text)
+        _messages.value = _messages.value + msg
+    }
+
+    // ── Incremental memory/ sync ────────────────────────────────────────
+
+    private val prefs get() = getApplication<android.app.Application>()
+        .getSharedPreferences("memory_sync", android.content.Context.MODE_PRIVATE)
+
+    private val memorySyncMutex = Mutex()
+    private var memoryFilesHashBefore: Map<String, String> = emptyMap()
+    private var lastPushSucceeded: Boolean = true
+
+    /** Pull memory/ files from gateway since lastSyncTime. */
+    private suspend fun pullMemoryFiles() = memorySyncMutex.withLock {
+        val manager = gatewayManager ?: return@withLock
+        val lastSync = prefs.getLong("lastMemorySyncTime", 0)
+        try {
+            // Skip pull if previous push failed (local has unpushed changes)
+            if (!lastPushSucceeded) {
+                Log.w(TAG, "Skipping pull: previous push failed, local may have unpushed changes")
+                return@withLock
+            }
+
+            val result = manager.getMemoryPatch(if (lastSync > 0) lastSync else null) ?: return@withLock
+            val memoryDir = File(openclawClient.workspacePath, "memory")
+            memoryDir.mkdirs()
+
+            if (result.mode == "full" && result.files != null) {
+                var count = 0
+                for ((name, content) in result.files) {
+                    // Path traversal guard: reject names with path separators or ".."
+                    if (!name.endsWith(".md") || content.isBlank()) continue
+                    if (name.contains('/') || name.contains('\\') || name.contains("..")) continue
+                    File(memoryDir, name).writeText(content)
+                    count++
+                }
+                // Delete local files not present in remote (mirror sync)
+                val remoteNames = result.files.keys.filter { it.endsWith(".md") }.toSet()
+                memoryDir.listFiles()?.filter { it.name.endsWith(".md") && it.name !in remoteNames }
+                    ?.forEach { orphan ->
+                        orphan.delete()
+                        Log.i(TAG, "Deleted local orphan memory file: ${orphan.name}")
+                    }
+                if (count > 0) Log.i(TAG, "Pulled $count memory files from gateway (full sync)")
+                prefs.edit().putLong("lastMemorySyncTime", result.latestTimestamp).apply()
+            } else if (result.mode == "patch") {
+                // Patch mode not supported on Android (no git binary) — do NOT advance timestamp
+                // so next sync will re-request and hopefully get full mode
+                Log.w(TAG, "Received patch mode from gateway but Android doesn't support it; skipping")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "pullMemoryFiles failed: ${e.message}")
+        }
+    }
+
+    /** Snapshot memory/ file SHA-256 hashes before agent run. */
+    private fun snapshotMemoryFiles() {
+        val memoryDir = File(openclawClient.workspacePath, "memory")
+        memoryFilesHashBefore = if (memoryDir.exists()) {
+            memoryDir.listFiles()?.filter { it.name.endsWith(".md") }
+                ?.associate { it.name to sha256(it.readText()) } ?: emptyMap()
+        } else emptyMap()
+    }
+
+    private fun sha256(text: String): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        return digest.digest(text.toByteArray()).joinToString("") { "%02x".format(it) }
+    }
+
+    /** Push changed memory/ files to gateway after agent run. */
+    private suspend fun pushChangedMemoryFiles() = memorySyncMutex.withLock {
+        val manager = gatewayManager ?: return@withLock
+        val memoryDir = File(openclawClient.workspacePath, "memory")
+        if (!memoryDir.exists()) return@withLock
+
+        // Capture snapshot reference locally to avoid race with next run
+        val snapshot = memoryFilesHashBefore
+        val currentFiles = memoryDir.listFiles()?.filter { it.name.endsWith(".md") } ?: return@withLock
+        val changedFiles = mutableMapOf<String, String>()
+
+        for (file in currentFiles) {
+            val content = file.readText()
+            val currentHash = sha256(content)
+            val beforeHash = snapshot[file.name]
+            if (beforeHash == null || currentHash != beforeHash) {
+                changedFiles[file.name] = content
+            }
+        }
+
+        if (changedFiles.isEmpty()) {
+            lastPushSucceeded = true
+            return@withLock
+        }
+
+        try {
+            val result = manager.applyMemoryPatch(changedFiles)
+            if (result != null) {
+                // Use server-returned timestamp instead of local clock
+                prefs.edit().putLong("lastMemorySyncTime", result).apply()
+                Log.i(TAG, "Pushed ${changedFiles.size} changed memory files to gateway")
+                lastPushSucceeded = true
+            } else {
+                Log.w(TAG, "Gateway rejected memory patch — may need manual conflict resolution")
+                lastPushSucceeded = false
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "pushChangedMemoryFiles failed: ${e.message}")
+            lastPushSucceeded = false
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         releaseWakeLock()
         cliClient.close()
+        openclawClient.close()
     }
 }
 

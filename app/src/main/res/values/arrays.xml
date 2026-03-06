@@ -13,11 +13,13 @@
         <item>Auto</item>
         <item>CLI Mode</item>
         <item>API Mode (Experimental)</item>
+        <item>OpenClaw Agent</item>
     </string-array>
     <string-array name="claude_mode_values">
         <item>auto</item>
         <item>cli</item>
         <item>api</item>
+        <item>openclaw</item>
     </string-array>
 
     <string-array name="proxy_type_entries">

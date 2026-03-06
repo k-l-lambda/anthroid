@@ -18,7 +18,10 @@ class ConversationManager(private val context: Context) {
     companion object {
         private const val TAG = "ConversationManager"
         private const val CLAUDE_HOME = "/data/data/com.anthroid/files/home/.claude"
+        // CLI/API mode sessions (written by claude binary)
         private const val PROJECTS_DIR = "$CLAUDE_HOME/projects/-data-data-com-anthroid-files"
+        // OpenClaw local agent sessions (written by run.mjs / pi-embedded-runner)
+        private const val OPENCLAW_SESSIONS_DIR = "/data/data/com.anthroid/files/home/openclaw-agent-local/.sessions"
         private const val PREFS_NAME = "conversation_titles"
     }
 
@@ -55,27 +58,36 @@ class ConversationManager(private val context: Context) {
      */
     suspend fun getConversations(): List<Conversation> = withContext(Dispatchers.IO) {
         val conversations = mutableListOf<Conversation>()
-        val projectsDir = File(PROJECTS_DIR)
 
-        if (!projectsDir.exists()) {
-            Log.w(TAG, "Projects directory does not exist: $PROJECTS_DIR")
-            return@withContext emptyList()
+        // Scan CLI/API sessions (claude binary → ~/.claude/projects/...)
+        val projectsDir = File(PROJECTS_DIR)
+        if (projectsDir.exists()) {
+            val jsonlFiles = projectsDir.listFiles { file ->
+                file.extension == "jsonl" && !file.name.startsWith("agent-")
+            } ?: emptyArray()
+            Log.i(TAG, "CLI sessions: ${jsonlFiles.size} files in $PROJECTS_DIR")
+            for (file in jsonlFiles) {
+                try {
+                    parseConversationFile(file)?.takeIf { it.messageCount > 0 }?.let { conversations.add(it) }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to parse CLI session ${file.name}", e)
+                }
+            }
         }
 
-        val jsonlFiles = projectsDir.listFiles { file ->
-            file.extension == "jsonl" && !file.name.startsWith("agent-")
-        } ?: return@withContext emptyList()
-
-        Log.i(TAG, "Found ${jsonlFiles.size} conversation files")
-
-        for (file in jsonlFiles) {
-            try {
-                val conversation = parseConversationFile(file)
-                if (conversation != null && conversation.messageCount > 0) {
-                    conversations.add(conversation)
+        // Scan OpenClaw local agent sessions (run.mjs → .sessions/)
+        val openclawDir = File(OPENCLAW_SESSIONS_DIR)
+        if (openclawDir.exists()) {
+            val jsonlFiles = openclawDir.listFiles { file ->
+                file.extension == "jsonl" && file.name.startsWith("session-")
+            } ?: emptyArray()
+            Log.i(TAG, "OpenClaw sessions: ${jsonlFiles.size} files in $OPENCLAW_SESSIONS_DIR")
+            for (file in jsonlFiles) {
+                try {
+                    parseConversationFile(file)?.takeIf { it.messageCount > 0 }?.let { conversations.add(it) }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to parse OpenClaw session ${file.name}", e)
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to parse ${file.name}", e)
             }
         }
 
@@ -103,7 +115,14 @@ class ConversationManager(private val context: Context) {
                     val json = JSONObject(line)
                     val type = json.optString("type", "")
 
-                    if (type != "user" && type != "assistant") continue
+                    // Claude CLI format: type="user"/"assistant"
+                    // pi-embedded-runner format: type="message" with message.role="user"/"assistant"
+                    val effectiveRole = when (type) {
+                        "user", "assistant" -> type
+                        "message" -> json.optJSONObject("message")?.optString("role", "") ?: ""
+                        else -> ""
+                    }
+                    if (effectiveRole != "user" && effectiveRole != "assistant") continue
 
                     messageCount++
 
@@ -118,7 +137,7 @@ class ConversationManager(private val context: Context) {
                         }
                     }
 
-                    if (type == "user") {
+                    if (effectiveRole == "user") {
                         val message = json.optJSONObject("message")
                         val content = extractMessageContent(message)
                         if (content.isNotEmpty()) {
@@ -205,9 +224,11 @@ class ConversationManager(private val context: Context) {
      */
     suspend fun loadConversation(sessionId: String): List<ConversationMessage> = withContext(Dispatchers.IO) {
         val messages = mutableListOf<ConversationMessage>()
-        val file = File(PROJECTS_DIR, "$sessionId.jsonl")
+        // Check both CLI/API sessions dir and OpenClaw sessions dir
+        val file = File(PROJECTS_DIR, "$sessionId.jsonl").takeIf { it.exists() }
+            ?: File(OPENCLAW_SESSIONS_DIR, "$sessionId.jsonl").takeIf { it.exists() }
 
-        if (!file.exists()) {
+        if (file == null) {
             Log.w(TAG, "Conversation file not found: $sessionId")
             return@withContext emptyList()
         }
@@ -271,10 +292,16 @@ class ConversationManager(private val context: Context) {
                 try {
                     val json = JSONObject(line)
                     val type = json.optString("type", "")
+                    // pi-embedded-runner uses type="message" with message.role
+                    val effectiveType = when (type) {
+                        "user", "assistant" -> type
+                        "message" -> json.optJSONObject("message")?.optString("role", "") ?: ""
+                        else -> ""
+                    }
 
-                    if (type != "user" && type != "assistant") continue
+                    if (effectiveType != "user" && effectiveType != "assistant") continue
 
-                    val uuid = json.optString("uuid", "")
+                    val uuid = json.optString("uuid", json.optString("id", ""))
                     val timestampStr = json.optString("timestamp", "")
                     val timestamp = parseIsoTimestamp(timestampStr)
 
@@ -312,7 +339,7 @@ class ConversationManager(private val context: Context) {
                     if (content.isNotEmpty() || toolName != null) {
                         messages.add(ConversationMessage(
                             uuid = uuid,
-                            type = type,
+                            type = effectiveType,
                             content = content,
                             timestamp = timestamp,
                             toolName = toolName,

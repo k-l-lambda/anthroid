@@ -29,6 +29,7 @@ import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
@@ -319,6 +320,9 @@ final class TermuxInstaller {
                     // Install Claude Code CLI from assets
                     installClaudeCode(activity);
 
+                    // Install OpenClaw agent from assets
+                    installOpenClawAgent(activity);
+
                     // Create first-boot script to install default packages (openssh, etc.)
                     createFirstBootScript();
 
@@ -551,6 +555,98 @@ final class TermuxInstaller {
             Logger.logInfo(LOG_TAG, "Installed Claude Code CLI to " + claudeCodeDir);
         } catch (Exception e) {
             Logger.logWarn(LOG_TAG, "Failed to install Claude Code CLI: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Installs OpenClaw agent from bundled assets to $HOME/openclaw-agent-local/.
+     * Copies core files (run.mjs, agent/, config.json, etc.) and runs npm install
+     * if node_modules doesn't exist yet.
+     */
+    public static void installOpenClawAgent(Context context) {
+        try {
+            String homeDir = TermuxConstants.TERMUX_HOME_DIR_PATH;
+            File agentDir = new File(homeDir, "openclaw-agent-local");
+
+            // Create directory
+            if (!agentDir.exists()) {
+                agentDir.mkdirs();
+            }
+
+            // Copy files from assets recursively
+            AssetManager assetManager = context.getAssets();
+            copyAssetDir(assetManager, "openclaw-agent-local", agentDir.getAbsolutePath());
+
+            // Make run.mjs and bridge scripts executable
+            String[] executableFiles = { "run.mjs", "android-tools-bridge.mjs", "create-stubs.mjs" };
+            for (String name : executableFiles) {
+                File f = new File(agentDir, name);
+                if (f.exists()) {
+                    Os.chmod(f.getAbsolutePath(), 0755);
+                }
+            }
+
+            // Create npm install script that runs on first agent launch
+            File nodeModulesDir = new File(agentDir, "node_modules");
+            if (!nodeModulesDir.exists()) {
+                File installScript = new File(agentDir, ".install_deps.sh");
+                StringBuilder sb = new StringBuilder();
+                sb.append("#!/data/data/com.anthroid/files/usr/bin/bash\n");
+                sb.append("# Auto-generated: install OpenClaw agent dependencies\n");
+                sb.append("export PREFIX=/data/data/com.anthroid/files/usr\n");
+                sb.append("export PATH=$PREFIX/bin:$PATH\n");
+                sb.append("export HOME=/data/data/com.anthroid/files/home\n");
+                sb.append("cd \"$HOME/openclaw-agent-local\"\n");
+                sb.append("echo 'Installing OpenClaw agent dependencies...'\n");
+                sb.append("npm install --production --ignore-scripts 2>&1\n");
+                sb.append("echo 'Creating stub packages...'\n");
+                sb.append("node create-stubs.mjs 2>&1\n");
+                sb.append("echo 'OpenClaw agent dependencies installed.'\n");
+                sb.append("rm -f \"$0\"\n");  // Self-delete after success
+                try (FileOutputStream fos = new FileOutputStream(installScript)) {
+                    fos.write(sb.toString().getBytes("UTF-8"));
+                }
+                Os.chmod(installScript.getAbsolutePath(), 0700);
+                Logger.logInfo(LOG_TAG, "Created OpenClaw agent dependency install script");
+            }
+
+            Logger.logInfo(LOG_TAG, "Installed OpenClaw agent to " + agentDir.getAbsolutePath());
+        } catch (Exception e) {
+            Logger.logWarn(LOG_TAG, "Failed to install OpenClaw agent: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Recursively copy an asset directory to a target path on the filesystem.
+     */
+    private static void copyAssetDir(AssetManager assetManager, String assetPath, String targetPath) throws IOException {
+        String[] children = assetManager.list(assetPath);
+        if (children == null || children.length == 0) {
+            // It's a file — copy it
+            copyAssetFile(assetManager, assetPath, targetPath);
+        } else {
+            // It's a directory — recurse
+            File targetDir = new File(targetPath);
+            if (!targetDir.exists()) {
+                targetDir.mkdirs();
+            }
+            for (String child : children) {
+                copyAssetDir(assetManager, assetPath + "/" + child, targetPath + "/" + child);
+            }
+        }
+    }
+
+    /**
+     * Copy a single asset file to a target path.
+     */
+    private static void copyAssetFile(AssetManager assetManager, String assetPath, String targetPath) throws IOException {
+        try (java.io.InputStream is = assetManager.open(assetPath);
+             FileOutputStream fos = new FileOutputStream(targetPath)) {
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = is.read(buffer)) != -1) {
+                fos.write(buffer, 0, read);
+            }
         }
     }
 

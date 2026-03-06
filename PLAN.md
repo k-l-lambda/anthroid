@@ -557,13 +557,23 @@ app/src/main/java/com/anthroid/
 │   ├── ClaudeFragment.kt        # Chat UI fragment
 │   └── TerminalFragment.kt      # Terminal launcher fragment
 ├── claude/
-│   ├── ClaudeViewModel.kt       # State management
+│   ├── ClaudeViewModel.kt       # State management (AgentMode: CLI/API/OPENCLAW)
 │   ├── ClaudeApiClient.kt       # HTTP API client
 │   ├── ClaudeCliClient.kt       # CLI wrapper
+│   ├── OpenClawLocalClient.kt   # OpenClaw agent subprocess wrapper
 │   └── ui/
 │       └── MessageAdapter.kt    # Message list
 └── shared/
     └── ... (existing)
+
+assets/openclaw-agent-local/
+├── run.mjs                      # Entry point (stream-json stdio adapter)
+├── android-tools-bridge.mjs     # MCP :8765 → agent tools bridge
+├── config.json                  # Model config (ppinfra proxy)
+├── package.json                 # Node.js dependencies
+├── agent/
+│   └── run-BDwHy0wP.mjs        # Compiled pi-embedded-runner bundle
+└── node_modules/                # ~60-80MB (installed on device)
 ```
 
 ---
@@ -590,7 +600,12 @@ app/src/main/java/com/anthroid/
 | M13 | ⏸️ Deferred | TodoWrite UI (low priority for mobile) |
 | M14 | ✅ Done | Edit session title + bulk delete |
 | M15 | ✅ Done | Quick send candidates |
-| M16 | 🚧 In Progress | OpenClaw agent integration (16.1-16.6 done, 16.7-16.8 planned) |
+| M16 | ✅ Done | OpenClaw agent runtime (Phase 1+2+3) |
+| M16b | ✅ Done | OpenClaw tool bar UI fix |
+| M17 | ✅ Done | APK asset bundling + version-based auto-extraction |
+| M18 | ✅ Done | Gateway connection (session sync, memory, notifications) |
+| M19 | ✅ Done | OpenClaw auto-setup (auto mode, --ignore-scripts, stubs) |
+| M20 | ✅ Done | Gateway message notifications (ForegroundService, per-session grouping) |
 
 ---
 
@@ -952,7 +967,9 @@ Frequently used short messages as quick send buttons for faster interaction.
 
 ### Phase 16: OpenClaw Agent Integration (In Progress)
 
-Replace Claude CLI pipe mode with OpenClaw's `pi-embedded-runner` agent system for sophisticated tool-use, model selection, and optional gateway connectivity.
+Replace Claude CLI agent with OpenClaw's `pi-embedded-runner` for sophisticated tool-use, model selection, and context management.
+
+**Key principle**: Anthroid works independently without OpenClaw gateway. Gateway features (memory sync, session sync, notifications) are optional add-ons.
 
 #### Architecture
 
@@ -972,130 +989,383 @@ Replace Claude CLI pipe mode with OpenClaw's `pi-embedded-runner` agent system f
 │  │  Termux / Node.js Layer                    │  │
 │  │  ├─ openclaw-agent-local/                  │  │
 │  │  │   ├─ run.mjs (entry point)             │  │
-│  │  │   ├─ agent/ (pi-embedded-runner build)  │  │
+│  │  │   ├─ pi-embedded-runner (compiled JS)   │  │
 │  │  │   ├─ android-tools-bridge.mjs           │  │
 │  │  │   ├─ config.json (models, API keys)     │  │
-│  │  │   └─ node_modules/ (~141MB)             │  │
+│  │  │   └─ node_modules/ (~60-80MB)           │  │
 │  │  └─ [optional] memory/ (node:sqlite)       │  │
-│  └──────────────┬─────────────────────────────┘  │
-│                 │ [optional WebSocket]             │
-│  ┌──────────────┴─────────────────────────────┐  │
-│  │  Gateway Client (optional add-on)          │  │
-│  │  ├─ Session sync → "Anthroid" session      │  │
-│  │  ├─ Memory sync → remote gateway           │  │
-│  │  └─ Notification receiving → Android notif │  │
 │  └────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────┘
 ```
 
-#### Sub-phase 16.1: Agent Runtime Extraction (Complete)
+#### Sub-phase 16.1: Extract & Bundle Agent Runtime ✅
 
-Extracted minimal OpenClaw agent from `pi-embedded-runner`, compiled to JS, bundled as `openclaw-agent-local/`.
-
-- Pre-compiled TypeScript to JS on build machine
-- Entry point: `run.mjs` — subprocess with stream-json stdio
-- Dependencies: ~141MB node_modules (installed via npm on first launch)
-
-**Commit:** `424ff41 feat: add OpenClaw agent runtime with Android tools bridge (Phase 1+2)`
-
-#### Sub-phase 16.2: Android Tools Bridge (Complete)
-
-`android-tools-bridge.mjs` wraps anthroid's MCP server (localhost:8765) as OpenClaw-compatible tools.
-
-- Dynamically discovers available tools from MCP `tools/list`
-- Coexists with base coding tools (read, write, edit, exec)
-- Agent system prompt auto-includes tool descriptions
-
-**Commit:** `424ff41` (combined with 16.1)
-
-#### Sub-phase 16.3: Kotlin Integration (Complete)
-
-`OpenClawLocalClient.kt` — subprocess wrapper (like ClaudeCliClient) that launches OpenClaw agent.
-
-- `AgentMode.OPENCLAW` enum in ClaudeViewModel
-- Stream-json stdio protocol compatible with existing ClaudeEvent parsing
-- ppinfra proxy support for API calls
+Extracted minimal agent from OpenClaw `src/agents/pi-embedded-runner/` into standalone package.
 
 **Commits:**
-- `bc9928f feat: add OpenClaw agent mode with Kotlin integration (Phase 3)`
-- `34261d4 fix: address code review issues in OpenClawLocalClient`
-- `c2ca473 fix: add ppinfra proxy support and fix text delta duplication`
+- `424ff41` feat: add OpenClaw agent runtime with Android tools bridge (Phase 1+2)
 
-#### Sub-phase 16.4: Tool Bar UI (Complete)
+**Files created:**
+- `assets/openclaw-agent-local/run.mjs` — entry point, stream-json stdio adapter
+- `assets/openclaw-agent-local/android-tools-bridge.mjs` — MCP :8765 → agent tools
+- `assets/openclaw-agent-local/config.json` — model config (ppinfra proxy)
+- `assets/openclaw-agent-local/agent/` — compiled pi-embedded-runner bundle
+- `assets/openclaw-agent-local/package.json` — dependencies
 
-Added tool_use/tool_result stream events so chat UI shows wrench icon + tool name during agent tool execution.
+#### Sub-phase 16.2: Android Tools Bridge ✅
 
-- `run.mjs`: `emitToolUse()` and `emitToolResultEvent()` emitters
-- `OpenClawLocalClient.kt`: parse `tool_use` and `tool_result` event types
+Created `android-tools-bridge.mjs` that wraps anthroid's MCP server tools as OpenClaw-compatible tool definitions.
 
-**Commit:** `eb333ca feat: add tool bar UI support for OpenClaw agent mode`
+- Dynamic tool discovery via `tools/list` MCP call
+- All 60+ Android tools available to the agent
+- Base coding tools (read, write, edit, exec) coexist with Android tools
 
-#### Sub-phase 16.5: APK Asset Bundling (Complete)
+#### Sub-phase 16.3: Kotlin Integration ✅
 
-Agent core files (~6MB) bundled in APK assets; node_modules installed via npm on first launch.
-
-- Gradle `copyOpenClawAgent` build task (excludes node_modules)
-- `TermuxInstaller.java`: bootstrap extraction of agent files
-- `OpenClawLocalClient.kt`: version-based update on app upgrade (preserves node_modules)
-- Pre-chat dependency check: runs `.install_deps.sh` if node_modules missing
-
-**Commit:** `e016195 feat: bundle OpenClaw agent in APK assets with auto-extraction`
-
-#### Sub-phase 16.6: Gateway Client (Complete)
-
-Optional OpenClaw gateway connectivity for session sync and notifications.
-
-**Components:**
-- `GatewaySession.kt` (~430 lines) — OkHttp WebSocket client, protocol v3, challenge-response auth
-- `DeviceIdentityStore.kt` (155 lines) — Ed25519 keypair via BouncyCastle
-- `DeviceAuthPayload.kt` (52 lines) — v3 pipe-delimited auth payload
-- `DeviceAuthStore.kt` (31 lines) — Token persistence via SharedPreferences
-- `GatewayManager.kt` (~150 lines) — High-level manager with auto-reconnect
-
-**Features:**
-- Ed25519 challenge-response authentication
-- Exponential backoff reconnection (350ms × 1.7^n, max 8s)
-- RPC system with UUID request IDs + CompletableDeferred
-- `syncMessages()` via `chat.inject` RPC
-- `notification.push` event → Android notification
-- Connection status exposed as StateFlow
-
-**Integration:**
-- ClaudeViewModel: auto-connects from prefs, syncs at SessionEnded
-- DebugReceiver: ADB broadcast for testing gateway config
-- Settings UI: gateway enable/host/port/token/status
-
-**Dependencies:** OkHttp 4.12.0, BouncyCastle bcprov-jdk18on 1.78.1
-
-**Testing:**
-- Mock gateway (Node.js ws) → protocol framing verified
-- Real OpenClaw gateway (camus-station via SSH tunnel + ADB reverse) → connected, receiving events
-- Device pairing approved via `openclaw devices approve`
+Created `OpenClawLocalClient.kt` — subprocess wrapper similar to `ClaudeCliClient.kt`.
 
 **Commits:**
-- `9109403 feat: add OpenClaw gateway client for session sync and notifications`
-- `7c6733e fix: add network security config to allow cleartext WebSocket for gateway`
-- `a49b83b fix: use openclaw-android client ID and ui mode for gateway connect`
+- `bc9928f` feat: add OpenClaw agent mode with Kotlin integration (Phase 3)
+- `34261d4` fix: address code review issues in OpenClawLocalClient
+- `c2ca473` fix: add ppinfra proxy support and fix text delta duplication
 
-#### Sub-phase 16.7: Session Sync & Memory (Planned)
+**Key files:**
+- `app/src/.../claude/OpenClawLocalClient.kt` — subprocess management via ProcessBuilder
+- `app/src/.../claude/ClaudeViewModel.kt` — added `AgentMode.OPENCLAW`
 
-- Sync conversation to OpenClaw's "Anthroid" session on each turn
-- Memory hooks triggered by session sync
-- Optional `memory_recall` tool for active memory search
+**Stream-json compatibility:** run.mjs outputs same event format as ClaudeCliClient expects:
+```json
+{"type":"message_start","message":{"id":"msg_xxx","role":"assistant"}}
+{"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello"}}
+{"type":"tool_use","id":"tu_xxx","name":"exec","input":"{}"}
+{"type":"tool_result","tool_use_id":"tu_xxx","content":"..."}
+{"type":"message_stop"}
+```
 
-#### Sub-phase 16.8: Persistent Notifications (Planned)
+#### Sub-phase 16.4: Tool Bar UI Fix ✅
 
-- Lightweight TCP relay or FCM integration for notifications when app is killed
-- Design TBD based on 16.6 experience
+Fixed tool bar not displaying during OpenClaw agent tool usage.
 
-#### Tasks
+**Commit:** `eb333ca` feat: add tool bar UI support for OpenClaw agent mode
 
-- [x] Extract agent runtime from OpenClaw (16.1)
-- [x] Create android-tools-bridge.mjs (16.2)
-- [x] Create OpenClawLocalClient.kt (16.3)
-- [x] Add tool bar UI support (16.4)
-- [x] Bundle agent in APK assets (16.5)
-- [x] Implement gateway client (16.6)
-- [ ] Implement session sync to "Anthroid" session (16.7)
-- [ ] Add memory_recall tool (16.7)
-- [ ] Persistent notification channel (16.8)
+**Root cause:** run.mjs emitted tool output as plain text deltas instead of structured tool events.
+
+**Fix:**
+- run.mjs: Added `emitToolUse()` / `emitToolResultEvent()` using `onAgentEvent` callback
+- OpenClawLocalClient.kt: Added `tool_use` and `tool_result` event parsing in `parseStreamEvent()`
+
+#### Sub-phase 16.5: APK Asset Bundling ✅
+
+**Commit:** `e016195` feat: bundle OpenClaw agent in APK assets with auto-extraction
+
+- Gradle `copyOpenClawAgent` task bundles core files (~6MB) excluding node_modules
+- `TermuxInstaller.installOpenClawAgent()` extracts on fresh install (bootstrap)
+- `OpenClawLocalClient.updateAgentIfNeeded()` re-extracts on app version change
+- `OpenClawLocalClient.ensureDependencies()` runs npm install if node_modules missing
+- `ClaudeViewModel` pre-chat dependency check for OpenClaw mode
+
+#### Sub-phase 16.6: Gateway Connection (Optional) ✅
+
+**Status: Done**
+
+Add optional connectivity to OpenClaw gateway for session sync, memory, and notifications.
+
+**Prerequisites:**
+- OpenClaw gateway running on camus-station (101.43.33.48:40445)
+- Ed25519 device identity for authentication
+
+**Implementation:**
+- [x] Create `DeviceIdentityStore.kt` — Ed25519 keypair via BouncyCastle lightweight API
+- [x] Create `DeviceAuthPayload.kt` — v3 pipe-delimited auth payload
+- [x] Create `DeviceAuthStore.kt` — Token persistence via SharedPreferences
+- [x] Create `GatewaySession.kt` — OkHttp WebSocket with reconnection loop
+- [x] Create `GatewayManager.kt` — High-level gateway lifecycle + session sync
+- [x] Add OkHttp + BouncyCastle dependencies to build.gradle
+- [x] Integrate into ClaudeViewModel (auto-connect from prefs, session sync at SessionEnded)
+- [x] Add gateway settings UI (host, port, token, enable switch)
+- [x] Add `DEBUG_CONFIG_GATEWAY` broadcast for ADB testing
+- [x] Implement session sync → push conversation to "Anthroid" session via `chat.inject`
+- [x] Implement notification channel (receive `notification.push` events)
+- [x] Optional: GatewayForegroundService for background WebSocket → implemented in 16.7
+- [x] Testing on device — connected to real gateway via SSH tunnel + ADB reverse
+
+#### Sub-phase 16.7: Gateway Message Notifications ✅
+
+IM-like system notifications for incoming gateway messages when app is backgrounded.
+
+**Commit:** `9152b3b`
+
+**Architecture:**
+- `GatewayForegroundService` — keeps WebSocket alive via persistent low-importance notification
+- `GatewayNotificationHelper` — per-session grouped notifications (HIGH importance)
+- `GatewayManager` — handles `"chat"` events (`state=final`, `role=assistant`) from gateway
+
+**Changes:**
+1. New `GatewayNotificationHelper.kt` — multi-session notification grouping, summary when 2+ sessions
+2. New `GatewayForegroundService.kt` — owns GatewayManager lifecycle, START_STICKY for auto-restart
+3. Modified `GatewayManager.kt` — added `"chat"` event parsing, `onChatMessage` callback
+4. Modified `ClaudeViewModel.kt` — delegates gateway to service, nullable access
+5. Modified `MainPagerActivity.kt` — clears notifications on resume, handles deep-link tap
+6. Modified `ClaudeFragment.kt` — debug gateway config uses service instead of direct manager
+7. Registered service in `AndroidManifest.xml`
+
+#### Sub-phase 16.7.1: Direct API Response Notifications ✅
+
+Show system notification when Claude API response completes while app is backgrounded. Phase 16.7 only covered gateway events — direct API responses arrived silently.
+
+**Changes:**
+1. Modified `ClaudeViewModel.kt` — added `showDirectResponseNotification()` method, called at `SessionEnded` when `!isAppInForeground`
+2. Modified `MainPagerActivity.kt` — cancel direct notification (ID 49999) in `onResume()`
+
+Uses same `gateway_messages` notification channel (idempotent channel creation). Fixed notification ID `49999` since only one direct conversation runs at a time.
+
+#### Sub-phase 16.8: Auto-Setup & Auto Mode ✅
+
+Fix three issues preventing OpenClaw from working out-of-the-box on fresh install.
+
+**Commit:** `cd2fe15`
+
+**Problems fixed:**
+1. **Auto mode ignores OpenClaw** — `auto` preference always picked API when configured. Now: OpenClaw > API > CLI.
+2. **npm install fails** — koffi native addon build fails without CMake. Added `--ignore-scripts`.
+3. **Stubs never created** — `.install_deps.sh` didn't run `create-stubs.mjs`. Added auto-stub creation after npm install.
+
+**Files modified:**
+- `ClaudeViewModel.kt` — auto mode priority: `openclawAvailable && apiConfigured → OPENCLAW`
+- `TermuxInstaller.java` — `.install_deps.sh` adds `--ignore-scripts` and `node create-stubs.mjs`
+- `OpenClawLocalClient.kt` — `ensureDependencies()` checks stub marker, adds `runCreateStubs()` helper
+
+#### Sub-phase 16.9: Remote Agent View (In Progress)
+
+View and interact with remote AI agent sessions directly from Anthroid.
+
+**Architecture:**
+- `/list-remotes` slash command — lists OpenClaw sessions (no args) or tmux sessions on a host (with hostname arg)
+- `RemoteAgentFragment` — full-screen overlay with message list (OpenClaw) or terminal view (SSH+tmux)
+- `RemoteAgentViewModel` — state management for both modes
+
+**Two remote agent sources:**
+1. **OpenClaw sessions** — subscribe to gateway events filtered by sessionKey, send via `chat.inject`
+2. **SSH+tmux sessions** — periodic `tmux capture-pane` via SSH, send via `tmux send-keys`
+
+**New files:**
+- `remote/RemoteSessionInfo.kt` — data model for remote sessions
+- `remote/SshTmuxClient.kt` — SSH + tmux interaction helper
+- `remote/RemoteAgentFragment.kt` — full-screen overlay Fragment
+- `remote/RemoteAgentViewModel.kt` — state management
+- `res/layout/fragment_remote_agent.xml` — layout
+
+**Modified files:**
+- `ClaudeViewModel.kt` — slash command framework (`/list-remotes`, `/compact`)
+- `ClaudeFragment.kt` — observe slash command events, session list dialog, fragment transaction
+- `GatewayManager.kt` — `listSessions()`, `injectMessage()`, `onRemoteSessionEvent` callback
+
+**Dependencies:**
+- Gateway API: `session.list` RPC (needs server-side verification)
+- SSH keys configured in Termux `~/.ssh/`
+
+---
+
+#### Sub-phase 16.10: Gateway "anthroid" Mode ✅ COMPLETE
+
+**Problem:** `chat.send` messages from Anthroid appear as `channel="webchat"` on the remote agent because the gateway maps `CLIENT_MODE="ui"` → webchat channel/provider/surface. Passing `channel` in `chat.send` params is rejected by the API (`unexpected property`).
+
+**Solution:** Register a dedicated `mode="anthroid"` in the OpenClaw gateway server.
+
+**Requirements for the new mode:**
+- `channel`: `"anthroid"`
+- `provider`: `"KL"`
+- `surface`: `"anthroid"`
+- Markdown rendering: **enabled** (same as `"ui"` mode — Anthroid renders markdown)
+
+**Android client change:**
+- `GatewayManager.kt`: change `CLIENT_MODE = "ui"` → `CLIENT_MODE = "anthroid"`
+
+**Gateway server change:**
+- Register surface/channel mapping for `mode="anthroid"` in the gateway's client mode registry
+- Ensure markdown flag is set (same as `"ui"`)
+
+**Files to modify:**
+- Android: `app/src/main/java/com/anthroid/gateway/GatewayManager.kt` (1-line change)
+- Gateway server: wherever `"ui"` mode is defined and mapped to channel attributes
+
+---
+
+#### Bug Fix: OpenClaw Mode Image Input — HTTP 400 Error ✅ FIXED
+
+**Problem:** In OpenClaw mode, when the user attaches an image to a message, the API returns `HTTP 400: messages.0.content.1.image.source.base64.media_type: Field required`.
+
+**Root cause:** `run.mjs` extracted images from stdin JSON in Claude API format (`{ type: "base64", media_type, data }`) instead of the pi-ai `ImageContent` format (`{ type: "image", data, mimeType }`). When the pi-ai Anthropic provider serialized images for the API, `block.mimeType` was `undefined` (the property was named `media_type`), so `media_type: undefined` was omitted from JSON.
+
+**Fix:** Changed `run.mjs` lines 522-526 to construct correct `ImageContent` objects:
+```javascript
+// Before (wrong): { type: "base64", media_type: block.source.media_type, data: block.source.data }
+// After (correct): { type: "image", data: block.source.data, mimeType: block.source.media_type }
+```
+
+**Files modified:** `assets/openclaw-agent-local/run.mjs`
+
+---
+
+#### Sub-phase 16.11: Remote Agent Session Result as Local Tool Bar ✅ COMPLETE
+
+**Context:** When the user sends a message to a remote agent via the Remote Agent View, the remote agent processes it and generates a response. Currently the response only appears in the Remote Agent View. It would be useful to embed the result back into the current local conversation as a tool bar item, giving the local context awareness of remote session activity.
+
+**Behavior:**
+- After a remote agent conversation exchange completes (user sends + agent responds), a tool bar entry is added to the **current local conversation** in `ClaudeActivity`
+- Tool bar **input**: the remote session's entry info (session key, agent display name, user message sent)
+- Tool bar **output**: the final response content from the remote agent session
+- The tool bar is non-interactive (read-only annotation); tapping shows the detail dialog with full content
+- Multiple back-and-forth exchanges in the remote view each create one tool bar entry in the local conversation
+
+**Architecture:**
+```
+RemoteAgentViewModel.sendMessage()
+  ↓ user sends to remote session
+GatewayManager.sendChatMessage()
+  ↓ agent responds (onRemoteSessionEvent)
+RemoteAgentViewModel.onResponse()
+  ↓ emit RemoteAgentResultEvent(sessionKey, userMessage, responseText)
+ClaudeViewModel.onRemoteAgentResult()
+  ↓ append Message(role=TOOL, toolName="remote:$displayName", toolInput=userMessage, toolOutput=response)
+ClaudeActivity MessageAdapter renders tool bar
+```
+
+**New components:**
+- `RemoteAgentResultEvent` broadcast (LocalBroadcastManager or SharedFlow)
+- `ClaudeViewModel.remoteAgentResultFlow` collector
+- Tool bar display uses existing `ToolViewHolder` — `toolName` = remote agent label, `toolInput` = sent text, `toolOutput` = agent response
+
+**Files to modify:**
+- `remote/RemoteAgentViewModel.kt` — emit result event after response received
+- `claude/ClaudeViewModel.kt` — collect remote result events, append TOOL messages
+- `claude/ui/MessageAdapter.kt` — possibly add special styling for remote tool bars
+- `remote/RemoteAgentFragment.kt` — pass activity reference or use shared flow
+
+---
+
+### Phase 17: OpenClaw Local Agent — Independent Workspace with Gateway Sync ✅ COMPLETE
+
+**Vision:** The local Anthroid OpenClaw agent runs as a fully independent agent on the Android device with its own persistent workspace, file-based memory, and skill set. It can synchronize memory with gateway agents, enabling a "distributed agent" model.
+
+**Architecture:**
+```
+Android device
+├─ openclaw-agent-local/
+│   ├─ run.mjs                        (entry point)
+│   ├─ agent/                         (pi-embedded-runner bundle)
+│   ├─ .sessions/                     (conversation history)
+│   └─ workspace/                     (persistent agent workspace)
+│       ├─ MEMORY.md                  (main memory file, injected into system prompt)
+│       ├─ memory/                    (topic-specific memory files, synced with gateway)
+│       ├─ AGENTS.md, IDENTITY.md,   (profile files, synced via /sync-profile)
+│       │  SOUL.md, USER.md
+│       ├─ skills/                    (local skill definitions)
+│       └─ data/                      (agent-generated files)
+```
+
+#### 17.1 Independent Local Workspace ✅
+
+- `OpenClawLocalClient.kt`: `WORKSPACE_DIR` → `$agentDir/workspace`
+- `run.mjs`: `loadMemoryPrompt()` reads `MEMORY.md` + all `memory/*.md` files → injects into `extraSystemPrompt`
+- Commit: `160da65` (anthroid-openclaw)
+
+#### 17.2 Memory Sync with Gateway ✅
+
+**Two sync mechanisms:**
+
+1. **Profile sync** (manual, `/sync-profile` slash command):
+   - Syncs 5 workspace root files: AGENTS.md, IDENTITY.md, MEMORY.md, SOUL.md, USER.md
+   - Calls `agent.getProfile` RPC → writes files to workspace
+   - Commit: `7e93103` (anthroid-openclaw)
+
+2. **Memory/ sync** (automatic, every OPENCLAW session):
+   - **Pull (session start)**: `pullMemoryFiles()` → RPC `agent.getMemoryPatch(sinceTimestamp)` → writes files to `workspace/memory/`
+   - **Push (session end)**: `pushChangedMemoryFiles()` → compares MD5 hashes before/after → RPC `agent.applyMemoryPatch(files)` for changed files
+   - `lastMemorySyncTime` persisted in SharedPreferences
+   - Gateway: git-based — `getMemoryPatch` returns full file list or git diff; `applyMemoryPatch` writes + git commit
+   - Commits: `81574a0` (anthroid-openclaw), `0947b5bf` (openclaw develop)
+
+#### 17.3 Gateway RPCs ✅
+
+| RPC | Scope | Description |
+|-----|-------|-------------|
+| `agent.getProfile(agentId?)` | READ | Returns agent identity, model config, 5 workspace root files |
+| `agent.getMemoryPatch(agentId?, sinceTimestamp?)` | READ | Returns memory/ files (full or incremental git diff) |
+| `agent.applyMemoryPatch(agentId?, files)` | WRITE | Writes files to workspace/memory/ + git commit |
+
+Commits: `83a72738`, `92df4bd5`, `0947b5bf` (openclaw develop)
+
+**Key files:**
+- `claude/OpenClawLocalClient.kt` — `WORKSPACE_DIR` env var
+- `claude/ClaudeViewModel.kt` — pull/push triggers, `/sync-profile` handler, hash snapshots
+- `assets/openclaw-agent-local/run.mjs` — `loadMemoryPrompt()` reads MEMORY.md + memory/*.md
+- `gateway/GatewayManager.kt` — `getMemoryPatch()`, `applyMemoryPatch()`, `getProfile()`
+- openclaw gateway: `src/gateway/server-methods/agent.ts` — all 3 RPC handlers
+
+---
+
+#### Sub-phase 16.12: Anthroid Timed Message Delivery — Polling Queue ✅ COMPLETE
+
+**Problem:** The `message` tool's scheduled delivery cannot push to Anthroid clients.
+Root cause: "webchat" (internal WebSocket) has no persistent delivery mechanism.
+
+**Solution: Pending message queue + 60s foreground-service polling**
+- Target latency: ≤ 60s (max poll interval)
+- No FCM/GMS dependency (works on OPPO/ColorOS)
+- Uses existing `GatewayForegroundService` (already a foreground service → no battery restriction)
+
+**Architecture:**
+
+```
+[agent message tool, timer fires]
+        ↓
+  channel-selection.ts: detect "anthroid"/"webchat" internal channel
+        ↓
+  Store in pending_messages table (gateway SQLite/memory)
+        ↓  ← no "Unknown channel" error
+  Response: { ok: true, queued: true }
+
+[Anthroid app, every 60s or on WebSocket reconnect]
+        ↓
+  session.drainPending(sessionKey) RPC
+        ↓
+  Gateway returns pending messages + marks delivered
+        ↓
+  Android: append to message list + show system notification
+```
+
+**Gateway changes (openclaw `kl/develop`):**
+
+1. `src/infra/outbound/channel-selection.ts`:
+   - When `normalized === INTERNAL_MESSAGE_CHANNEL` and context is a gateway session:
+     store message in pending queue, return `{ channel: "anthroid", queued: true }`
+
+2. New `src/gateway/server-methods/pending.ts`:
+   - `session.drainPending({ sessionKey })` RPC
+   - Returns array of pending messages for that session
+   - Marks them as delivered (idempotent)
+   - Backed by in-memory store (Map<sessionKey, PendingMessage[]>) — simple, no persistence needed for now
+
+3. `src/gateway/server.ts` or existing router: register the new handler
+
+**Android changes (`anthroid-openclaw`):**
+
+1. `GatewayManager.kt`:
+   - `suspend fun drainPendingMessages(sessionKey: String): List<PendingMessage>` — calls `session.drainPending` RPC
+   - Data class `PendingMessage(id: String, content: String, createdAt: Long)`
+
+2. `GatewayForegroundService.kt`:
+   - Add `startPollingLoop()` coroutine (60s interval) in `serviceScope`
+   - Polls all observed sessions: `gatewayManager.drainPendingMessages(sessionKey)`
+   - Sends results as `RemoteSessionEvent` to `GatewayManager.remoteSessionEventFlow`
+   - Also trigger on WebSocket reconnect (for immediate delivery after offline)
+
+3. `ClaudeActivity.kt` or `GatewayForegroundService.kt`:
+   - Show Android system notification when pending messages arrive while app is in background
+
+**Files to modify:**
+- openclaw: `src/infra/outbound/channel-selection.ts`, new `src/gateway/server-methods/pending.ts`
+- Android: `gateway/GatewayManager.kt`, `gateway/GatewayForegroundService.kt`, `claude/ClaudeActivity.kt`
+
+**Note:** In-memory pending store resets on gateway restart. For persistence, a SQLite-backed store can be added later.

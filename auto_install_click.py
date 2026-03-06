@@ -47,6 +47,7 @@ STAGE3_KEYS = [
 
 # --- Generic fallback keys (for any stage) ---
 GENERIC_KEYS = [
+    "知道了",       # Dismiss storage/guardelf warnings
     "确定",
     "允许",
     "OK",
@@ -57,13 +58,21 @@ GENERIC_KEYS = [
 ]
 
 PKG_INSTALLER = "com.android.packageinstaller"
+PKG_OPLUS_APPDETAIL = "com.oplus.appdetail"
+PKG_OPPO_GUARDELF = "com.coloros.oppoguardelf"
+
+# All known installer/dialog package names
+INSTALLER_PACKAGES = [PKG_INSTALLER, PKG_OPLUS_APPDETAIL, PKG_OPPO_GUARDELF]
 
 
 def is_installer_visible():
-    """Check if the package installer is the foreground activity."""
+    """Check if any known installer or system dialog is the foreground activity."""
     try:
-        elems = d(packageName=PKG_INSTALLER)
-        return elems.exists
+        for pkg in INSTALLER_PACKAGES:
+            elems = d(packageName=pkg)
+            if elems.exists:
+                return True
+        return False
     except Exception:
         return False
 
@@ -90,8 +99,8 @@ def try_click_install_button():
     Strategy: first try text match, then fall back to coordinate click.
     """
     # Try text match first (works on some devices/ROM versions)
-    btn = d(text="安装", clickable=True, packageName=PKG_INSTALLER)
-    if btn.exists:
+    btn = d(text="安装", clickable=True)
+    if btn.exists and btn.info.get("packageName") in INSTALLER_PACKAGES:
         btn.click()
         logging.info("Clicked: [安装] (text match)")
         return True

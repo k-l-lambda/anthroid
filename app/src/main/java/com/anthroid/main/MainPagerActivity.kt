@@ -16,13 +16,17 @@ import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.NotificationManagerCompat
 import com.anthroid.R
 import com.anthroid.app.TermuxActivity
 import com.anthroid.accessibility.ScreenAutomationOverlay
 import com.anthroid.app.TermuxService
 import com.anthroid.app.activities.SettingsActivity
 import com.anthroid.claude.CameraCaptureActivity
+import com.anthroid.claude.DebugReceiver
 import com.anthroid.claude.TerminalCommandBridge
+import com.anthroid.gateway.GatewayForegroundService
+import com.anthroid.gateway.GatewayNotificationHelper
 import com.anthroid.terminal.TerminalSession
 
 /**
@@ -125,9 +129,24 @@ class MainPagerActivity : AppCompatActivity() {
                 // Ensure at least one session exists for command execution
                 if (svc.termuxSessions.isEmpty()) {
                     Log.d(TAG, "No terminal sessions, creating one for Claude")
-                    // Create a default session for Claude to use
-                    svc.createTermuxSession(null, null, null, null, false, "claude-session")
-                    Log.d(TAG, "Terminal session created")
+                    val termuxSession = svc.createTermuxSession(null, null, null, null, false, "claude-session")
+                    // Force-initialize emulator with default dimensions (80x24)
+                    // Without this, the emulator stays null until a TerminalView is attached
+                    termuxSession?.terminalSession?.let { ts ->
+                        if (ts.emulator == null) {
+                            Log.d(TAG, "Initializing terminal emulator with default 80x24")
+                            ts.updateSize(80, 24, 0, 0)
+                        }
+                    }
+                    Log.d(TAG, "Terminal session created and initialized")
+                } else {
+                    // Ensure existing session has emulator initialized
+                    svc.termuxSessions.firstOrNull()?.terminalSession?.let { ts ->
+                        if (ts.emulator == null) {
+                            Log.d(TAG, "Initializing existing session emulator with default 80x24")
+                            ts.updateSize(80, 24, 0, 0)
+                        }
+                    }
                 }
             }
         }
@@ -179,6 +198,9 @@ class MainPagerActivity : AppCompatActivity() {
                 .replace(R.id.fragment_container, ClaudeFragment.newInstance())
                 .commit()
         }
+
+        // Handle notification deep-link
+        handleNotificationDeepLink(intent)
     }
 
     override fun onStart() {
@@ -192,6 +214,24 @@ class MainPagerActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         ScreenAutomationOverlay.isAppInForeground = true
+        // Clear gateway message notifications when user returns to app
+        GatewayForegroundService.instance?.notificationHelper?.clearAll()
+        // Clear direct Claude response notification
+        NotificationManagerCompat.from(this).cancel(49999)
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        intent?.let { handleNotificationDeepLink(it) }
+    }
+
+    private fun handleNotificationDeepLink(intent: Intent) {
+        val sessionKey = intent.getStringExtra(GatewayNotificationHelper.EXTRA_SESSION_KEY)
+        if (sessionKey != null) {
+            Log.d(TAG, "Notification deep-link to session: $sessionKey")
+            GatewayForegroundService.instance?.notificationHelper?.clearSession(sessionKey)
+            DebugReceiver.emitOpenRemoteSession(sessionKey)
+        }
     }
 
     override fun onPause() {

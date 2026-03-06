@@ -66,10 +66,47 @@
         <ListPreference
             app:key="claude_mode"
             app:title="Agent Mode"
-            app:summary="Auto: prefer API when configured, fallback to CLI"
+            app:summary="Auto: prefer API when configured, fallback to CLI. OpenClaw: local agent with tools bridge."
             app:entries="@array/claude_mode_entries"
             app:entryValues="@array/claude_mode_values"
             app:defaultValue="auto"/>
+
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        app:title="Gateway Connection">
+
+        <SwitchPreference
+            app:key="gateway_enabled"
+            app:title="Enable Gateway"
+            app:summary="Connect to OpenClaw gateway for session sync and notifications"
+            app:defaultValue="false"/>
+
+        <EditTextPreference
+            app:key="gateway_host"
+            app:title="Gateway Host"
+            app:summary="Gateway server hostname or IP"
+            app:dependency="gateway_enabled"/>
+
+        <EditTextPreference
+            app:key="gateway_port"
+            app:title="Gateway Port"
+            app:summary="Gateway server port (default: 40445)"
+            app:defaultValue="40445"
+            app:dependency="gateway_enabled"/>
+
+        <EditTextPreference
+            app:key="gateway_token"
+            app:title="Gateway Token"
+            app:summary="Authentication token (optional)"
+            app:dependency="gateway_enabled"/>
+
+        <Preference
+            app:key="gateway_status"
+            app:title="Connection Status"
+            app:summary="Offline"
+            app:dependency="gateway_enabled"
+            app:persistent="false"/>
 
     </PreferenceCategory>
 
