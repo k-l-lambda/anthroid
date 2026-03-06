@@ -407,7 +407,8 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                     val imageDataList = images.mapNotNull { image ->
                         val base64 = ImageUtils.processImageForApi(getApplication(), image.uri)
                         if (base64 != null) {
-                            Pair(base64, image.mimeType)
+                            // processImageForApi always compresses to JPEG, regardless of input format
+                            Pair(base64, "image/jpeg")
                         } else null
                     }
 
