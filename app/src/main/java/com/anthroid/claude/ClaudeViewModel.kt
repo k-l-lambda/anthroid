@@ -26,6 +26,8 @@ import java.io.File
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Data class for pending ask_user_question tool call.
@@ -1330,8 +1332,64 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 viewModelScope.launch { syncProfileFromGateway() }
                 true
             }
+            "/set-gateway" -> {
+                val args = parts.getOrNull(1)?.trim() ?: ""
+                handleSetGateway(args)
+                true
+            }
             else -> false
         }
+    }
+
+    /**
+     * Handle /set-gateway host:port [token]
+     * Sets gateway connection params and restarts the service.
+     */
+    private fun handleSetGateway(args: String) {
+        if (args.isEmpty()) {
+            appendMessage(MessageRole.SYSTEM,"/set-gateway <host:port> [token]\nExample: /set-gateway 10.0.0.1:40445 my-token")
+            return
+        }
+        val argParts = args.split("\\s+".toRegex())
+        val hostPort = argParts[0]
+        val token = argParts.getOrNull(1)
+
+        val colonIdx = hostPort.lastIndexOf(':')
+        val host: String
+        val port: String
+        if (colonIdx > 0) {
+            host = hostPort.substring(0, colonIdx)
+            port = hostPort.substring(colonIdx + 1)
+        } else {
+            host = hostPort
+            port = "40445"
+        }
+
+        // Validate port
+        val portInt = port.toIntOrNull()
+        if (portInt == null || portInt < 1 || portInt > 65535) {
+            appendMessage(MessageRole.SYSTEM,"Invalid port: $port")
+            return
+        }
+
+        // Save to default SharedPreferences (not the memory_sync prefs)
+        val defaultPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(getApplication())
+        defaultPrefs.edit()
+            .putBoolean("gateway_enabled", true)
+            .putString("gateway_host", host)
+            .putString("gateway_port", port)
+            .apply {
+                if (token != null) putString("gateway_token", token)
+            }
+            .commit()
+
+        // Restart gateway service
+        val context = getApplication<Application>()
+        com.anthroid.gateway.GatewayForegroundService.stop(context)
+        com.anthroid.gateway.GatewayForegroundService.start(context, host, portInt, token, useTls = false)
+
+        val masked = if (token != null && token.length > 8) "${token.take(4)}****${token.takeLast(4)}" else token ?: "(auto-auth)"
+        appendMessage(MessageRole.SYSTEM,"Gateway set: $host:$port, token=$masked — connecting...")
     }
 
     /**
@@ -1537,75 +1595,106 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
     private val prefs get() = getApplication<android.app.Application>()
         .getSharedPreferences("memory_sync", android.content.Context.MODE_PRIVATE)
 
-    private var memoryFilesHashBefore: Map<String, Int> = emptyMap()
+    private val memorySyncMutex = Mutex()
+    private var memoryFilesHashBefore: Map<String, String> = emptyMap()
+    private var lastPushSucceeded: Boolean = true
 
     /** Pull memory/ files from gateway since lastSyncTime. */
-    private suspend fun pullMemoryFiles() {
-        val manager = gatewayManager ?: return
+    private suspend fun pullMemoryFiles() = memorySyncMutex.withLock {
+        val manager = gatewayManager ?: return@withLock
         val lastSync = prefs.getLong("lastMemorySyncTime", 0)
         try {
-            val result = manager.getMemoryPatch(if (lastSync > 0) lastSync else null) ?: return
+            // Skip pull if previous push failed (local has unpushed changes)
+            if (!lastPushSucceeded) {
+                Log.w(TAG, "Skipping pull: previous push failed, local may have unpushed changes")
+                return@withLock
+            }
+
+            val result = manager.getMemoryPatch(if (lastSync > 0) lastSync else null) ?: return@withLock
             val memoryDir = File(openclawClient.workspacePath, "memory")
             memoryDir.mkdirs()
 
             if (result.mode == "full" && result.files != null) {
                 var count = 0
                 for ((name, content) in result.files) {
-                    if (name.endsWith(".md") && content.isNotBlank()) {
-                        File(memoryDir, name).writeText(content)
-                        count++
-                    }
+                    // Path traversal guard: reject names with path separators or ".."
+                    if (!name.endsWith(".md") || content.isBlank()) continue
+                    if (name.contains('/') || name.contains('\\') || name.contains("..")) continue
+                    File(memoryDir, name).writeText(content)
+                    count++
                 }
+                // Delete local files not present in remote (mirror sync)
+                val remoteNames = result.files.keys.filter { it.endsWith(".md") }.toSet()
+                memoryDir.listFiles()?.filter { it.name.endsWith(".md") && it.name !in remoteNames }
+                    ?.forEach { orphan ->
+                        orphan.delete()
+                        Log.i(TAG, "Deleted local orphan memory file: ${orphan.name}")
+                    }
                 if (count > 0) Log.i(TAG, "Pulled $count memory files from gateway (full sync)")
+                prefs.edit().putLong("lastMemorySyncTime", result.latestTimestamp).apply()
+            } else if (result.mode == "patch") {
+                // Patch mode not supported on Android (no git binary) — do NOT advance timestamp
+                // so next sync will re-request and hopefully get full mode
+                Log.w(TAG, "Received patch mode from gateway but Android doesn't support it; skipping")
             }
-            // Note: "patch" mode applies git diff — not implemented on Android yet (no git binary)
-            // For now, only "full" mode is supported on the Android side
-
-            prefs.edit().putLong("lastMemorySyncTime", result.latestTimestamp).apply()
         } catch (e: Exception) {
             Log.w(TAG, "pullMemoryFiles failed: ${e.message}")
         }
     }
 
-    /** Snapshot memory/ file hashes before agent run. */
+    /** Snapshot memory/ file SHA-256 hashes before agent run. */
     private fun snapshotMemoryFiles() {
         val memoryDir = File(openclawClient.workspacePath, "memory")
         memoryFilesHashBefore = if (memoryDir.exists()) {
             memoryDir.listFiles()?.filter { it.name.endsWith(".md") }
-                ?.associate { it.name to it.readText().hashCode() } ?: emptyMap()
+                ?.associate { it.name to sha256(it.readText()) } ?: emptyMap()
         } else emptyMap()
     }
 
-    /** Push changed memory/ files to gateway after agent run. */
-    private suspend fun pushChangedMemoryFiles() {
-        val manager = gatewayManager ?: return
-        val memoryDir = File(openclawClient.workspacePath, "memory")
-        if (!memoryDir.exists()) return
+    private fun sha256(text: String): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        return digest.digest(text.toByteArray()).joinToString("") { "%02x".format(it) }
+    }
 
-        val currentFiles = memoryDir.listFiles()?.filter { it.name.endsWith(".md") } ?: return
+    /** Push changed memory/ files to gateway after agent run. */
+    private suspend fun pushChangedMemoryFiles() = memorySyncMutex.withLock {
+        val manager = gatewayManager ?: return@withLock
+        val memoryDir = File(openclawClient.workspacePath, "memory")
+        if (!memoryDir.exists()) return@withLock
+
+        // Capture snapshot reference locally to avoid race with next run
+        val snapshot = memoryFilesHashBefore
+        val currentFiles = memoryDir.listFiles()?.filter { it.name.endsWith(".md") } ?: return@withLock
         val changedFiles = mutableMapOf<String, String>()
 
         for (file in currentFiles) {
             val content = file.readText()
-            val currentHash = content.hashCode()
-            val beforeHash = memoryFilesHashBefore[file.name]
+            val currentHash = sha256(content)
+            val beforeHash = snapshot[file.name]
             if (beforeHash == null || currentHash != beforeHash) {
                 changedFiles[file.name] = content
             }
         }
 
-        if (changedFiles.isEmpty()) return
+        if (changedFiles.isEmpty()) {
+            lastPushSucceeded = true
+            return@withLock
+        }
 
         try {
-            val ok = manager.applyMemoryPatch(changedFiles)
-            if (ok) {
-                prefs.edit().putLong("lastMemorySyncTime", System.currentTimeMillis()).apply()
+            val result = manager.applyMemoryPatch(changedFiles)
+            if (result != null) {
+                // Use server-returned timestamp instead of local clock
+                prefs.edit().putLong("lastMemorySyncTime", result).apply()
                 Log.i(TAG, "Pushed ${changedFiles.size} changed memory files to gateway")
+                lastPushSucceeded = true
             } else {
                 Log.w(TAG, "Gateway rejected memory patch — may need manual conflict resolution")
+                lastPushSucceeded = false
             }
         } catch (e: Exception) {
             Log.w(TAG, "pushChangedMemoryFiles failed: ${e.message}")
+            lastPushSucceeded = false
         }
     }
 

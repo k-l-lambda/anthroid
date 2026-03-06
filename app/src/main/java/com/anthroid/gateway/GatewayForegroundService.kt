@@ -46,6 +46,7 @@ class GatewayForegroundService : Service() {
 
         fun isRunning(): Boolean = instance != null
 
+        /** Start with explicit connection params. */
         fun start(context: Context, host: String, port: Int, token: String?, useTls: Boolean = true) {
             val intent = Intent(context, GatewayForegroundService::class.java).apply {
                 action = ACTION_START
@@ -61,9 +62,24 @@ class GatewayForegroundService : Service() {
             }
         }
 
+        /** Start from saved prefs (reads gateway_host/port/token). */
+        fun start(context: Context) {
+            val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
+            val host = prefs.getString("gateway_host", null) ?: return
+            val port = prefs.getString("gateway_port", "40445")?.toIntOrNull() ?: 40445
+            val token = prefs.getString("gateway_token", null)?.takeIf { it.isNotEmpty() }
+            start(context, host, port, token, useTls = false)
+        }
+
         fun stop(context: Context) {
             context.stopService(Intent(context, GatewayForegroundService::class.java))
         }
+    }
+
+    /** Disconnect and reconnect using saved prefs. */
+    fun reconnect() {
+        gatewayManager?.disconnect()
+        tryStartGatewayFromPrefs()
     }
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)

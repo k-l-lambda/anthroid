@@ -337,8 +337,9 @@ class GatewayManager(
    * Push memory files to gateway.
    * Sends changed files as a "full" mode update.
    */
-  suspend fun applyMemoryPatch(files: Map<String, String>): Boolean {
-    val gs = session ?: return false
+  /** Apply memory patch. Returns server timestamp on success, null on failure. */
+  suspend fun applyMemoryPatch(files: Map<String, String>): Long? {
+    val gs = session ?: return null
     return try {
       val filesJson = JSONObject()
       for ((name, content) in files) filesJson.put(name, content)
@@ -349,11 +350,13 @@ class GatewayManager(
       val response = gs.request("agent.applyMemoryPatch", params.toString(), timeoutMs = 15_000)
       val obj = JSONObject(response)
       val ok = obj.optBoolean("ok", false)
-      if (ok) Log.i(TAG, "Applied memory patch: ${files.size} files")
-      ok
+      if (ok) {
+        Log.i(TAG, "Applied memory patch: ${files.size} files")
+        obj.optLong("timestamp", System.currentTimeMillis())
+      } else null
     } catch (err: Throwable) {
       Log.w(TAG, "applyMemoryPatch failed: ${err.message}")
-      false
+      null
     }
   }
 

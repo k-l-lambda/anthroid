@@ -263,21 +263,29 @@ async function discoverAndroidTools() {
 
 let memoryPrompt = null;
 
+const MAX_MEMORY_TOTAL_BYTES = 50_000; // 50KB total limit for memory in system prompt
+const MAX_MEMORY_FILE_BYTES = 20_000;  // 20KB per file limit
+
 async function loadMemoryPrompt() {
   const parts = [];
+  let totalBytes = 0;
   const memoryDir = path.join(WORKSPACE_DIR, "memory");
 
   // 1. Load workspace/MEMORY.md (main memory file)
   const memoryPath = path.join(WORKSPACE_DIR, "MEMORY.md");
   try {
-    const content = await fs.readFile(memoryPath, "utf-8");
+    let content = await fs.readFile(memoryPath, "utf-8");
     if (content.trim()) {
-      parts.push(
+      if (content.length > MAX_MEMORY_FILE_BYTES) {
+        content = content.slice(0, MAX_MEMORY_FILE_BYTES) + "\n\n[...truncated, file too large]";
+      }
+      const block =
         `# Persistent Memory\n\n` +
         `The following is your persistent memory from previous sessions. ` +
         `You can update it by writing to ${memoryPath} using the file edit tools.\n\n` +
-        content
-      );
+        content;
+      parts.push(block);
+      totalBytes += block.length;
     }
   } catch {
     // MEMORY.md doesn't exist yet
@@ -285,14 +293,26 @@ async function loadMemoryPrompt() {
 
   // 2. Load all files from workspace/memory/ (topic-specific memory)
   try {
-    const files = await fs.readdir(memoryDir);
-    const mdFiles = files.filter(f => f.endsWith(".md")).sort();
+    const files = await fs.readdir(memoryDir, { withFileTypes: true });
+    const mdFiles = files
+      .filter(f => f.isFile() && f.name.endsWith(".md"))
+      .map(f => f.name)
+      .sort();
     for (const file of mdFiles) {
+      if (totalBytes >= MAX_MEMORY_TOTAL_BYTES) {
+        parts.push(`\n[...${mdFiles.length - parts.length + 1} more memory files skipped, total size limit reached]`);
+        break;
+      }
       try {
         const filePath = path.join(memoryDir, file);
-        const content = await fs.readFile(filePath, "utf-8");
+        let content = await fs.readFile(filePath, "utf-8");
         if (content.trim()) {
-          parts.push(`## Memory: ${file}\n\n${content}`);
+          if (content.length > MAX_MEMORY_FILE_BYTES) {
+            content = content.slice(0, MAX_MEMORY_FILE_BYTES) + "\n\n[...truncated]";
+          }
+          const block = `## Memory: ${file}\n\n${content}`;
+          totalBytes += block.length;
+          parts.push(block);
         }
       } catch {
         // Skip unreadable files

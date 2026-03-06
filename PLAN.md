@@ -1244,19 +1244,9 @@ ClaudeActivity MessageAdapter renders tool bar
 
 ---
 
-### Phase 17: OpenClaw Local Agent — Independent Workspace with Gateway Sync (Planned)
+### Phase 17: OpenClaw Local Agent — Independent Workspace with Gateway Sync ✅ COMPLETE
 
 **Vision:** The local Anthroid OpenClaw agent runs as a fully independent agent on the Android device with its own persistent workspace, file-based memory, and skill set. It can synchronize memory with gateway agents, enabling a "distributed agent" model.
-
-#### 17.1 Independent Local Workspace
-
-**Current state:** The local agent (`pi-embedded-runner`) uses a single `.sessions/` directory for conversation history and no persistent workspace or memory.
-
-**Goal:** Treat the local agent as a first-class agent peer with:
-- **Workspace**: a dedicated directory that persists across sessions, for files, notes, and agent-generated content
-- **Memory**: file-based memory (plain `.md` files), no embedding/vector DB — the agent reads/writes memory files with existing file tools (Read/Write/Edit)
-- **Skills**: a set of local skills that the agent can invoke, including sync skills
-- **Identity**: a local agent ID and profile that distinguishes it from gateway agents
 
 **Architecture:**
 ```
@@ -1267,86 +1257,51 @@ Android device
 │   ├─ .sessions/                     (conversation history)
 │   └─ workspace/                     (persistent agent workspace)
 │       ├─ MEMORY.md                  (main memory file, injected into system prompt)
-│       ├─ memory/                    (topic-specific memory files)
-│       │   ├─ preferences.md
-│       │   └─ ...
+│       ├─ memory/                    (topic-specific memory files, synced with gateway)
+│       ├─ AGENTS.md, IDENTITY.md,   (profile files, synced via /sync-profile)
+│       │  SOUL.md, USER.md
 │       ├─ skills/                    (local skill definitions)
 │       └─ data/                      (agent-generated files)
 ```
 
-**Memory approach:**
-- `MEMORY.md` in workspace root is loaded and injected into the agent's system prompt at session start (like Claude Code's auto-memory)
-- Agent uses existing Read/Write/Edit tools to maintain memory files — no new tools needed
-- Topic-specific files in `memory/` subdirectory for detailed notes, linked from MEMORY.md
-- Simple, portable, human-readable format
+#### 17.1 Independent Local Workspace ✅
 
-**Implementation (Android):**
-- `OpenClawLocalClient.buildEnvironment()`: add `WORKSPACE_DIR` env var pointing to `workspace/`
-- `run.mjs`: on session start, read `workspace/MEMORY.md` and inject as `extraSystemPrompt`
+- `OpenClawLocalClient.kt`: `WORKSPACE_DIR` → `$agentDir/workspace`
+- `run.mjs`: `loadMemoryPrompt()` reads `MEMORY.md` + all `memory/*.md` files → injects into `extraSystemPrompt`
+- Commit: `160da65` (anthroid-openclaw)
 
-#### 17.2 Memory Sync with Gateway
+#### 17.2 Memory Sync with Gateway ✅
 
-**Concept:** Two-way memory sync between local agent and gateway agent:
+**Two sync mechanisms:**
 
-| Trigger | Direction | Behavior |
-|---------|-----------|----------|
-| New session start | Gateway → Local | Pull latest memory from gateway agent, merge into local `MEMORY.md` |
-| Local memory updated | Local → Gateway | Push local memory changes to gateway via `chat.inject` |
+1. **Profile sync** (manual, `/sync-profile` slash command):
+   - Syncs 5 workspace root files: AGENTS.md, IDENTITY.md, MEMORY.md, SOUL.md, USER.md
+   - Calls `agent.getProfile` RPC → writes files to workspace
+   - Commit: `7e93103` (anthroid-openclaw)
 
-**Sync mechanism:**
-- **Pull (session start):** Android calls a new gateway RPC `agent.getMemory(agentId)` → returns memory file content → write to local `workspace/MEMORY.md` (or merge)
-- **Push (after session):** After local agent updates memory files, push diff to gateway agent via existing `GatewayManager.sendChatMessage()` with a structured "memory-sync" message that the gateway agent's hook/skill processes
+2. **Memory/ sync** (automatic, every OPENCLAW session):
+   - **Pull (session start)**: `pullMemoryFiles()` → RPC `agent.getMemoryPatch(sinceTimestamp)` → writes files to `workspace/memory/`
+   - **Push (session end)**: `pushChangedMemoryFiles()` → compares MD5 hashes before/after → RPC `agent.applyMemoryPatch(files)` for changed files
+   - `lastMemorySyncTime` persisted in SharedPreferences
+   - Gateway: git-based — `getMemoryPatch` returns full file list or git diff; `applyMemoryPatch` writes + git commit
+   - Commits: `81574a0` (anthroid-openclaw), `0947b5bf` (openclaw develop)
 
-**Sync trigger options:**
-- Automatic: pull on new session start, push after session ends (if memory files changed)
-- Manual: `/sync-memory` slash command for on-demand sync
+#### 17.3 Gateway RPCs ✅
 
-**Open questions:**
-- Merge strategy: overwrite vs. append vs. agent-assisted merge?
-- Should the gateway agent have a dedicated "memory-sync" handler skill?
+| RPC | Scope | Description |
+|-----|-------|-------------|
+| `agent.getProfile(agentId?)` | READ | Returns agent identity, model config, 5 workspace root files |
+| `agent.getMemoryPatch(agentId?, sinceTimestamp?)` | READ | Returns memory/ files (full or incremental git diff) |
+| `agent.applyMemoryPatch(agentId?, files)` | WRITE | Writes files to workspace/memory/ + git commit |
 
-#### 17.3 Baseline Initialization from Gateway Agent
-
-**Goal:** Build `agent.getProfile(agentId)` RPC on the gateway server so the Android client can fetch an agent's profile/settings.
-
-**Flow:**
-1. User opens Anthroid for first time (or resets local agent)
-2. App checks if gateway is connected
-3. If connected: call `agent.getProfile(agentId)` to fetch agent profile, memory, and skill definitions
-4. Initialize local workspace with fetched content
-
-**Gateway RPC to build:**
-- `agent.getProfile(agentId)` — returns:
-  - Agent display name, persona/system prompt
-  - Memory files (MEMORY.md + topic files)
-  - Skill definitions (if any)
-  - Model preferences
-
-**Files to modify:**
-- openclaw gateway: new RPC handler in `src/gateway/server-methods/`
-- Android: `GatewayManager.kt` — call `agent.getProfile` RPC
-
-#### 17.4 Implementation Priority
-
-1. **17.1** Independent workspace directory + file-based memory injection
-   - `OpenClawLocalClient.kt`: add `WORKSPACE_DIR` env var
-   - `run.mjs`: read `MEMORY.md` → inject into `extraSystemPrompt`
-   - Minimal changes, immediate value
-
-2. **17.3** Gateway `agent.getProfile` RPC (server-side)
-   - Build the RPC on openclaw gateway
-   - Android client calls it for initialization
-
-3. **17.2** Memory sync (pull on session start, push after session)
-   - Depends on 17.3 for the gateway RPC
-   - Pull: call `agent.getMemory` → write local files
-   - Push: detect memory file changes → send to gateway
+Commits: `83a72738`, `92df4bd5`, `0947b5bf` (openclaw develop)
 
 **Key files:**
-- `claude/OpenClawLocalClient.kt` — add `WORKSPACE_DIR` to environment
-- `assets/openclaw-agent-local/run.mjs` — read MEMORY.md, inject as system prompt
-- openclaw gateway: new `agent.getProfile` RPC handler
-- `gateway/GatewayManager.kt` — new RPCs for profile fetch + memory sync
+- `claude/OpenClawLocalClient.kt` — `WORKSPACE_DIR` env var
+- `claude/ClaudeViewModel.kt` — pull/push triggers, `/sync-profile` handler, hash snapshots
+- `assets/openclaw-agent-local/run.mjs` — `loadMemoryPrompt()` reads MEMORY.md + memory/*.md
+- `gateway/GatewayManager.kt` — `getMemoryPatch()`, `applyMemoryPatch()`, `getProfile()`
+- openclaw gateway: `src/gateway/server-methods/agent.ts` — all 3 RPC handlers
 
 ---
 
