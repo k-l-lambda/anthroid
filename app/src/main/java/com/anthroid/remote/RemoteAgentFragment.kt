@@ -216,14 +216,15 @@ class RemoteAgentFragment : Fragment() {
         // Only inject when the fragment is truly being removed (user pressed Back),
         // NOT on config changes or when pushed onto the back stack.
         if (isRemoving) {
-            val ctx = context
-            if (ctx != null) {
+            val hostActivity = activity
+            if (hostActivity != null) {
                 try {
+                    val claudeVm = ViewModelProvider(hostActivity)[com.anthroid.claude.ClaudeViewModel::class.java]
                     when (sessionSource) {
                         RemoteSessionInfo.Source.OPENCLAW -> {
                             val msgs = viewModel.messages.value
                             if (msgs.isNotEmpty()) {
-                                val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(ctx)
+                                val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(hostActivity)
                                 val host = prefs.getString("gateway_host", "") ?: ""
                                 val port = prefs.getString("gateway_port", "40445") ?: "40445"
                                 val gatewayAddr = if (host.isNotEmpty()) "$host:$port" else "gateway"
@@ -237,9 +238,8 @@ class RemoteAgentFragment : Fragment() {
                                         else -> "[system]"
                                     }
                                     "$label: ${msg.content}"
-                                }.take(5000)
+                                }.takeLast(5000)
 
-                                val claudeVm = ViewModelProvider(requireActivity())[com.anthroid.claude.ClaudeViewModel::class.java]
                                 claudeVm.injectRemoteResult("remote-agent", entryInfo, history)
                             }
                         }
@@ -248,7 +248,6 @@ class RemoteAgentFragment : Fragment() {
                             if (content.isNotBlank()) {
                                 val entryInfo = "tmux $sessionHostname, $sessionDisplayName"
                                 val output = content.takeLast(5000)
-                                val claudeVm = ViewModelProvider(requireActivity())[com.anthroid.claude.ClaudeViewModel::class.java]
                                 claudeVm.injectRemoteResult("remote-tmux", entryInfo, output)
                             }
                         }
@@ -257,7 +256,7 @@ class RemoteAgentFragment : Fragment() {
                     Log.w(TAG, "Failed to inject remote result: ${e.message}")
                 }
             } else {
-                Log.w(TAG, "context null in onDestroyView, skipping injection")
+                Log.w(TAG, "activity null in onDestroyView, skipping injection")
             }
         }
         viewModel.disconnect()

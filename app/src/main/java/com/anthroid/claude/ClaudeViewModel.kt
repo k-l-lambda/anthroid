@@ -1374,19 +1374,18 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
 
         // Save to default SharedPreferences (not the memory_sync prefs)
         val defaultPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(getApplication())
-        defaultPrefs.edit()
+        val editor = defaultPrefs.edit()
             .putBoolean("gateway_enabled", true)
             .putString("gateway_host", host)
             .putString("gateway_port", port)
-            .apply {
-                if (token != null) putString("gateway_token", token)
-            }
-            .commit()
+        if (token != null) editor.putString("gateway_token", token)
+        editor.apply()
 
-        // Restart gateway service
+        // Restart gateway service (read TLS setting from prefs)
+        val useTls = defaultPrefs.getBoolean("gateway_use_tls", false)
         val context = getApplication<Application>()
         com.anthroid.gateway.GatewayForegroundService.stop(context)
-        com.anthroid.gateway.GatewayForegroundService.start(context, host, portInt, token, useTls = false)
+        com.anthroid.gateway.GatewayForegroundService.start(context, host, portInt, token, useTls = useTls)
 
         val masked = if (token != null && token.length > 8) "${token.take(4)}****${token.takeLast(4)}" else token ?: "(auto-auth)"
         appendMessage(MessageRole.SYSTEM,"Gateway set: $host:$port, token=$masked — connecting...")

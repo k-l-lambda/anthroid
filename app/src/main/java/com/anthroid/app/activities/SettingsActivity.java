@@ -333,7 +333,8 @@ public class SettingsActivity extends AppCompatActivity {
             com.anthroid.gateway.GatewayForegroundService service =
                 com.anthroid.gateway.GatewayForegroundService.Companion.getInstance();
             if (service != null && service.getGatewayManager() != null) {
-                boolean connected = service.getGatewayManager().isConnected().getValue();
+                Boolean v = service.getGatewayManager().isConnected().getValue();
+                boolean connected = v != null && v;
                 pref.setSummary(connected ? "Connected — tap to reconnect" : "Disconnected — tap to reconnect");
             } else {
                 pref.setSummary("Service not running");
