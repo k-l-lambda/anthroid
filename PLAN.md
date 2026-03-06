@@ -1191,23 +1191,19 @@ View and interact with remote AI agent sessions directly from Anthroid.
 
 ---
 
-#### Bug Fix: OpenClaw Mode Image Input — HTTP 400 Error (In Progress)
+#### Bug Fix: OpenClaw Mode Image Input — HTTP 400 Error ✅ FIXED
 
-**Problem:** In OpenClaw mode, when the user attaches an image to a message, the gateway/API returns HTTP 400. Plain text messages work fine.
+**Problem:** In OpenClaw mode, when the user attaches an image to a message, the API returns `HTTP 400: messages.0.content.1.image.source.base64.media_type: Field required`.
 
-**Hypothesis:** The `chat()` call in `OpenClawLocalClient` passes images as base64 blocks in the stdin JSON, but the underlying `pi-embedded-runner` agent or the API endpoint rejects the image format (wrong media type, oversized payload, unsupported model, or the `run.mjs` protocol doesn't pass images to the API correctly).
+**Root cause:** `run.mjs` extracted images from stdin JSON in Claude API format (`{ type: "base64", media_type, data }`) instead of the pi-ai `ImageContent` format (`{ type: "image", data, mimeType }`). When the pi-ai Anthropic provider serialized images for the API, `block.mimeType` was `undefined` (the property was named `media_type`), so `media_type: undefined` was omitted from JSON.
 
-**Investigation steps:**
-1. Reproduce: attach a photo, send in OpenClaw mode, capture logcat for the 400 response body
-2. Check `OpenClawLocalClient.chat(message, images)` — how images are serialized in the stdin JSON
-3. Check `run.mjs` — does it forward image blocks to `runEmbeddedPiAgent`? (it supports `images` param)
-4. Check if the model in use supports vision (e.g. `claude-sonnet-4-6` does; some proxy models may not)
-5. Check if `ANTHROPIC_BASE_URL` (ppinfra proxy) supports image inputs
+**Fix:** Changed `run.mjs` lines 522-526 to construct correct `ImageContent` objects:
+```javascript
+// Before (wrong): { type: "base64", media_type: block.source.media_type, data: block.source.data }
+// After (correct): { type: "image", data: block.source.data, mimeType: block.source.media_type }
+```
 
-**Files likely involved:**
-- `claude/OpenClawLocalClient.kt` — image encoding and stdin protocol
-- `assets/openclaw-agent-local/run.mjs` — image forwarding to agent runner
-- `claude/ImageUtils.kt` — image processing (resize, format)
+**Files modified:** `assets/openclaw-agent-local/run.mjs`
 
 ---
 

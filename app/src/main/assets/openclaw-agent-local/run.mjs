@@ -520,9 +520,9 @@ async function main() {
               prompt += block.text;
             } else if (block.type === "image" && block.source) {
               images.push({
-                type: "base64",
-                media_type: block.source.media_type,
+                type: "image",
                 data: block.source.data,
+                mimeType: block.source.media_type,
               });
             }
           }
