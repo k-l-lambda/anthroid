@@ -401,12 +401,6 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 } else {
                     content
                 }
-                // Memory sync: pull from gateway before OPENCLAW run, snapshot hash for change detection
-                if (agentMode == AgentMode.OPENCLAW) {
-                    pullMemoryFromGateway()
-                    snapshotMemoryHash()
-                }
-
                 val hasImages = images.isNotEmpty()
 
                 if (hasImages) {
@@ -716,12 +710,6 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 // inject local messages into the shared openclaw channel (wrong).
                 // Remote interactions go through RemoteAgentViewModel.sendChatMessage().
 
-                // Memory sync: push updated MEMORY.md to gateway if changed
-                if (agentMode == AgentMode.OPENCLAW) {
-                    viewModelScope.launch {
-                        pushMemoryToGatewayIfChanged()
-                    }
-                }
             }
         }
     }
@@ -1328,6 +1316,10 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 _slashCommandEvent.tryEmit(SlashCommandEvent.ListRemotes(hostname))
                 true
             }
+            "/sync-profile" -> {
+                viewModelScope.launch { syncProfileFromGateway() }
+                true
+            }
             else -> false
         }
     }
@@ -1482,60 +1474,52 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // ── Memory sync helpers ──────────────────────────────────────────────
-
-    /** Hash of MEMORY.md content before agent run, for change detection. */
-    private var memoryHashBeforeRun: Int? = null
+    // ── Profile sync (manual /sync-profile command) ──────────────────────
 
     /**
-     * Pull memory from gateway agent and write to local workspace/MEMORY.md.
-     * Called before starting an OPENCLAW agent run.
-     * Gateway is source of truth — overwrites local file.
+     * Sync all 5 workspace profile files from gateway to local workspace.
+     * Triggered by /sync-profile slash command.
      */
-    private suspend fun pullMemoryFromGateway() {
-        val manager = gatewayManager ?: return
+    private suspend fun syncProfileFromGateway() {
+        val manager = gatewayManager
+        if (manager == null) {
+            appendMessage(MessageRole.SYSTEM, "Gateway not connected. Cannot sync profile.")
+            return
+        }
         try {
-            val profile = manager.getAgentProfile() ?: return
-            val memoryContent = profile.memoryContent
-            if (memoryContent != null && memoryContent.isNotBlank()) {
-                val memoryFile = File(openclawClient.workspacePath, "MEMORY.md")
-                memoryFile.parentFile?.mkdirs()
-                memoryFile.writeText(memoryContent)
-                Log.i(TAG, "Pulled memory from gateway (${memoryContent.length} chars) → ${memoryFile.path}")
+            val profile = manager.getAgentProfile() ?: run {
+                appendMessage(MessageRole.SYSTEM, "Failed to fetch profile from gateway.")
+                return
             }
+            val workspaceDir = File(openclawClient.workspacePath)
+            workspaceDir.mkdirs()
+
+            var synced = 0
+            val writeIfPresent = { name: String, content: String? ->
+                if (content != null && content.isNotBlank()) {
+                    File(workspaceDir, name).writeText(content)
+                    synced++
+                }
+            }
+
+            writeIfPresent("AGENTS.md", profile.agentsContent)
+            writeIfPresent("MEMORY.md", profile.memoryContent)
+            writeIfPresent("USER.md", profile.userContent)
+            writeIfPresent("IDENTITY.md", profile.identityContent)
+            writeIfPresent("SOUL.md", profile.soulContent)
+
+            val msg = "Profile synced from gateway agent '${profile.name ?: profile.agentId}': $synced files updated."
+            Log.i(TAG, msg)
+            appendMessage(MessageRole.SYSTEM, msg)
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to pull memory from gateway: ${e.message}")
+            Log.w(TAG, "syncProfileFromGateway failed: ${e.message}")
+            appendMessage(MessageRole.SYSTEM, "Profile sync failed: ${e.message}")
         }
     }
 
-    /** Snapshot MEMORY.md hash before agent run for change detection. */
-    private fun snapshotMemoryHash() {
-        val memoryFile = File(openclawClient.workspacePath, "MEMORY.md")
-        memoryHashBeforeRun = if (memoryFile.exists()) memoryFile.readText().hashCode() else null
-    }
-
-    /**
-     * After agent run, check if MEMORY.md changed and push to gateway.
-     * Sends the updated memory content as a structured message.
-     */
-    private suspend fun pushMemoryToGatewayIfChanged() {
-        val manager = gatewayManager ?: return
-        val memoryFile = File(openclawClient.workspacePath, "MEMORY.md")
-        if (!memoryFile.exists()) return
-        val currentContent = memoryFile.readText()
-        val currentHash = currentContent.hashCode()
-        if (currentHash == memoryHashBeforeRun) return // No change
-        if (currentContent.isBlank()) return
-
-        try {
-            // Send memory update to the default gateway agent session
-            val syncMessage = "[MEMORY_SYNC]\nThe Anthroid local agent updated its memory. " +
-                "Please update the gateway MEMORY.md with the following content:\n\n$currentContent"
-            manager.sendChatMessage("main", syncMessage)
-            Log.i(TAG, "Pushed memory update to gateway (${currentContent.length} chars)")
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to push memory to gateway: ${e.message}")
-        }
+    private fun appendMessage(role: MessageRole, text: String) {
+        val msg = Message(role = role, content = text)
+        _messages.value = _messages.value + msg
     }
 
     override fun onCleared() {

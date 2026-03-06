@@ -279,7 +279,11 @@ class GatewayManager(
         agentId = obj.optString("agentId", ""),
         name = obj.optString("name", null),
         emoji = obj.optString("emoji", null),
-        memoryContent = obj.optString("memoryContent", null)
+        agentsContent = obj.optString("agentsContent", null),
+        memoryContent = obj.optString("memoryContent", null),
+        userContent = obj.optString("userContent", null),
+        identityContent = obj.optString("identityContent", null),
+        soulContent = obj.optString("soulContent", null)
       )
     } catch (err: Throwable) {
       Log.d(TAG, "getAgentProfile failed: ${err.message}")
@@ -291,7 +295,11 @@ class GatewayManager(
     val agentId: String,
     val name: String?,
     val emoji: String?,
-    val memoryContent: String?
+    val agentsContent: String?,
+    val memoryContent: String?,
+    val userContent: String?,
+    val identityContent: String?,
+    val soulContent: String?
   )
 
   /**
