@@ -401,6 +401,12 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 } else {
                     content
                 }
+                // Memory sync: pull memory/ files from gateway before OPENCLAW run
+                if (agentMode == AgentMode.OPENCLAW) {
+                    pullMemoryFiles()
+                    snapshotMemoryFiles()
+                }
+
                 val hasImages = images.isNotEmpty()
 
                 if (hasImages) {
@@ -710,6 +716,10 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 // inject local messages into the shared openclaw channel (wrong).
                 // Remote interactions go through RemoteAgentViewModel.sendChatMessage().
 
+                // Memory sync: push changed memory/ files to gateway
+                if (agentMode == AgentMode.OPENCLAW) {
+                    viewModelScope.launch { pushChangedMemoryFiles() }
+                }
             }
         }
     }
@@ -1520,6 +1530,83 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
     private fun appendMessage(role: MessageRole, text: String) {
         val msg = Message(role = role, content = text)
         _messages.value = _messages.value + msg
+    }
+
+    // ── Incremental memory/ sync ────────────────────────────────────────
+
+    private val prefs get() = getApplication<android.app.Application>()
+        .getSharedPreferences("memory_sync", android.content.Context.MODE_PRIVATE)
+
+    private var memoryFilesHashBefore: Map<String, Int> = emptyMap()
+
+    /** Pull memory/ files from gateway since lastSyncTime. */
+    private suspend fun pullMemoryFiles() {
+        val manager = gatewayManager ?: return
+        val lastSync = prefs.getLong("lastMemorySyncTime", 0)
+        try {
+            val result = manager.getMemoryPatch(if (lastSync > 0) lastSync else null) ?: return
+            val memoryDir = File(openclawClient.workspacePath, "memory")
+            memoryDir.mkdirs()
+
+            if (result.mode == "full" && result.files != null) {
+                var count = 0
+                for ((name, content) in result.files) {
+                    if (name.endsWith(".md") && content.isNotBlank()) {
+                        File(memoryDir, name).writeText(content)
+                        count++
+                    }
+                }
+                if (count > 0) Log.i(TAG, "Pulled $count memory files from gateway (full sync)")
+            }
+            // Note: "patch" mode applies git diff — not implemented on Android yet (no git binary)
+            // For now, only "full" mode is supported on the Android side
+
+            prefs.edit().putLong("lastMemorySyncTime", result.latestTimestamp).apply()
+        } catch (e: Exception) {
+            Log.w(TAG, "pullMemoryFiles failed: ${e.message}")
+        }
+    }
+
+    /** Snapshot memory/ file hashes before agent run. */
+    private fun snapshotMemoryFiles() {
+        val memoryDir = File(openclawClient.workspacePath, "memory")
+        memoryFilesHashBefore = if (memoryDir.exists()) {
+            memoryDir.listFiles()?.filter { it.name.endsWith(".md") }
+                ?.associate { it.name to it.readText().hashCode() } ?: emptyMap()
+        } else emptyMap()
+    }
+
+    /** Push changed memory/ files to gateway after agent run. */
+    private suspend fun pushChangedMemoryFiles() {
+        val manager = gatewayManager ?: return
+        val memoryDir = File(openclawClient.workspacePath, "memory")
+        if (!memoryDir.exists()) return
+
+        val currentFiles = memoryDir.listFiles()?.filter { it.name.endsWith(".md") } ?: return
+        val changedFiles = mutableMapOf<String, String>()
+
+        for (file in currentFiles) {
+            val content = file.readText()
+            val currentHash = content.hashCode()
+            val beforeHash = memoryFilesHashBefore[file.name]
+            if (beforeHash == null || currentHash != beforeHash) {
+                changedFiles[file.name] = content
+            }
+        }
+
+        if (changedFiles.isEmpty()) return
+
+        try {
+            val ok = manager.applyMemoryPatch(changedFiles)
+            if (ok) {
+                prefs.edit().putLong("lastMemorySyncTime", System.currentTimeMillis()).apply()
+                Log.i(TAG, "Pushed ${changedFiles.size} changed memory files to gateway")
+            } else {
+                Log.w(TAG, "Gateway rejected memory patch — may need manual conflict resolution")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "pushChangedMemoryFiles failed: ${e.message}")
+        }
     }
 
     override fun onCleared() {

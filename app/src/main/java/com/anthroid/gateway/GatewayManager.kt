@@ -303,6 +303,68 @@ class GatewayManager(
   )
 
   /**
+   * Get memory patch from gateway since a given timestamp.
+   * Returns mode ("full"|"patch"), content, and latest timestamp.
+   */
+  suspend fun getMemoryPatch(sinceTimestamp: Long? = null): MemoryPatchResult? {
+    val gs = session ?: return null
+    return try {
+      val params = JSONObject()
+      if (sinceTimestamp != null && sinceTimestamp > 0) params.put("sinceTimestamp", sinceTimestamp)
+      val response = gs.request("agent.getMemoryPatch", params.toString(), timeoutMs = 15_000)
+      val obj = JSONObject(response)
+      val mode = obj.optString("mode", "full")
+      val latestTimestamp = obj.optLong("latestTimestamp", System.currentTimeMillis())
+      if (mode == "patch") {
+        MemoryPatchResult(mode = "patch", patch = obj.optString("patch", ""), latestTimestamp = latestTimestamp)
+      } else {
+        val filesObj = obj.optJSONObject("files")
+        val files = mutableMapOf<String, String>()
+        if (filesObj != null) {
+          for (key in filesObj.keys()) {
+            files[key] = filesObj.optString(key, "")
+          }
+        }
+        MemoryPatchResult(mode = "full", files = files, latestTimestamp = latestTimestamp)
+      }
+    } catch (err: Throwable) {
+      Log.d(TAG, "getMemoryPatch failed: ${err.message}")
+      null
+    }
+  }
+
+  /**
+   * Push memory files to gateway.
+   * Sends changed files as a "full" mode update.
+   */
+  suspend fun applyMemoryPatch(files: Map<String, String>): Boolean {
+    val gs = session ?: return false
+    return try {
+      val filesJson = JSONObject()
+      for ((name, content) in files) filesJson.put(name, content)
+      val params = JSONObject().apply {
+        put("mode", "full")
+        put("files", filesJson)
+      }
+      val response = gs.request("agent.applyMemoryPatch", params.toString(), timeoutMs = 15_000)
+      val obj = JSONObject(response)
+      val ok = obj.optBoolean("ok", false)
+      if (ok) Log.i(TAG, "Applied memory patch: ${files.size} files")
+      ok
+    } catch (err: Throwable) {
+      Log.w(TAG, "applyMemoryPatch failed: ${err.message}")
+      false
+    }
+  }
+
+  data class MemoryPatchResult(
+    val mode: String, // "full" or "patch"
+    val patch: String? = null,
+    val files: Map<String, String>? = null,
+    val latestTimestamp: Long = 0
+  )
+
+  /**
    * Load recent conversation history for a session via sessions.preview RPC.
    * Returns list of (role, text) pairs ordered oldest-first, or empty list on failure.
    */
