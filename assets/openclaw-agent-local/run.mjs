@@ -264,25 +264,55 @@ async function discoverAndroidTools() {
 let memoryPrompt = null;
 
 async function loadMemoryPrompt() {
+  const parts = [];
+  const memoryDir = path.join(WORKSPACE_DIR, "memory");
+
+  // 1. Load workspace/MEMORY.md (main memory file)
   const memoryPath = path.join(WORKSPACE_DIR, "MEMORY.md");
   try {
     const content = await fs.readFile(memoryPath, "utf-8");
-    if (!content.trim()) return "";
-    return (
-      `\n# Persistent Memory\n\n` +
-      `The following is your persistent memory from previous sessions. ` +
-      `You can update it by writing to ${memoryPath} using the file edit tools.\n\n` +
-      content
-    );
+    if (content.trim()) {
+      parts.push(
+        `# Persistent Memory\n\n` +
+        `The following is your persistent memory from previous sessions. ` +
+        `You can update it by writing to ${memoryPath} using the file edit tools.\n\n` +
+        content
+      );
+    }
   } catch {
-    // File doesn't exist yet — instruct agent about memory location
+    // MEMORY.md doesn't exist yet
+  }
+
+  // 2. Load all files from workspace/memory/ (topic-specific memory)
+  try {
+    const files = await fs.readdir(memoryDir);
+    const mdFiles = files.filter(f => f.endsWith(".md")).sort();
+    for (const file of mdFiles) {
+      try {
+        const filePath = path.join(memoryDir, file);
+        const content = await fs.readFile(filePath, "utf-8");
+        if (content.trim()) {
+          parts.push(`## Memory: ${file}\n\n${content}`);
+        }
+      } catch {
+        // Skip unreadable files
+      }
+    }
+  } catch {
+    // memory/ directory doesn't exist yet — that's fine
+  }
+
+  if (parts.length === 0) {
+    // No memory files exist yet — instruct agent
     return (
       `\n# Persistent Memory\n\n` +
-      `You have a persistent memory file at ${memoryPath}. ` +
-      `It does not exist yet. You can create it using file write tools to remember things across sessions. ` +
+      `You have a persistent memory file at ${memoryPath} and a memory directory at ${memoryDir}/. ` +
+      `Neither exists yet. You can create them using file write tools to remember things across sessions. ` +
       `Keep it concise and organized by topic.`
     );
   }
+
+  return "\n" + parts.join("\n\n");
 }
 
 // ---------------------------------------------------------------------------
