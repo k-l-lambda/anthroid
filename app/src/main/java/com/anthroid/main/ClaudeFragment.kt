@@ -442,12 +442,20 @@ class ClaudeFragment : Fragment() {
     private fun setupQuickSend(view: View) {
         quickSendRecyclerView = view.findViewById(R.id.quick_send_recycler)
 
-        quickSendAdapter = QuickSendAdapter { text ->
-            // Send the message immediately when chip is clicked
-            viewModel.sendMessage(text)
-            quickSendManager.trackMessage(text)
-            hideQuickSendCandidates()
-        }
+        quickSendAdapter = QuickSendAdapter(
+            onItemClick = { text ->
+                // Send the message immediately when chip is clicked
+                viewModel.sendMessage(text)
+                quickSendManager.trackMessage(text)
+                hideQuickSendCandidates()
+            },
+            onItemLongClick = { text ->
+                // Long-press: insert text into input field without sending
+                inputField.setText(text)
+                inputField.setSelection(text.length)
+                inputField.requestFocus()
+            }
+        )
 
         quickSendRecyclerView.apply {
             layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.VERTICAL, true)

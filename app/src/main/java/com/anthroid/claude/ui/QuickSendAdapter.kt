@@ -15,7 +15,8 @@ import com.google.android.material.chip.Chip
  * Displays frequently used short messages as clickable chips.
  */
 class QuickSendAdapter(
-    private val onItemClick: (String) -> Unit
+    private val onItemClick: (String) -> Unit,
+    private val onItemLongClick: ((String) -> Unit)? = null
 ) : ListAdapter<QuickSendCandidate, QuickSendAdapter.ViewHolder>(DiffCallback()) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -36,6 +37,10 @@ class QuickSendAdapter(
             chip.text = candidate.text
             chip.setOnClickListener {
                 onItemClick(candidate.text)
+            }
+            chip.setOnLongClickListener {
+                onItemLongClick?.invoke(candidate.text)
+                onItemLongClick != null
             }
         }
     }
