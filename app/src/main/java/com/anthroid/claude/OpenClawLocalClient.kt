@@ -428,7 +428,7 @@ class OpenClawLocalClient(private val context: Context) {
             "SHELL" to "$prefix/bin/bash",
             "MCP_ENDPOINT" to "http://localhost:8765/mcp",
             "SESSION_DIR" to "$agentDir/.sessions",
-            "WORKSPACE_DIR" to home
+            "WORKSPACE_DIR" to "$agentDir/workspace"
         )
     }
 

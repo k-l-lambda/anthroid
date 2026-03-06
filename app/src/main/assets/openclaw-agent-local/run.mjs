@@ -258,6 +258,34 @@ async function discoverAndroidTools() {
 }
 
 // ---------------------------------------------------------------------------
+// Persistent memory
+// ---------------------------------------------------------------------------
+
+let memoryPrompt = null;
+
+async function loadMemoryPrompt() {
+  const memoryPath = path.join(WORKSPACE_DIR, "MEMORY.md");
+  try {
+    const content = await fs.readFile(memoryPath, "utf-8");
+    if (!content.trim()) return "";
+    return (
+      `\n# Persistent Memory\n\n` +
+      `The following is your persistent memory from previous sessions. ` +
+      `You can update it by writing to ${memoryPath} using the file edit tools.\n\n` +
+      content
+    );
+  } catch {
+    // File doesn't exist yet — instruct agent about memory location
+    return (
+      `\n# Persistent Memory\n\n` +
+      `You have a persistent memory file at ${memoryPath}. ` +
+      `It does not exist yet. You can create it using file write tools to remember things across sessions. ` +
+      `Keep it concise and organized by topic.`
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Abort control
 // ---------------------------------------------------------------------------
 
@@ -304,6 +332,12 @@ async function runAgent(prompt, images) {
       androidToolsPrompt = await discoverAndroidTools() || "";
     }
 
+    // Load persistent memory (reload each run to pick up changes)
+    memoryPrompt = await loadMemoryPrompt();
+
+    // Ensure workspace directory exists
+    await fs.mkdir(WORKSPACE_DIR, { recursive: true });
+
     // Build config with provider overrides for custom base URL / proxy models.
     // When ANTHROPIC_BASE_URL is set (e.g. ppinfra proxy), configure the provider
     // with that base URL. If the MODEL includes a prefix like "pa/", register it
@@ -347,7 +381,7 @@ async function runAgent(prompt, images) {
       timeoutMs: TIMEOUT_MS,
       runId,
       abortSignal: abortCtrl.signal,
-      extraSystemPrompt: androidToolsPrompt || undefined,
+      extraSystemPrompt: [androidToolsPrompt, memoryPrompt].filter(Boolean).join("\n") || undefined,
 
       // Stream text to stdout as deltas.
       // onPartialReply sends cumulative text, so we diff against lastPartialText
