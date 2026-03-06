@@ -152,6 +152,27 @@ When Claude launches other apps or performs actions outside Anthroid:
 - **Auto-hides** after task completion (tap to return to Anthroid)
 - Requires overlay permission (Draw over other apps)
 
+### OpenClaw Agent Runtime (v1.0)
+Local [OpenClaw](https://github.com/k-l-lambda/openclaw) agent with full tool-use, model selection, and context management:
+- **pi-embedded-runner** bundled in APK — no external agent server needed
+- **60+ Android tools** via MCP bridge (accessibility, camera, clipboard, notifications, etc.)
+- **File-based memory** — `MEMORY.md` + `memory/*.md` injected into system prompt, persists across sessions
+- **Any LLM provider** — Anthropic, OpenAI-compatible APIs, or proxy endpoints (e.g. PPIO)
+
+### Gateway Integration (Optional)
+Connect to an OpenClaw gateway server for distributed agent features:
+- **Memory sync** — automatic pull/push of `memory/` files on session start/end (git-based incremental)
+- **Profile sync** — `/sync-profile` command pulls agent identity, skills, and config files
+- **Remote agent view** — view and interact with OpenClaw sessions and SSH+tmux sessions on remote servers
+- **Pending message delivery** — 60s polling for timed messages from gateway agents
+- **System notifications** — IM-like notifications for gateway messages when app is backgrounded
+- **Gateway Settings UI** — configure host/port/token in Settings, or use `/set-gateway` command / QR code
+
+### Quick Send Candidates
+- Frequently used short messages appear as chips above the input bar
+- **Tap** to send immediately, **long-press** to insert into input for editing
+- Automatically tracked by frequency (threshold: 5 uses)
+
 ### Terminal Environment
 Built-in Linux terminal for advanced users:
 - Full bash shell environment
@@ -200,35 +221,58 @@ Or use QR code for quick setup:
 3. Wait for model initialization
 4. Microphone button appears in chat
 
+### Gateway Setup (Optional)
+Connect to an OpenClaw gateway for memory sync and remote agent features:
+1. Go to **Settings** > **Gateway Connection**
+2. Enter host, port, and token
+3. Enable the toggle
+
+Or use the chat command: `/set-gateway <host:port> [token]`
+
+Or scan a QR code generated from `tools/qr-generator.html`.
+
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────┐
-│                 Anthroid App                    │
-├─────────────────────────────────────────────────┤
-│   Chat UI          │   Terminal UI              │
-│   - Messages       │   - Full Linux shell       │
-│   - Voice input    │   - Package manager        │
-│   - Camera/QR      │   - Claude CLI             │
-├─────────────────────────────────────────────────┤
-│   Claude Integration                            │
-│   - Streaming API responses                     │
-│   - Tool execution (Bash, Files, Android APIs)  │
-│   - Conversation management                     │
-├─────────────────────────────────────────────────┤
-│   Native Components                             │
-│   - sherpa-onnx (offline ASR)                   │
-│   - ML Kit (QR scanning)                        │
-│   - CameraX (photo capture)                     │
-└─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│  Anthroid App (Android)                          │
+│                                                  │
+│  ┌────────────────────────────────────────────┐  │
+│  │  Kotlin Layer                              │  │
+│  │  ├─ Chat UI (Markdown, voice, camera)      │  │
+│  │  ├─ ClaudeViewModel (CLI/API/OpenClaw)     │  │
+│  │  ├─ MCP Server (NanoHTTPD :8765)           │  │
+│  │  ├─ Gateway Manager (WebSocket + sync)     │  │
+│  │  └─ AndroidTools (60+ device tools)        │  │
+│  └──────────────┬─────────────────────────────┘  │
+│                 │ HTTP localhost:8765              │
+│  ┌──────────────┴─────────────────────────────┐  │
+│  │  Node.js Layer (OpenClaw Agent)            │  │
+│  │  ├─ pi-embedded-runner (agent runtime)     │  │
+│  │  ├─ android-tools-bridge.mjs (MCP bridge)  │  │
+│  │  └─ workspace/ (memory, skills, data)      │  │
+│  └────────────────────────────────────────────┘  │
+│                                                  │
+│  ┌────────────────────────────────────────────┐  │
+│  │  Terminal (Termux fork)                    │  │
+│  │  bash, Node.js, Python, apt/pkg            │  │
+│  └────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────┘
+         │                           │
+         ▼                           ▼
+   ☁️ LLM API              ☁️ OpenClaw Gateway
+   (Claude/OpenAI)          (optional, WebSocket)
 ```
 
 ### Key Technologies
 - **Kotlin** - Primary language
+- **OpenClaw pi-embedded-runner** - Local agent runtime with tool-use
 - **CameraX** - Camera capture
 - **ML Kit** - QR code scanning
 - **sherpa-onnx** - Offline speech recognition
 - **Markwon** - Markdown rendering
+- **OkHttp** - WebSocket for gateway connection
+- **BouncyCastle** - Ed25519 device authentication
 
 ## License
 
