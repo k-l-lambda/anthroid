@@ -67,6 +67,7 @@ class RemoteAgentFragment : Fragment() {
     private lateinit var statusIndicator: TextView
     private lateinit var syncDownIndicator: TextView
     private lateinit var syncUpIndicator: TextView
+    private lateinit var candidateMessage: TextView
     private lateinit var messageList: RecyclerView
     private lateinit var terminalScroll: ScrollView
     private lateinit var terminalContent: TextView
@@ -84,6 +85,8 @@ class RemoteAgentFragment : Fragment() {
     private var sherpaOnnxManager: SherpaOnnxManager? = null
     private var isVoiceInputInitialized = false
     private var isVoiceInitializing = false
+
+    private var lastSentMessage: String? = null
 
     private val requestAudioPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -118,6 +121,7 @@ class RemoteAgentFragment : Fragment() {
         syncDownIndicator = view.findViewById(R.id.sync_down_indicator)
         syncUpIndicator = view.findViewById(R.id.sync_up_indicator)
         statusIndicator = view.findViewById(R.id.status_indicator)
+        candidateMessage = view.findViewById(R.id.candidate_message)
         messageList = view.findViewById(R.id.message_list)
         terminalScroll = view.findViewById(R.id.terminal_scroll)
         terminalContent = view.findViewById(R.id.terminal_content)
@@ -256,6 +260,14 @@ class RemoteAgentFragment : Fragment() {
             }
         }
 
+        // Candidate message: tap to fill input with last sent message
+        candidateMessage.setOnClickListener {
+            lastSentMessage?.let { msg ->
+                inputField.setText(msg)
+                inputField.setSelection(msg.length)
+            }
+        }
+
         viewModel.connectToTmuxSession(hostname, sessionName)
     }
 
@@ -264,6 +276,14 @@ class RemoteAgentFragment : Fragment() {
         if (text.isEmpty()) return
         inputField.text.clear()
         viewModel.sendMessage(text)
+
+        // Show candidate for re-send (tmux mode only)
+        if (sessionSource == RemoteSessionInfo.Source.SSH_TMUX) {
+            lastSentMessage = text
+            val display = if (text.length > 20) text.take(20) + "..." else text
+            candidateMessage.text = display
+            candidateMessage.visibility = View.VISIBLE
+        }
     }
 
     // ── Voice Input ──────────────────────────────────────────────
