@@ -204,7 +204,7 @@ class GatewayForegroundService : Service() {
 
         // Wire up chat message events
         manager.onChatMessage = { sessionKey, displayName, messageText ->
-            if (!ScreenAutomationOverlay.isAppInForeground) {
+            if (!ScreenAutomationOverlay.isAppInForeground && !messageText.isNullOrBlank()) {
                 notificationHelper?.showMessageNotification(
                     sessionKey = sessionKey,
                     displayName = displayName,
