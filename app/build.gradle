@@ -312,10 +312,15 @@ afterEvaluate {
             mergeAssetsTask.dependsOn(copyClaudeCode)
             mergeAssetsTask.dependsOn(copyOpenClawAgent)
         }
-        // Make lint tasks depend on copyClaudeCode
+        // Make lint tasks depend on copyClaudeCode and copyOpenClawAgent
         def lintAnalyzeTask = tasks.findByName("lintVitalAnalyze${variant.name.capitalize()}")
         if (lintAnalyzeTask) {
             lintAnalyzeTask.dependsOn(copyClaudeCode)
+            lintAnalyzeTask.dependsOn(copyOpenClawAgent)
+        }
+        def lintReportTask = tasks.findByName("lintVitalReport${variant.name.capitalize()}")
+        if (lintReportTask) {
+            lintReportTask.dependsOn(copyOpenClawAgent)
         }
     }
 }
