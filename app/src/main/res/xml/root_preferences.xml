@@ -66,10 +66,10 @@
         <ListPreference
             app:key="claude_mode"
             app:title="Agent Mode"
-            app:summary="Auto: prefer API when configured, fallback to CLI. OpenClaw: local agent with tools bridge."
+            app:summary="CLI: Termux Claude CLI. OpenClaw: local agent with tools bridge."
             app:entries="@array/claude_mode_entries"
             app:entryValues="@array/claude_mode_values"
-            app:defaultValue="auto"/>
+            app:defaultValue="cli"/>
 
     </PreferenceCategory>
 

@@ -1,0 +1,34 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!--
+        Anthroid monochrome icon for adaptive icon status bar (Android 13+).
+        Android robot head: dome + body with eye cutouts + antennae.
+        Centered in the 108x108 viewport with safe zone (66dp inner circle).
+    -->
+
+    <!-- Left antenna -->
+    <path
+        android:pathData="M40,30 L36,20"
+        android:strokeColor="#ffffff"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"/>
+
+    <!-- Right antenna -->
+    <path
+        android:pathData="M68,30 L72,20"
+        android:strokeColor="#ffffff"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"/>
+
+    <!-- Head (dome + body) with eye cutouts -->
+    <path
+        android:fillType="evenOdd"
+        android:pathData="M22,80 V52 A32,32 0 0,1 86,52 V80 Z
+                          M40,58 A6,6 0 0,1 52,58 A6,6 0 0,1 40,58 Z
+                          M56,58 A6,6 0 0,1 68,58 A6,6 0 0,1 56,58 Z"
+        android:fillColor="#ffffff"/>
+
+</vector>

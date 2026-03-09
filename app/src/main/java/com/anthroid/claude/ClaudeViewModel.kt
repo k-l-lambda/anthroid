@@ -202,27 +202,25 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
 
         // Read user preference for claude mode
         val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(getApplication())
-        val claudeMode = prefs.getString("claude_mode", "auto") ?: "auto"
+        val claudeMode = prefs.getString("claude_mode", "cli") ?: "cli"
 
         agentMode = when (claudeMode) {
-            "cli" -> if (cliAvailable) AgentMode.CLI else AgentMode.API
             "api" -> AgentMode.API
-            "openclaw" -> if (openclawAvailable) AgentMode.OPENCLAW else AgentMode.API
-            else -> when {
-                // Auto priority: OpenClaw > API > CLI
-                // OpenClaw needs both agent files AND API key (calls LLM directly)
-                openclawAvailable && apiConfigured -> AgentMode.OPENCLAW
-                apiConfigured -> AgentMode.API
-                cliAvailable -> AgentMode.CLI
-                else -> AgentMode.API
-            }
+            // When user explicitly selects openclaw, stay in OPENCLAW mode even if
+            // agent is not yet installed — ensureDependencies() will auto-install
+            // on first message. Falling back to API silently is misleading.
+            "openclaw" -> AgentMode.OPENCLAW
+            // Default to CLI
+            else -> if (cliAvailable) AgentMode.CLI else AgentMode.API
         }
 
         _isClaudeInstalled.value = when (claudeMode) {
-            "cli" -> cliAvailable
             "api" -> apiConfigured
-            "openclaw" -> openclawAvailable
-            else -> cliAvailable || apiConfigured || openclawAvailable
+            // OpenClaw can auto-install dependencies on first message, so treat
+            // it as available even if node_modules is not yet present.
+            "openclaw" -> true
+            // Default (cli)
+            else -> cliAvailable
         }
 
         Log.i(TAG, "Claude CLI: $cliAvailable, API: $apiConfigured, OpenClaw: $openclawAvailable, mode: $claudeMode, agentMode: $agentMode")
