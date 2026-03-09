@@ -1369,3 +1369,55 @@ Root cause: "webchat" (internal WebSocket) has no persistent delivery mechanism.
 - Android: `gateway/GatewayManager.kt`, `gateway/GatewayForegroundService.kt`, `claude/ClaudeActivity.kt`
 
 **Note:** In-memory pending store resets on gateway restart. For persistence, a SQLite-backed store can be added later.
+
+---
+
+### Phase 18: UX Polish & Bug Fixes (v1.0.1)
+
+**Version:** 1.0.1 (versionCode 100100)
+
+#### 18.1: Agent Mode Simplification ✅
+
+- Removed "Auto" from agent mode settings (was silently degrading to API when openclaw unavailable)
+- Default changed to "CLI" mode
+- `ClaudeViewModel.kt`: when `claude_mode="openclaw"` explicitly selected, always use `AgentMode.OPENCLAW` — `ensureDependencies()` handles auto-install on first send
+- `_isClaudeInstalled` returns `true` for openclaw mode (lets UI show even if `node_modules` missing)
+- `arrays.xml`, `root_preferences.xml`, `ClaudeViewModel.kt`
+
+#### 18.2: Gateway TLS Fix ✅
+
+- `gateway_use_tls` defaults to `true` but camus-station uses plain `ws://`
+- Fix: `DEBUG_CONFIG_GATEWAY --ez tls false` broadcast; new devices need this on first setup
+- Root cause documented: new devices don't inherit old device's SharedPreferences
+
+#### 18.3: Notification Icon (Android 13+) ✅
+
+- New `ic_monochrome.xml` — Android robot head for status bar monochrome adaptive icon layer
+- `ic_launcher.xml` / `ic_launcher_round.xml`: `<monochrome>` → `ic_monochrome`
+- Kept `ic_service_notification.xml` as original Termux `>_` symbol
+
+#### 18.4: Blank Notification Suppression ✅
+
+- `GatewayForegroundService.onChatMessage`: added `&& !messageText.isNullOrBlank()` guard
+- Prevents notifications for whitespace-only messages (suppressed HEARTBEAT_OK from gateway broadcast)
+
+#### 18.5: Remote Agent View — Voice Input ✅
+
+- Added mic button + SherpaOnnxManager press-and-hold ASR to `RemoteAgentFragment`
+- Both OpenClaw and SSH/tmux modes supported
+- Same pattern as `ClaudeFragment`: lazy init, green visual feedback, 🎙 prefix on transcription
+- `fragment_remote_agent.xml`: `FrameLayout` mic container before input field
+
+#### 18.6: Remote Agent View — tmux Sync Status ✅
+
+- Two arrow indicators in header bar (left of green dot): ↓ and ↑
+- `↓` lights up white during `capture-pane` sync (`isSyncing` flow)
+- `↑` lights up white during `send-keys` message send (`isSending` flow)
+- Only shown in SSH/tmux mode; hidden by default in OpenClaw mode
+
+#### 18.7: Remote Agent View — Candidate Message Chip ✅
+
+- After sending in tmux mode, shows last sent message as a small chip above input bar
+- Truncated to 20 chars + `...` if longer
+- Tap chip to restore full original message into input field
+- Hidden on first open; only appears after first send
