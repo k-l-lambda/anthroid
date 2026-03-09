@@ -268,8 +268,8 @@ public class RunCommandService extends Service {
         // No need to show a timestamp:
         builder.setShowWhen(false);
 
-        // Set notification icon
-        builder.setSmallIcon(R.drawable.ic_service_notification);
+        // Set notification icon (Termux terminal uses >_ icon)
+        builder.setSmallIcon(R.drawable.ic_termux_notification);
 
         // Set background color for small notification icon
         builder.setColor(0xFF607D8B);

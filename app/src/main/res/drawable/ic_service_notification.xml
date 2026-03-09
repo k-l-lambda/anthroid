@@ -3,22 +3,28 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <!--
-        Updated notification icon compliant with system icons guidelines
-        https://material.io/design/iconography/system-icons.html
-    -->
+    <!-- Anthroid notification icon: Android robot head -->
 
-    <group>
-        <clip-path
-            android:pathData="M0,0h24v24h-24z"/>
+    <!-- Left antenna -->
+    <path
+        android:pathData="M8,7 L6,2.5"
+        android:strokeColor="#ffffff"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"/>
 
-        <path
-            android:pathData="M5,4H2L8,12L2,20H5L11,12L5,4Z"
-            android:fillColor="#ffffff"/>
+    <!-- Right antenna -->
+    <path
+        android:pathData="M16,7 L18,2.5"
+        android:strokeColor="#ffffff"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"/>
 
-        <path
-            android:pathData="M13,18H22V20H13V18Z"
-            android:fillColor="#ffffff"/>
+    <!-- Head (dome + body) with eye cutouts -->
+    <path
+        android:fillType="evenOdd"
+        android:pathData="M4,22 V14 A8,8 0 0,1 20,14 V22 Z
+                          M7.5,16 A1.5,1.5 0 0,1 10.5,16 A1.5,1.5 0 0,1 7.5,16 Z
+                          M13.5,16 A1.5,1.5 0 0,1 16.5,16 A1.5,1.5 0 0,1 13.5,16 Z"
+        android:fillColor="#ffffff"/>
 
-    </group>
 </vector>
