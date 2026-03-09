@@ -1,23 +1,33 @@
 package com.anthroid.remote
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.PorterDuff
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
-import android.graphics.Color
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.anthroid.R
+import com.anthroid.claude.SherpaOnnxManager
 import com.anthroid.claude.ui.MessageAdapter
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -62,7 +72,27 @@ class RemoteAgentFragment : Fragment() {
     private lateinit var btnSend: ImageButton
     private lateinit var btnBack: ImageButton
 
+    private lateinit var micContainer: FrameLayout
+    private lateinit var btnMic: ImageButton
+    private lateinit var micLoading: ProgressBar
+
     private lateinit var messageAdapter: MessageAdapter
+
+    // Voice input
+    private var sherpaOnnxManager: SherpaOnnxManager? = null
+    private var isVoiceInputInitialized = false
+    private var isVoiceInitializing = false
+
+    private val requestAudioPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            initializeVoiceInput()
+        } else {
+            Toast.makeText(requireContext(), "Microphone permission required for voice input", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private var sessionDisplayName = ""   // stored for onDestroyView injection
     private var sessionAgentId = ""       // agentId from sessionKey (e.g. "main" from "agent:main:main")
     private var sessionSource = RemoteSessionInfo.Source.OPENCLAW
@@ -90,6 +120,9 @@ class RemoteAgentFragment : Fragment() {
         inputField = view.findViewById(R.id.input_field)
         btnSend = view.findViewById(R.id.btn_send)
         btnBack = view.findViewById(R.id.btn_back)
+        micContainer = view.findViewById(R.id.mic_container)
+        btnMic = view.findViewById(R.id.btn_mic)
+        micLoading = view.findViewById(R.id.mic_loading)
 
         val sessionKey = arguments?.getString(ARG_SESSION_KEY) ?: ""
         val displayName = arguments?.getString(ARG_DISPLAY_NAME) ?: sessionKey
@@ -129,6 +162,9 @@ class RemoteAgentFragment : Fragment() {
                 true
             } else false
         }
+
+        // Voice input
+        setupVoiceInput()
 
         // Observe connection status — show as colored dot only
         viewLifecycleOwner.lifecycleScope.launch {
@@ -212,6 +248,104 @@ class RemoteAgentFragment : Fragment() {
         viewModel.sendMessage(text)
     }
 
+    // ── Voice Input ──────────────────────────────────────────────
+
+    private fun setupVoiceInput() {
+        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(requireContext())
+        val asrModel = prefs.getString("asr_model", "none") ?: "none"
+
+        if (asrModel == "none") {
+            micContainer.visibility = View.GONE
+            return
+        }
+
+        if (!SherpaOnnxManager.isModelInstalled(requireContext())) {
+            micContainer.visibility = View.GONE
+            Log.w(TAG, "ASR model not installed, hiding mic button")
+            return
+        }
+
+        micContainer.visibility = View.VISIBLE
+
+        btnMic.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    startVoiceRecording()
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    stopVoiceRecording()
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    private fun initializeVoiceInput() {
+        if (isVoiceInputInitialized || isVoiceInitializing) return
+
+        isVoiceInitializing = true
+        btnMic.visibility = View.INVISIBLE
+        micLoading.visibility = View.VISIBLE
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                sherpaOnnxManager = SherpaOnnxManager(requireContext())
+                val success = sherpaOnnxManager?.initialize() ?: false
+                if (success) {
+                    isVoiceInputInitialized = true
+                    isVoiceInitializing = false
+                    micLoading.visibility = View.GONE
+                    btnMic.visibility = View.VISIBLE
+                    Log.i(TAG, "Voice input initialized successfully")
+                } else {
+                    isVoiceInitializing = false
+                    micLoading.visibility = View.GONE
+                    btnMic.visibility = View.VISIBLE
+                    Log.e(TAG, "Failed to initialize voice input")
+                    Toast.makeText(requireContext(), "Failed to initialize voice input", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error initializing voice input: ${e.message}", e)
+            }
+        }
+    }
+
+    private fun startVoiceRecording() {
+        if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED) {
+            requestAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            return
+        }
+
+        if (!isVoiceInputInitialized) {
+            initializeVoiceInput()
+            Toast.makeText(requireContext(), "Initializing voice input...", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (sherpaOnnxManager?.startRecording() == true) {
+            btnMic.setColorFilter(ContextCompat.getColor(requireContext(), android.R.color.holo_green_light))
+            inputField.background?.setColorFilter(Color.parseColor("#4000FF00"), PorterDuff.Mode.SRC_ATOP)
+            Toast.makeText(requireContext(), "Listening...", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun stopVoiceRecording() {
+        btnMic.clearColorFilter()
+        inputField.background?.clearColorFilter()
+
+        val finalText = sherpaOnnxManager?.stopRecording() ?: ""
+        if (finalText.isNotEmpty()) {
+            val existingText = inputField.text.toString()
+            val textWithEmoji = "\uD83C\uDF99 $finalText"
+            val newText = if (existingText.isNotEmpty()) "$existingText $textWithEmoji" else textWithEmoji
+            inputField.setText(newText)
+            inputField.setSelection(newText.length)
+        }
+    }
+
     override fun onDestroyView() {
         // Only inject when the fragment is truly being removed (user pressed Back),
         // NOT on config changes or when pushed onto the back stack.
@@ -259,6 +393,10 @@ class RemoteAgentFragment : Fragment() {
                 Log.w(TAG, "activity null in onDestroyView, skipping injection")
             }
         }
+        sherpaOnnxManager?.release()
+        sherpaOnnxManager = null
+        isVoiceInputInitialized = false
+
         viewModel.disconnect()
         super.onDestroyView()
     }

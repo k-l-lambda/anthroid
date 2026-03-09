@@ -95,6 +95,31 @@
             android:background="#FFFFFF"
             android:elevation="4dp">
 
+            <!-- Mic button container -->
+            <FrameLayout
+                android:id="@+id/mic_container"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:visibility="gone">
+
+                <ImageButton
+                    android:id="@+id/btn_mic"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Voice input"
+                    android:src="@android:drawable/ic_btn_speak_now"
+                    android:scaleType="centerInside" />
+
+                <ProgressBar
+                    android:id="@+id/mic_loading"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_gravity="center"
+                    android:visibility="gone" />
+
+            </FrameLayout>
+
             <EditText
                 android:id="@+id/input_field"
                 android:layout_width="0dp"
