@@ -4,7 +4,7 @@
 
     <item
         android:id="@+id/action_terminal"
-        android:icon="@drawable/ic_service_notification"
+        android:icon="@drawable/ic_termux_notification"
         android:title="Terminal"
         app:showAsAction="always" />
 
