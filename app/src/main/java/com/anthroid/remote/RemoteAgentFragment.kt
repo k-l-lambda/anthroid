@@ -65,6 +65,8 @@ class RemoteAgentFragment : Fragment() {
     private lateinit var headerBar: LinearLayout
     private lateinit var sessionNameView: TextView
     private lateinit var statusIndicator: TextView
+    private lateinit var syncDownIndicator: TextView
+    private lateinit var syncUpIndicator: TextView
     private lateinit var messageList: RecyclerView
     private lateinit var terminalScroll: ScrollView
     private lateinit var terminalContent: TextView
@@ -113,6 +115,8 @@ class RemoteAgentFragment : Fragment() {
 
         headerBar = view.findViewById(R.id.header_bar)
         sessionNameView = view.findViewById(R.id.session_name)
+        syncDownIndicator = view.findViewById(R.id.sync_down_indicator)
+        syncUpIndicator = view.findViewById(R.id.sync_up_indicator)
         statusIndicator = view.findViewById(R.id.status_indicator)
         messageList = view.findViewById(R.id.message_list)
         terminalScroll = view.findViewById(R.id.terminal_scroll)
@@ -223,7 +227,9 @@ class RemoteAgentFragment : Fragment() {
         // Dark blue banner for tmux mode
         applyBannerStyle(0xFF0F172A.toInt()) // near-black dark blue
 
-        // Show terminal, hide message list
+        // Show sync indicators and terminal, hide message list
+        syncDownIndicator.visibility = View.VISIBLE
+        syncUpIndicator.visibility = View.VISIBLE
         messageList.visibility = View.GONE
         terminalScroll.visibility = View.VISIBLE
 
@@ -235,6 +241,18 @@ class RemoteAgentFragment : Fragment() {
                 terminalScroll.post {
                     terminalScroll.fullScroll(View.FOCUS_DOWN)
                 }
+            }
+        }
+
+        // Observe sync status → highlight arrows
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewModel.isSyncing.collectLatest { syncing ->
+                syncDownIndicator.setTextColor(if (syncing) 0xFFFFFFFF.toInt() else 0x66FFFFFF)
+            }
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewModel.isSending.collectLatest { sending ->
+                syncUpIndicator.setTextColor(if (sending) 0xFFFFFFFF.toInt() else 0x66FFFFFF)
             }
         }
 

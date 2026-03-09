@@ -43,6 +43,27 @@
                 android:singleLine="true"
                 android:ellipsize="end" />
 
+            <!-- Sync status arrows (tmux mode, hidden by default) -->
+            <TextView
+                android:id="@+id/sync_down_indicator"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="↓"
+                android:textSize="14sp"
+                android:textColor="#66FFFFFF"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/sync_up_indicator"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="↑"
+                android:textSize="14sp"
+                android:textColor="#66FFFFFF"
+                android:paddingStart="2dp"
+                android:paddingEnd="4dp"
+                android:visibility="gone" />
+
             <TextView
                 android:id="@+id/status_indicator"
                 android:layout_width="wrap_content"

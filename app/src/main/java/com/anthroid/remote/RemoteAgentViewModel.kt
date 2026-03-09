@@ -48,6 +48,12 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
     private val _terminalContent = MutableStateFlow("")
     val terminalContent: StateFlow<String> = _terminalContent.asStateFlow()
 
+    // Sync status indicators (tmux mode)
+    private val _isSyncing = MutableStateFlow(false)
+    val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
+    private val _isSending = MutableStateFlow(false)
+    val isSending: StateFlow<Boolean> = _isSending.asStateFlow()
+
     private var mode: RemoteSessionInfo.Source? = null
     private var targetSessionKey: String? = null
     private var tmuxHostname: String? = null
@@ -201,13 +207,16 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
             var firstSync = true
             while (isActive) {
                 try {
+                    _isSyncing.value = true
                     val content = sshClient.capturePaneContent(hostname, sessionName)
+                    _isSyncing.value = false
                     _terminalContent.value = content
                     if (firstSync) {
                         _connectionStatus.value = "connected"
                         firstSync = false
                     }
                 } catch (e: Exception) {
+                    _isSyncing.value = false
                     Log.w(TAG, "tmux sync failed: ${e.message}")
                     _connectionStatus.value = "error: ${e.message?.take(50)}"
                 }
@@ -262,9 +271,12 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
         Log.i(TAG, "sendTmuxMessage: sending to $hostname:$sessionName")
         viewModelScope.launch {
             try {
+                _isSending.value = true
                 sshClient.sendKeys(hostname, sessionName, text)
+                _isSending.value = false
                 Log.d(TAG, "Sent keys to $hostname:$sessionName: ${text.take(50)}")
             } catch (e: Exception) {
+                _isSending.value = false
                 Log.w(TAG, "Failed to send keys: ${e.message}")
                 _connectionStatus.value = "error: send failed"
             }
