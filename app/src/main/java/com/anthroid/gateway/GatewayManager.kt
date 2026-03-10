@@ -246,7 +246,7 @@ class GatewayManager(
   suspend fun drainPendingMessages(sessionKey: String): List<String> {
     val gs = session ?: return emptyList()
     return try {
-      val params = JSONObject().apply { put("sessionKey", sessionKey) }
+      val params = JSONObject().apply { put("key", sessionKey) }
       val response = gs.request("session.drainPending", params.toString(), timeoutMs = 10_000)
       val obj = JSONObject(response)
       val messages = obj.optJSONArray("messages") ?: return emptyList()
