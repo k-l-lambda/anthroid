@@ -70,9 +70,9 @@ class GatewayManager(
       onConnected = { serverName, remoteAddress, mainSessionKey ->
         Log.i(TAG, "Connected to gateway: server=$serverName, remote=$remoteAddress, session=$mainSessionKey")
         _connectionStatus.value = "Connected to ${serverName ?: remoteAddress}"
-        _isConnected.value = true
-        // Track main session so it gets polled for pending messages
+        // Track main session BEFORE setting isConnected=true so drainPending sees it
         if (!mainSessionKey.isNullOrBlank()) trackObservedSession(mainSessionKey)
+        _isConnected.value = true
       },
       onDisconnected = { message ->
         Log.i(TAG, "Gateway disconnected: $message")
