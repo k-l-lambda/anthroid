@@ -102,6 +102,12 @@ class ScreenAutomationOverlay(private val context: Context) {
             return
         }
 
+        // Only show overlay when screen capture is active
+        if (!com.anthroid.capture.ScreenCaptureService.isRunning()) {
+            Log.d(TAG, "Screen capture not active, skipping automation bar")
+            return
+        }
+
         handler.post {
             try {
                 if (overlayView == null) {
