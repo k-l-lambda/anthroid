@@ -191,9 +191,30 @@ class ClaudeFragment : Fragment() {
 
     private fun configureApiFromPrefs() {
         val prefs = requireActivity().getSharedPreferences("claude_config", android.content.Context.MODE_PRIVATE)
-        val apiKey = prefs.getString("api_key", "") ?: ""
-        val baseUrl = prefs.getString("base_url", BuildConfig.CLAUDE_API_BASE_URL) ?: BuildConfig.CLAUDE_API_BASE_URL
-        val model = prefs.getString("model", BuildConfig.CLAUDE_API_MODEL) ?: BuildConfig.CLAUDE_API_MODEL
+        var apiKey = prefs.getString("api_key", "") ?: ""
+        var baseUrl = prefs.getString("base_url", BuildConfig.CLAUDE_API_BASE_URL) ?: BuildConfig.CLAUDE_API_BASE_URL
+        var model = prefs.getString("model", BuildConfig.CLAUDE_API_MODEL) ?: BuildConfig.CLAUDE_API_MODEL
+
+        // Fall back to reading credentials from the claude wrapper file (set by set_wrapper)
+        if (apiKey.isBlank()) {
+            val wrapperFile = java.io.File("${requireContext().filesDir}/usr/bin/claude")
+            if (wrapperFile.exists()) {
+                wrapperFile.readLines().forEach { line ->
+                    val clean = line.trim().removePrefix("export ")
+                    when {
+                        clean.startsWith("ANTHROPIC_AUTH_TOKEN=") ->
+                            apiKey = clean.substringAfter("=").trim('"')
+                        clean.startsWith("ANTHROPIC_BASE_URL=") ->
+                            baseUrl = clean.substringAfter("=").trim('"')
+                        clean.startsWith("ANTHROPIC_MODEL=") && !clean.startsWith("ANTHROPIC_MODEL=\"$") ->
+                            model = clean.substringAfter("=").trim('"')
+                    }
+                }
+                if (apiKey.isNotBlank()) {
+                    Log.i(TAG, "API credentials loaded from claude wrapper")
+                }
+            }
+        }
 
         if (apiKey.isNotBlank()) {
             viewModel.configureApi(apiKey, baseUrl, model)
