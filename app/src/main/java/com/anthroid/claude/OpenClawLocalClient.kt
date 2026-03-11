@@ -61,9 +61,10 @@ class OpenClawLocalClient(private val context: Context) {
     fun isAgentInstalled(): Boolean {
         val runMjs = File("$agentDir/run.mjs")
         val node = File("$prefixPath/bin/node")
-        val nodeModules = File("$agentDir/node_modules")
-        val installed = runMjs.exists() && node.exists() && nodeModules.exists()
-        Log.d(TAG, "Agent installed check: runMjs=${runMjs.exists()}, node=${node.exists()}, node_modules=${nodeModules.exists()} → $installed")
+        // Check for a real npm package (not just stubs created by create-stubs.mjs)
+        val hasRealModules = File("$agentDir/node_modules/tslog").exists()
+        val installed = runMjs.exists() && node.exists() && hasRealModules
+        Log.d(TAG, "Agent installed check: runMjs=${runMjs.exists()}, node=${node.exists()}, node_modules=${hasRealModules} → $installed")
         return installed
     }
 
@@ -136,7 +137,8 @@ class OpenClawLocalClient(private val context: Context) {
      */
     suspend fun ensureDependencies(): Boolean = withContext(Dispatchers.IO) {
         val nodeModules = File("$agentDir/node_modules")
-        if (nodeModules.exists()) {
+        val hasRealModules = File("$agentDir/node_modules/tslog").exists()
+        if (hasRealModules) {
             // Check if stubs exist (created by create-stubs.mjs)
             val stubMarker = File("$agentDir/node_modules/@aws-sdk/client-bedrock/package.json")
             if (!stubMarker.exists()) {
@@ -151,18 +153,20 @@ class OpenClawLocalClient(private val context: Context) {
             return@withContext true
         }
 
-        val installScript = File("$agentDir/.install_deps.sh")
-        if (!installScript.exists()) {
-            Log.w(TAG, "No install script found and no node_modules — agent not properly deployed")
-            return@withContext false
-        }
-
         Log.i(TAG, "Installing OpenClaw agent dependencies via npm...")
         try {
-            val bashPath = "$prefixPath/bin/bash"
-            val proc = ProcessBuilder(bashPath, installScript.absolutePath)
+            val nodePath = "$prefixPath/bin/node"
+            val npmCliPath = "$prefixPath/lib/node_modules/npm/bin/npm-cli.js"
+            val env = mapOf(
+                "PATH" to "$prefixPath/bin:${System.getenv("PATH") ?: ""}",
+                "HOME" to "${context.filesDir.absolutePath}/home",
+                "PREFIX" to prefixPath,
+                "TMPDIR" to "${context.filesDir.absolutePath}/home/tmp",
+            )
+            val proc = ProcessBuilder(nodePath, npmCliPath, "install", "--production", "--ignore-scripts")
                 .directory(File(agentDir))
                 .redirectErrorStream(true)
+                .also { pb -> pb.environment().putAll(env) }
                 .start()
 
             // Read output for logging
@@ -180,7 +184,11 @@ class OpenClawLocalClient(private val context: Context) {
             }
             val exitCode = proc.exitValue()
             Log.i(TAG, "npm install completed with exit code: $exitCode")
-            return@withContext exitCode == 0 && nodeModules.exists()
+            if (exitCode == 0 && nodeModules.exists()) {
+                // Run create-stubs after successful npm install
+                runCreateStubs()
+            }
+            return@withContext exitCode == 0 && (nodeModules.list()?.size ?: 0) > 0
         } catch (e: Exception) {
             Log.e(TAG, "Failed to install dependencies: ${e.message}")
             return@withContext false
