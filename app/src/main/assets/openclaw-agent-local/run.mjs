@@ -15,7 +15,7 @@
 
 import { createInterface } from "node:readline";
 import { randomUUID, randomBytes } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -38,10 +38,33 @@ const TIMEOUT_MS = parseInt(process.env.TIMEOUT_MS || "300000", 10); // 5 min de
 
 // Provider config — defaults to Anthropic, overridable via env or stdin config
 let PROVIDER = process.env.PROVIDER || "anthropic";
-let MODEL = process.env.MODEL || undefined; // let agent pick default
+
+// Load config.json for model/provider defaults (allows ppinfra pa/ prefix etc.)
+let _configJson = {};
+try {
+  _configJson = JSON.parse(readFileSync(new URL("./config.json", import.meta.url).pathname, "utf-8"));
+} catch (_) {}
+
+let MODEL = process.env.MODEL || _configJson.model || undefined;
 
 // Base URL for provider API (e.g. ppinfra proxy)
 let BASE_URL = process.env.ANTHROPIC_BASE_URL || "";
+
+// Fallback: read credentials from claude wrapper file (set by set_wrapper).
+// This covers fresh installs where SharedPreferences / auth-profiles.json are absent.
+// Wrapper uses ANTHROPIC_AUTH_TOKEN (Bearer) which ppinfra requires.
+if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
+  try {
+    const _prefix = process.env.PREFIX || "/data/data/com.anthroid/files/usr";
+    const _wrapper = readFileSync(`${_prefix}/bin/claude`, "utf-8");
+    const _tok = _wrapper.match(/ANTHROPIC_AUTH_TOKEN="([^"]+)"/)?.[1];
+    const _url = _wrapper.match(/ANTHROPIC_BASE_URL="([^"]+)"/)?.[1];
+    const _mod = _wrapper.match(/ANTHROPIC_MODEL="([^"$][^"]+)"/)?.[1];
+    if (_tok) { process.env.ANTHROPIC_AUTH_TOKEN = _tok; process.env.ANTHROPIC_API_KEY = _tok; }
+    if (_url && !BASE_URL) { process.env.ANTHROPIC_BASE_URL = _url; BASE_URL = _url; }
+    if (_mod && !MODEL) MODEL = _mod;
+  } catch (_) {}
+}
 
 // MCP endpoint for Android tools bridge
 const MCP_ENDPOINT = process.env.MCP_ENDPOINT || "http://localhost:8765/mcp";
