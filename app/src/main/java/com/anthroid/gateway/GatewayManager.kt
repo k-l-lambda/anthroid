@@ -49,7 +49,8 @@ class GatewayManager(
   val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
 
   var onNotification: ((title: String, body: String) -> Unit)? = null
-  var onChatMessage: ((sessionKey: String, displayName: String?, messageText: String) -> Unit)? = null
+  /** isStreaming=true for agent run buffered output; false for chat final messages */
+  var onChatMessage: ((sessionKey: String, displayName: String?, messageText: String, isStreaming: Boolean) -> Unit)? = null
 
   data class RemoteSessionEvent(val sessionKey: String, val role: String, val content: String)
   private val _remoteSessionEventFlow = MutableSharedFlow<RemoteSessionEvent>(
@@ -472,7 +473,7 @@ class GatewayManager(
           val messageText = textParts.joinToString("\n").trim()
           if (messageText.isEmpty()) return
           Log.i(TAG, "Chat message: session=$sessionKey, len=${messageText.length}")
-          onChatMessage?.invoke(sessionKey, null, messageText)
+          onChatMessage?.invoke(sessionKey, null, messageText, false)
           _remoteSessionEventFlow.tryEmit(RemoteSessionEvent(sessionKey, "assistant", messageText))
         } catch (err: Throwable) {
           Log.w(TAG, "Failed to parse chat event: ${err.message}")
@@ -515,10 +516,10 @@ class GatewayManager(
                 if (!buffered.isNullOrEmpty()) {
                   Log.i(TAG, "Agent run complete: runId=$runId, session=$effectiveSessionKey, len=${buffered.length}")
                   trackObservedSession(effectiveSessionKey)
-                  // Use fixed key so all agent messages share one notification
+                  // Use real session key so notification deep-link opens the correct conversation.
                   // NOTE: do NOT emit to remoteSessionEventFlow here — the chat event
                   // provides the clean final message and will emit separately.
-                  onChatMessage?.invoke("gateway", "Gateway", buffered)
+                  onChatMessage?.invoke(effectiveSessionKey, "Agent Streaming", buffered, true)
                 }
                 // Keep processedAgentRuns bounded (max 100 entries)
                 if (processedAgentRuns.size > 100) {

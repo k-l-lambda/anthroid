@@ -1,6 +1,6 @@
 {
   "provider": "anthropic",
-  "model": "pa/claude-opus-4-6",
+  "model": "claude-sonnet-4-20250514",
   "timeoutMs": 300000,
   "sessionDir": ".sessions",
   "workspaceDir": "."

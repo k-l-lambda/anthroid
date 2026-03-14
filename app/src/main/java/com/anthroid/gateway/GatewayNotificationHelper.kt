@@ -22,6 +22,7 @@ class GatewayNotificationHelper(private val context: Context) {
     companion object {
         private const val TAG = "GatewayNotifHelper"
         const val CHANNEL_ID = "gateway_messages"
+        const val CHANNEL_ID_STREAMING = "gateway_streaming"
         private const val GROUP_KEY = "com.anthroid.GATEWAY_MESSAGES"
         private const val SUMMARY_NOTIFICATION_ID = 50000
         private const val SESSION_ID_BASE = 50001
@@ -43,15 +44,21 @@ class GatewayNotificationHelper(private val context: Context) {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
+            val nm = context.getSystemService(NotificationManager::class.java)
+            nm.createNotificationChannel(NotificationChannel(
                 CHANNEL_ID,
                 "Gateway Messages",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Messages from OpenClaw gateway sessions"
-            }
-            context.getSystemService(NotificationManager::class.java)
-                .createNotificationChannel(channel)
+                description = "Final messages from OpenClaw gateway sessions"
+            })
+            nm.createNotificationChannel(NotificationChannel(
+                CHANNEL_ID_STREAMING,
+                "Gateway Streaming",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Streaming output from OpenClaw agent runs"
+            })
         }
     }
 
@@ -59,7 +66,7 @@ class GatewayNotificationHelper(private val context: Context) {
      * Show or update a notification for a gateway session message.
      * Each session gets a separate notification entry showing the last message.
      */
-    fun showMessageNotification(sessionKey: String, displayName: String?, messageText: String) {
+    fun showMessageNotification(sessionKey: String, displayName: String?, messageText: String, channelId: String = CHANNEL_ID) {
         val state = sessionNotifications.getOrPut(sessionKey) {
             SessionState(
                 notificationId = nextNotificationId++,
@@ -81,12 +88,12 @@ class GatewayNotificationHelper(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_service_notification)
             .setContentTitle(state.displayName)
             .setContentText(messageText)
             .setStyle(NotificationCompat.BigTextStyle().bigText(messageText))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(if (channelId == CHANNEL_ID_STREAMING) NotificationCompat.PRIORITY_LOW else NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setGroup(GROUP_KEY)
             .setContentIntent(pendingIntent)

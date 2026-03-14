@@ -203,12 +203,17 @@ class GatewayForegroundService : Service() {
         }
 
         // Wire up chat message events
-        manager.onChatMessage = { sessionKey, displayName, messageText ->
+        manager.onChatMessage = { sessionKey, displayName, messageText, isStreaming ->
             if (!ScreenAutomationOverlay.isAppInForeground && !messageText.isNullOrBlank()) {
+                // Use separate notification keys so streaming and final don't replace each other
+                val notifKey = if (isStreaming) "$sessionKey:streaming" else sessionKey
+                val notifName = displayName ?: if (isStreaming) "Agent Streaming" else "Agent"
                 notificationHelper?.showMessageNotification(
-                    sessionKey = sessionKey,
-                    displayName = displayName,
-                    messageText = messageText
+                    sessionKey = notifKey,
+                    displayName = notifName,
+                    messageText = messageText,
+                    channelId = if (isStreaming) GatewayNotificationHelper.CHANNEL_ID_STREAMING
+                                else GatewayNotificationHelper.CHANNEL_ID
                 )
             }
         }
