@@ -100,6 +100,7 @@
                 android:fontFamily="monospace"
                 android:textSize="11sp"
                 android:textColor="#D4D4D4"
+                android:textColorHighlight="#664FC3F7"
                 android:padding="8dp"
                 android:lineSpacingExtra="2dp" />
 

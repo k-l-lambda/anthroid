@@ -1342,11 +1342,25 @@ class ClaudeFragment : Fragment() {
     }
 
     private fun openRemoteAgentView(session: RemoteSessionInfo) {
+        // Disable outer input while remote agent is open
+        inputField.isEnabled = false
+
         val fragment = RemoteAgentFragment.newInstance(session)
         parentFragmentManager.beginTransaction()
             .add(R.id.fragment_container, fragment)
             .addToBackStack("remote_agent")
             .commit()
+
+        // Re-enable input when remote agent is popped
+        parentFragmentManager.addOnBackStackChangedListener(object : androidx.fragment.app.FragmentManager.OnBackStackChangedListener {
+            override fun onBackStackChanged() {
+                if (parentFragmentManager.findFragmentByTag("remote_agent") == null ||
+                    !parentFragmentManager.fragments.any { it is RemoteAgentFragment }) {
+                    inputField.isEnabled = true
+                    parentFragmentManager.removeOnBackStackChangedListener(this)
+                }
+            }
+        })
     }
 
 }
