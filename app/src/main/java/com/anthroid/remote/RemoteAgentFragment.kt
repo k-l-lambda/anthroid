@@ -237,11 +237,6 @@ class RemoteAgentFragment : Fragment() {
         messageList.visibility = View.GONE
         terminalScroll.visibility = View.VISIBLE
 
-        // Disable input field in tmux mode — interaction is through the terminal
-        inputField.isEnabled = false
-        inputField.hint = ""
-        btnSend.visibility = View.GONE
-
         // Enable text selection on terminal content
         terminalContent.setTextIsSelectable(true)
 
