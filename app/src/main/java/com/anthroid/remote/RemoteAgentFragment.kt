@@ -258,8 +258,9 @@ class RemoteAgentFragment : Fragment() {
             viewModel.terminalContent.collectLatest { content ->
                 if (!isUserScrolledUp) {
                     terminalContent.text = content
-                    terminalScroll.post {
-                        terminalScroll.fullScroll(View.FOCUS_DOWN)
+                    // Wait for layout to complete before scrolling to ensure correct height
+                    terminalContent.post {
+                        terminalScroll.scrollTo(0, (terminalContent.height - terminalScroll.height).coerceAtLeast(0))
                     }
                 }
             }
