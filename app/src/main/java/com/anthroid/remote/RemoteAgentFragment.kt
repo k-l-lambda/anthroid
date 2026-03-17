@@ -71,6 +71,7 @@ class RemoteAgentFragment : Fragment() {
     private lateinit var messageList: RecyclerView
     private lateinit var terminalScroll: ScrollView
     private lateinit var terminalContent: TextView
+    private var isUserScrolledUp = false
     private lateinit var inputField: EditText
     private lateinit var btnSend: ImageButton
     private lateinit var btnBack: ImageButton
@@ -240,12 +241,23 @@ class RemoteAgentFragment : Fragment() {
         // Enable text selection on terminal content
         terminalContent.setTextIsSelectable(true)
 
-        // Observe terminal content
+        // Track scroll position — pause sync when user scrolls up
+        terminalScroll.viewTreeObserver.addOnScrollChangedListener {
+            val scrollY = terminalScroll.scrollY
+            val contentHeight = terminalContent.height
+            val scrollViewHeight = terminalScroll.height
+            // Consider "at bottom" if within 50px of the end
+            val atBottom = scrollY + scrollViewHeight >= contentHeight - 50
+            isUserScrolledUp = !atBottom
+            // Visual feedback: dim down arrow when paused
+            syncDownIndicator.setTextColor(if (isUserScrolledUp) 0x33FFFFFF else 0xFFFFFFFF.toInt())
+        }
+
+        // Observe terminal content — skip update when user scrolled up
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.terminalContent.collectLatest { content ->
-                terminalContent.text = content
-                // Auto-scroll to bottom only if not currently selecting text
-                if (!terminalContent.hasSelection()) {
+                if (!isUserScrolledUp) {
+                    terminalContent.text = content
                     terminalScroll.post {
                         terminalScroll.fullScroll(View.FOCUS_DOWN)
                     }

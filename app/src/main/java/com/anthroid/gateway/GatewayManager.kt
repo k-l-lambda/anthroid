@@ -54,7 +54,7 @@ class GatewayManager(
 
   data class RemoteSessionEvent(val sessionKey: String, val role: String, val content: String)
   private val _remoteSessionEventFlow = MutableSharedFlow<RemoteSessionEvent>(
-    extraBufferCapacity = 64,
+    extraBufferCapacity = 256,
     onBufferOverflow = BufferOverflow.DROP_OLDEST
   )
   val remoteSessionEventFlow: SharedFlow<RemoteSessionEvent> = _remoteSessionEventFlow.asSharedFlow()
@@ -378,7 +378,7 @@ class GatewayManager(
       val params = JSONObject().apply {
         put("keys", JSONArray().apply { put(sessionKey) })
         put("limit", limit)
-        put("maxChars", 2000)
+        put("maxChars", 20000)
       }
       val response = gs.request("sessions.preview", params.toString(), timeoutMs = 10_000)
       if (response == null) return emptyList()
