@@ -10,6 +10,7 @@ import com.anthroid.gateway.GatewayForegroundService
 import com.anthroid.gateway.GatewayManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,6 +37,12 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
         private const val TAG = "RemoteAgentVM"
         private const val TMUX_SYNC_INTERVAL_MS = 3000L
     }
+
+    // Dedicated scope for teardown work that must outlive viewModelScope
+    private val teardownScope = kotlinx.coroutines.CoroutineScope(
+        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO
+    )
+    private var disconnected = false
 
     // Shared state
     private val _connectionStatus = MutableStateFlow("connecting...")
@@ -329,6 +336,9 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun disconnect() {
+        if (disconnected) return
+        disconnected = true
+
         val hostname = tmuxHostname
         val sessionName = tmuxSessionName
         val wasTmux = hostname != null && sessionName != null && mode == RemoteSessionInfo.Source.SSH_TMUX
@@ -339,10 +349,10 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
 
         _connectionStatus.value = "disconnected"
 
-        // Use GlobalScope as fallback — viewModelScope may already be cancelled in onCleared
-        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        // teardownScope outlives viewModelScope — safe to use in onCleared
+        teardownScope.launch {
             syncJob?.cancelAndJoin()
-            watchJob?.cancel()
+            watchJob?.cancelAndJoin()
             if (wasTmux) {
                 try {
                     Log.i(TAG, "Restoring tmux auto-size for $hostname:$sessionName")
@@ -358,6 +368,7 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
 
     override fun onCleared() {
         disconnect()
+        teardownScope.cancel()
         super.onCleared()
     }
 }
