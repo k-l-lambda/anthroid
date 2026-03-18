@@ -376,22 +376,34 @@ class GatewayManager(
     val gs = session ?: return emptyList()
     return try {
       val params = JSONObject().apply {
-        put("keys", JSONArray().apply { put(sessionKey) })
+        put("sessionKey", sessionKey)
         put("limit", limit)
-        put("maxChars", 20000)
+        put("rawContent", true)
       }
-      val response = gs.request("sessions.preview", params.toString(), timeoutMs = 10_000)
+      val response = gs.request("chat.history", params.toString(), timeoutMs = 15_000)
       if (response == null) return emptyList()
       val obj = JSONObject(response)
-      val previews = obj.optJSONArray("previews") ?: return emptyList()
-      val preview = previews.optJSONObject(0) ?: return emptyList()
-      val items = preview.optJSONArray("items") ?: return emptyList()
+      val messages = obj.optJSONArray("messages") ?: return emptyList()
       val result = mutableListOf<Pair<String, String>>()
-      for (i in 0 until items.length()) {
-        val item = items.optJSONObject(i) ?: continue
-        val role = item.optString("role", "")
-        val text = item.optString("text", "").trim()
-        if (text.isNotEmpty() && (role == "user" || role == "assistant")) {
+      for (i in 0 until messages.length()) {
+        val msg = messages.optJSONObject(i) ?: continue
+        val role = msg.optString("role", "")
+        if (role != "user" && role != "assistant") continue
+        // Extract text from content blocks (array) or plain string
+        val contentArray = msg.optJSONArray("content")
+        val text = if (contentArray != null) {
+          val parts = mutableListOf<String>()
+          for (j in 0 until contentArray.length()) {
+            val block = contentArray.optJSONObject(j) ?: continue
+            if (block.optString("type") == "text") {
+              parts.add(block.optString("text", ""))
+            }
+          }
+          parts.joinToString("\n").trim()
+        } else {
+          msg.optString("content", "").trim()
+        }
+        if (text.isNotEmpty()) {
           result.add(role to text)
         }
       }
