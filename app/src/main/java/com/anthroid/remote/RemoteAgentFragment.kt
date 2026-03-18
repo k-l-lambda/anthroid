@@ -412,8 +412,9 @@ class RemoteAgentFragment : Fragment() {
 
     override fun onDestroyView() {
         // Remove scroll listener to avoid leaks
-        scrollChangedListener?.let {
-            terminalScroll.viewTreeObserver.removeOnScrollChangedListener(it)
+        scrollChangedListener?.let { listener ->
+            val vto = terminalScroll.viewTreeObserver
+            if (vto.isAlive) vto.removeOnScrollChangedListener(listener)
         }
         scrollChangedListener = null
 

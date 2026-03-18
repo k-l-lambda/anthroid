@@ -10,6 +10,7 @@ import com.anthroid.gateway.GatewayForegroundService
 import com.anthroid.gateway.GatewayManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -331,24 +332,24 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
         val hostname = tmuxHostname
         val sessionName = tmuxSessionName
         val wasTmux = hostname != null && sessionName != null && mode == RemoteSessionInfo.Source.SSH_TMUX
-
-        // Cancel sync job first to avoid concurrent SSH commands
-        tmuxSyncJob?.cancel()
+        val syncJob = tmuxSyncJob
+        val watchJob = connectionWatchJob
         tmuxSyncJob = null
-        connectionWatchJob?.cancel()
         connectionWatchJob = null
 
-        // Restore tmux auto-size after sync is stopped
-        if (wasTmux) {
-            viewModelScope.launch {
+        _connectionStatus.value = "disconnected"
+
+        // Serialize teardown: wait for sync to stop, then restore tmux size
+        viewModelScope.launch {
+            syncJob?.cancelAndJoin()
+            watchJob?.cancel()
+            if (wasTmux) {
                 try {
                     sshClient.resizeWindow(hostname!!, sessionName!!, -1)
                 } catch (_: Exception) {}
             }
+            Log.i(TAG, "Disconnected")
         }
-
-        _connectionStatus.value = "disconnected"
-        Log.i(TAG, "Disconnected")
     }
 
     override fun onCleared() {

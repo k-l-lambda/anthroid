@@ -620,10 +620,11 @@ class ClaudeFragment : Fragment() {
     }
 
     override fun onDestroyView() {
-        super.onDestroyView()
+        parentFragmentManager.removeOnBackStackChangedListener(remoteAgentBackStackListener)
         sherpaOnnxManager?.release()
         sherpaOnnxManager = null
         isVoiceInputInitialized = false
+        super.onDestroyView()
     }
 
     override fun onPause() {
@@ -1354,12 +1355,14 @@ class ClaudeFragment : Fragment() {
             .addToBackStack(REMOTE_AGENT_TAG)
             .commit()
 
-        // Re-enable input when remote agent is popped
+        // Re-enable input when remote agent is popped (remove first to avoid duplicates)
+        parentFragmentManager.removeOnBackStackChangedListener(remoteAgentBackStackListener)
         parentFragmentManager.addOnBackStackChangedListener(remoteAgentBackStackListener)
     }
 
     private val remoteAgentBackStackListener = object : androidx.fragment.app.FragmentManager.OnBackStackChangedListener {
         override fun onBackStackChanged() {
+            if (view == null) return
             if (!parentFragmentManager.fragments.any { it is RemoteAgentFragment }) {
                 inputField.isEnabled = true
                 parentFragmentManager.removeOnBackStackChangedListener(this)
