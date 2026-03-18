@@ -339,14 +339,18 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
 
         _connectionStatus.value = "disconnected"
 
-        // Serialize teardown: wait for sync to stop, then restore tmux size
-        viewModelScope.launch {
+        // Use GlobalScope as fallback — viewModelScope may already be cancelled in onCleared
+        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             syncJob?.cancelAndJoin()
             watchJob?.cancel()
             if (wasTmux) {
                 try {
+                    Log.i(TAG, "Restoring tmux auto-size for $hostname:$sessionName")
                     sshClient.resizeWindow(hostname!!, sessionName!!, -1)
-                } catch (_: Exception) {}
+                    Log.i(TAG, "tmux auto-size restored")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to restore tmux auto-size: ${e.message}")
+                }
             }
             Log.i(TAG, "Disconnected")
         }
