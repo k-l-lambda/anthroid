@@ -54,48 +54,52 @@ class SshTmuxClient {
     }
 
     /**
-     * Get current tmux window dimensions (columns x rows).
+     * Get current tmux window-size option (smallest/largest/latest/manual).
      */
-    suspend fun getWindowSize(hostname: String, session: String): Pair<Int, Int>? = withContext(Dispatchers.IO) {
+    suspend fun getWindowSizeOption(hostname: String, session: String): String? = withContext(Dispatchers.IO) {
         if (!TerminalCommandBridge.isAvailable()) return@withContext null
         if (!isSafeHostname(hostname) || !isSafeSession(session)) return@withContext null
 
         val result = TerminalCommandBridge.executeCommand(
-            "ssh -o ConnectTimeout=5 $hostname 'tmux display-message -t $session -p \"#{window_width} #{window_height}\" 2>/dev/null'",
+            "ssh -o ConnectTimeout=5 $hostname 'tmux show-window-option -t $session -v window-size 2>/dev/null'",
             timeout = 10000
         )
         if (!result.success) return@withContext null
-        val parts = result.output.trim().split(" ")
-        if (parts.size == 2) {
-            val w = parts[0].toIntOrNull()
-            val h = parts[1].toIntOrNull()
-            if (w != null && h != null) return@withContext Pair(w, h)
-        }
-        null
+        result.output.trim().takeIf { it.isNotEmpty() }
     }
 
     /**
-     * Resize the tmux window. Pass columns > 0 to set width.
-     * Pass columns=-1 with originalSize to restore saved dimensions.
+     * Resize the tmux window width. This switches window-size to "manual" mode.
      */
-    suspend fun resizeWindow(hostname: String, session: String, columns: Int, originalSize: Pair<Int, Int>? = null) = withContext(Dispatchers.IO) {
+    suspend fun resizeWindow(hostname: String, session: String, columns: Int) = withContext(Dispatchers.IO) {
+        if (!TerminalCommandBridge.isAvailable()) return@withContext
+        if (!isSafeHostname(hostname) || !isSafeSession(session)) return@withContext
+        if (columns < 20) return@withContext
+
+        Log.i(TAG, "resizeWindow: host=$hostname session=$session columns=$columns")
+        val result = TerminalCommandBridge.executeCommand(
+            "ssh -o ConnectTimeout=5 $hostname 'tmux resize-window -t $session -x $columns 2>/dev/null'",
+            timeout = 10000
+        )
+        if (!result.success) {
+            Log.w(TAG, "resize-window failed (non-fatal): ${result.output.take(100)}")
+        }
+    }
+
+    /**
+     * Restore tmux window-size option to re-enable auto-resize, then trigger adjustment.
+     */
+    suspend fun restoreWindowSizeOption(hostname: String, session: String, option: String) = withContext(Dispatchers.IO) {
         if (!TerminalCommandBridge.isAvailable()) return@withContext
         if (!isSafeHostname(hostname) || !isSafeSession(session)) return@withContext
 
-        val cmd = if (columns < 0 && originalSize != null) {
-            Log.i(TAG, "resizeWindow: restoring ${originalSize.first}x${originalSize.second} for $hostname:$session")
-            "ssh -o ConnectTimeout=5 $hostname 'tmux resize-window -t $session -x ${originalSize.first} -y ${originalSize.second} 2>/dev/null'"
-        } else if (columns < 0) {
-            Log.i(TAG, "resizeWindow: restoring auto-size for $hostname:$session")
-            "ssh -o ConnectTimeout=5 $hostname 'tmux resize-window -t $session -A 2>/dev/null'"
-        } else {
-            if (columns < 20) return@withContext
-            Log.i(TAG, "resizeWindow: host=$hostname session=$session columns=$columns")
-            "ssh -o ConnectTimeout=5 $hostname 'tmux resize-window -t $session -x $columns 2>/dev/null'"
-        }
-        val result = TerminalCommandBridge.executeCommand(cmd, timeout = 10000)
+        Log.i(TAG, "restoreWindowSizeOption: $hostname:$session → $option")
+        val result = TerminalCommandBridge.executeCommand(
+            "ssh -o ConnectTimeout=5 $hostname 'tmux set-window-option -t $session window-size $option && tmux resize-window -t $session -A 2>/dev/null'",
+            timeout = 10000
+        )
         if (!result.success) {
-            Log.w(TAG, "resize-window failed (non-fatal): ${result.output.take(100)}")
+            Log.w(TAG, "restoreWindowSizeOption failed (non-fatal): ${result.output.take(100)}")
         }
     }
 
