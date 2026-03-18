@@ -94,8 +94,10 @@ class SshTmuxClient {
         if (!isSafeHostname(hostname) || !isSafeSession(session)) return@withContext
 
         Log.i(TAG, "restoreWindowSizeOption: $hostname:$session → $option")
+        // Order matters: -A adjusts size first, then set-window-option restores auto mode.
+        // Reversed order would have -A overwrite the option back to "manual".
         val result = TerminalCommandBridge.executeCommand(
-            "ssh -o ConnectTimeout=5 $hostname 'tmux set-window-option -t $session window-size $option && tmux resize-window -t $session -A 2>/dev/null'",
+            "ssh -o ConnectTimeout=5 $hostname 'tmux resize-window -t $session -A 2>/dev/null && tmux set-window-option -t $session window-size $option 2>/dev/null'",
             timeout = 10000
         )
         if (!result.success) {
