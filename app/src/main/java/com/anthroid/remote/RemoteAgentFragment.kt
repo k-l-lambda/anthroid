@@ -286,7 +286,15 @@ class RemoteAgentFragment : Fragment() {
             }
         }
 
-        viewModel.connectToTmuxSession(hostname, sessionName)
+        // Measure terminal width and calculate columns after layout
+        terminalContent.post {
+            val availableWidth = terminalContent.width - terminalContent.paddingLeft - terminalContent.paddingRight
+            val paint = terminalContent.paint
+            val charWidth = paint.measureText("M") // monospace: all chars same width
+            val columns = if (charWidth > 0) (availableWidth / charWidth).toInt() else 0
+            Log.i("RemoteAgentFragment", "Terminal columns: $columns (width=${availableWidth}px, charW=${charWidth}px)")
+            viewModel.connectToTmuxSession(hostname, sessionName, columns)
+        }
     }
 
     private fun sendMessage() {

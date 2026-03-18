@@ -195,7 +195,7 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
 
     // ── SSH+tmux Mode ──────────────────────────────────────────────
 
-    fun connectToTmuxSession(hostname: String, sessionName: String) {
+    fun connectToTmuxSession(hostname: String, sessionName: String, columns: Int = 0) {
         mode = RemoteSessionInfo.Source.SSH_TMUX
         tmuxHostname = hostname
         tmuxSessionName = sessionName
@@ -204,6 +204,14 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
 
         // Start periodic sync
         tmuxSyncJob = viewModelScope.launch {
+            // Resize tmux window to match Anthroid terminal width before first capture
+            if (columns > 0) {
+                try {
+                    sshClient.resizeWindow(hostname, sessionName, columns)
+                } catch (e: Exception) {
+                    Log.w(TAG, "tmux resize failed (non-fatal): ${e.message}")
+                }
+            }
             var firstSync = true
             while (isActive) {
                 try {
