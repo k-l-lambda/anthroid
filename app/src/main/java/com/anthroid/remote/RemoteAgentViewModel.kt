@@ -66,6 +66,7 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
     private var targetSessionKey: String? = null
     private var tmuxHostname: String? = null
     private var tmuxSessionName: String? = null
+    private var tmuxOriginalSize: Pair<Int, Int>? = null
     private var tmuxSyncJob: Job? = null
     private var connectionWatchJob: Job? = null
 
@@ -212,9 +213,11 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
 
         // Start periodic sync
         tmuxSyncJob = viewModelScope.launch {
-            // Resize tmux window to match Anthroid terminal width before first capture
+            // Save original size, then resize to match Anthroid terminal width
             if (columns > 0) {
                 try {
+                    tmuxOriginalSize = sshClient.getWindowSize(hostname, sessionName)
+                    Log.i(TAG, "Saved original tmux size: ${tmuxOriginalSize}")
                     sshClient.resizeWindow(hostname, sessionName, columns)
                 } catch (e: Exception) {
                     Log.w(TAG, "tmux resize failed (non-fatal): ${e.message}")
@@ -341,6 +344,7 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
 
         val hostname = tmuxHostname
         val sessionName = tmuxSessionName
+        val savedSize = tmuxOriginalSize
         val wasTmux = hostname != null && sessionName != null && mode == RemoteSessionInfo.Source.SSH_TMUX
         val syncJob = tmuxSyncJob
         val watchJob = connectionWatchJob
@@ -355,9 +359,9 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
             watchJob?.cancelAndJoin()
             if (wasTmux) {
                 try {
-                    Log.i(TAG, "Restoring tmux auto-size for $hostname:$sessionName")
-                    sshClient.resizeWindow(hostname!!, sessionName!!, -1)
-                    Log.i(TAG, "tmux auto-size restored")
+                    Log.i(TAG, "Restoring tmux size for $hostname:$sessionName (saved=$savedSize)")
+                    sshClient.resizeWindow(hostname!!, sessionName!!, -1, savedSize)
+                    Log.i(TAG, "tmux size restored")
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to restore tmux auto-size: ${e.message}")
                 }

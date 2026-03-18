@@ -54,14 +54,38 @@ class SshTmuxClient {
     }
 
     /**
-     * Resize the tmux window. Pass columns > 0 to set width, or -1 to restore auto-size.
+     * Get current tmux window dimensions (columns x rows).
      */
-    suspend fun resizeWindow(hostname: String, session: String, columns: Int) = withContext(Dispatchers.IO) {
+    suspend fun getWindowSize(hostname: String, session: String): Pair<Int, Int>? = withContext(Dispatchers.IO) {
+        if (!TerminalCommandBridge.isAvailable()) return@withContext null
+        if (!isSafeHostname(hostname) || !isSafeSession(session)) return@withContext null
+
+        val result = TerminalCommandBridge.executeCommand(
+            "ssh -o ConnectTimeout=5 $hostname 'tmux display-message -t $session -p \"#{window_width} #{window_height}\" 2>/dev/null'",
+            timeout = 10000
+        )
+        if (!result.success) return@withContext null
+        val parts = result.output.trim().split(" ")
+        if (parts.size == 2) {
+            val w = parts[0].toIntOrNull()
+            val h = parts[1].toIntOrNull()
+            if (w != null && h != null) return@withContext Pair(w, h)
+        }
+        null
+    }
+
+    /**
+     * Resize the tmux window. Pass columns > 0 to set width.
+     * Pass columns=-1 with originalSize to restore saved dimensions.
+     */
+    suspend fun resizeWindow(hostname: String, session: String, columns: Int, originalSize: Pair<Int, Int>? = null) = withContext(Dispatchers.IO) {
         if (!TerminalCommandBridge.isAvailable()) return@withContext
         if (!isSafeHostname(hostname) || !isSafeSession(session)) return@withContext
 
-        val cmd = if (columns < 0) {
-            // Restore auto-size: -A adjusts to largest attached client
+        val cmd = if (columns < 0 && originalSize != null) {
+            Log.i(TAG, "resizeWindow: restoring ${originalSize.first}x${originalSize.second} for $hostname:$session")
+            "ssh -o ConnectTimeout=5 $hostname 'tmux resize-window -t $session -x ${originalSize.first} -y ${originalSize.second} 2>/dev/null'"
+        } else if (columns < 0) {
             Log.i(TAG, "resizeWindow: restoring auto-size for $hostname:$session")
             "ssh -o ConnectTimeout=5 $hostname 'tmux resize-window -t $session -A 2>/dev/null'"
         } else {
