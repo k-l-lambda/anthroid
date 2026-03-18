@@ -368,7 +368,9 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
 
     override fun onCleared() {
         disconnect()
-        teardownScope.cancel()
+        // Don't cancel teardownScope here — let the resize command finish.
+        // The scope uses SupervisorJob so it won't leak; the SSH command
+        // has a 10s timeout and will complete on its own.
         super.onCleared()
     }
 }
