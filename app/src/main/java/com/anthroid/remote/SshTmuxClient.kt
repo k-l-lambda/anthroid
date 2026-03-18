@@ -40,17 +40,21 @@ class SshTmuxClient {
     }
 
     /**
-     * Resize the tmux window to match the Anthroid terminal view width.
+     * Resize the tmux window. Pass columns > 0 to set width, or -1 to restore auto-size.
      */
     suspend fun resizeWindow(hostname: String, session: String, columns: Int) = withContext(Dispatchers.IO) {
         if (!TerminalCommandBridge.isAvailable()) return@withContext
-        if (columns < 20) return@withContext
 
-        Log.i(TAG, "resizeWindow: host=$hostname session=$session columns=$columns")
-        val result = TerminalCommandBridge.executeCommand(
-            "ssh -o ConnectTimeout=5 $hostname 'tmux resize-window -t $session -x $columns 2>/dev/null'",
-            timeout = 10000
-        )
+        val cmd = if (columns < 0) {
+            // Restore auto-size: -A adjusts to largest attached client
+            Log.i(TAG, "resizeWindow: restoring auto-size for $hostname:$session")
+            "ssh -o ConnectTimeout=5 $hostname 'tmux resize-window -t $session -A 2>/dev/null'"
+        } else {
+            if (columns < 20) return@withContext
+            Log.i(TAG, "resizeWindow: host=$hostname session=$session columns=$columns")
+            "ssh -o ConnectTimeout=5 $hostname 'tmux resize-window -t $session -x $columns 2>/dev/null'"
+        }
+        val result = TerminalCommandBridge.executeCommand(cmd, timeout = 10000)
         if (!result.success) {
             Log.w(TAG, "resize-window failed (non-fatal): ${result.output.take(100)}")
         }
