@@ -91,8 +91,8 @@ android {
         applicationId "com.anthroid"
         minSdkVersion project.properties.minSdkVersion.toInteger()
         targetSdkVersion project.properties.targetSdkVersion.toInteger()
-        versionCode 100900
-        versionName "1.0.9"
+        versionCode 101000
+        versionName "1.0.10"
 
         // Only include ARM architectures, exclude x86/x86_64
         ndk {
