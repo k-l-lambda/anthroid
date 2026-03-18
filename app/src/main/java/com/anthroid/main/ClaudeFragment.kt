@@ -65,6 +65,7 @@ class ClaudeFragment : Fragment() {
 
     companion object {
         private const val TAG = "ClaudeFragment"
+        private const val REMOTE_AGENT_TAG = "remote_agent"
         fun newInstance(): ClaudeFragment = ClaudeFragment()
     }
 
@@ -672,6 +673,8 @@ class ClaudeFragment : Fragment() {
         super.onResume()
         // Set foreground flag true (fragment onResume runs after activity onResume)
         ScreenAutomationOverlay.isAppInForeground = true
+        // Restore input state based on actual fragment presence
+        inputField.isEnabled = parentFragmentManager.fragments.none { it is RemoteAgentFragment }
         Log.i(TAG, "onResume called")
         // Refresh mic button visibility (in case settings changed)
         updateMicButtonVisibility()
@@ -1347,20 +1350,22 @@ class ClaudeFragment : Fragment() {
 
         val fragment = RemoteAgentFragment.newInstance(session)
         parentFragmentManager.beginTransaction()
-            .add(R.id.fragment_container, fragment)
-            .addToBackStack("remote_agent")
+            .add(R.id.fragment_container, fragment, REMOTE_AGENT_TAG)
+            .addToBackStack(REMOTE_AGENT_TAG)
             .commit()
 
         // Re-enable input when remote agent is popped
-        parentFragmentManager.addOnBackStackChangedListener(object : androidx.fragment.app.FragmentManager.OnBackStackChangedListener {
-            override fun onBackStackChanged() {
-                if (parentFragmentManager.findFragmentByTag("remote_agent") == null ||
-                    !parentFragmentManager.fragments.any { it is RemoteAgentFragment }) {
-                    inputField.isEnabled = true
-                    parentFragmentManager.removeOnBackStackChangedListener(this)
-                }
-            }
-        })
+        parentFragmentManager.addOnBackStackChangedListener(remoteAgentBackStackListener)
     }
+
+    private val remoteAgentBackStackListener = object : androidx.fragment.app.FragmentManager.OnBackStackChangedListener {
+        override fun onBackStackChanged() {
+            if (!parentFragmentManager.fragments.any { it is RemoteAgentFragment }) {
+                inputField.isEnabled = true
+                parentFragmentManager.removeOnBackStackChangedListener(this)
+            }
+        }
+    }
+
 
 }

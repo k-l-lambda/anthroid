@@ -15,6 +15,16 @@ import kotlinx.coroutines.withContext
 class SshTmuxClient {
     companion object {
         private const val TAG = "SshTmuxClient"
+        // Conservative patterns to prevent shell injection
+        private val SAFE_HOSTNAME = Regex("[A-Za-z0-9._@:-]+")
+        private val SAFE_SESSION = Regex("[A-Za-z0-9._:-]+")
+
+        fun validateHostname(hostname: String) {
+            require(hostname.matches(SAFE_HOSTNAME)) { "Invalid hostname: $hostname" }
+        }
+        fun validateSession(session: String) {
+            require(session.matches(SAFE_SESSION)) { "Invalid session name: $session" }
+        }
     }
 
     /**
@@ -44,6 +54,8 @@ class SshTmuxClient {
      */
     suspend fun resizeWindow(hostname: String, session: String, columns: Int) = withContext(Dispatchers.IO) {
         if (!TerminalCommandBridge.isAvailable()) return@withContext
+        validateHostname(hostname)
+        validateSession(session)
 
         val cmd = if (columns < 0) {
             // Restore auto-size: -A adjusts to largest attached client
@@ -68,6 +80,8 @@ class SshTmuxClient {
         if (!TerminalCommandBridge.isAvailable()) {
             throw IllegalStateException("Terminal bridge not available")
         }
+        validateHostname(hostname)
+        validateSession(session)
 
         val result = TerminalCommandBridge.executeCommand(
             "ssh -o ConnectTimeout=5 $hostname 'tmux capture-pane -t $session -p -S -500 2>/dev/null'",
@@ -97,6 +111,8 @@ class SshTmuxClient {
         if (!TerminalCommandBridge.isAvailable()) {
             throw IllegalStateException("Terminal bridge not available")
         }
+        validateHostname(hostname)
+        validateSession(session)
 
         Log.i(TAG, "sendKeys: host=$hostname session=$session text='${text.take(30)}'")
 

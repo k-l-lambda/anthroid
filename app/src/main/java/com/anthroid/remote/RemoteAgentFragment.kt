@@ -72,6 +72,7 @@ class RemoteAgentFragment : Fragment() {
     private lateinit var terminalScroll: ScrollView
     private lateinit var terminalContent: TextView
     private var isUserScrolledUp = false
+    private var scrollChangedListener: android.view.ViewTreeObserver.OnScrollChangedListener? = null
     private lateinit var inputField: EditText
     private lateinit var btnSend: ImageButton
     private lateinit var btnBack: ImageButton
@@ -241,17 +242,16 @@ class RemoteAgentFragment : Fragment() {
         // Enable text selection on terminal content
         terminalContent.setTextIsSelectable(true)
 
-        // Track scroll position — pause sync when user scrolls up
-        terminalScroll.viewTreeObserver.addOnScrollChangedListener {
+        // Track scroll position — pause auto-scroll when user scrolls up
+        scrollChangedListener = android.view.ViewTreeObserver.OnScrollChangedListener {
             val scrollY = terminalScroll.scrollY
             val contentHeight = terminalContent.height
             val scrollViewHeight = terminalScroll.height
-            // Consider "at bottom" if within 50px of the end
             val atBottom = scrollY + scrollViewHeight >= contentHeight - 50
             isUserScrolledUp = !atBottom
-            // Visual feedback: dim down arrow when paused
             syncDownIndicator.setTextColor(if (isUserScrolledUp) 0x33FFFFFF else 0xFFFFFFFF.toInt())
         }
+        terminalScroll.viewTreeObserver.addOnScrollChangedListener(scrollChangedListener)
 
         // Observe terminal content — skip update when user scrolled up
         viewLifecycleOwner.lifecycleScope.launch {
@@ -411,6 +411,12 @@ class RemoteAgentFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        // Remove scroll listener to avoid leaks
+        scrollChangedListener?.let {
+            terminalScroll.viewTreeObserver.removeOnScrollChangedListener(it)
+        }
+        scrollChangedListener = null
+
         // Only inject when the fragment is truly being removed (user pressed Back),
         // NOT on config changes or when pushed onto the back stack.
         if (isRemoving) {

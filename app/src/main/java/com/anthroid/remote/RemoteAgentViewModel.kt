@@ -328,21 +328,24 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun disconnect() {
-        // Restore tmux auto-size before disconnecting
         val hostname = tmuxHostname
         val sessionName = tmuxSessionName
-        if (hostname != null && sessionName != null && mode == RemoteSessionInfo.Source.SSH_TMUX) {
-            viewModelScope.launch {
-                try {
-                    sshClient.resizeWindow(hostname, sessionName, -1) // -1 = restore auto-size
-                } catch (_: Exception) {}
-            }
-        }
+        val wasTmux = hostname != null && sessionName != null && mode == RemoteSessionInfo.Source.SSH_TMUX
 
+        // Cancel sync job first to avoid concurrent SSH commands
         tmuxSyncJob?.cancel()
         tmuxSyncJob = null
         connectionWatchJob?.cancel()
         connectionWatchJob = null
+
+        // Restore tmux auto-size after sync is stopped
+        if (wasTmux) {
+            viewModelScope.launch {
+                try {
+                    sshClient.resizeWindow(hostname!!, sessionName!!, -1)
+                } catch (_: Exception) {}
+            }
+        }
 
         _connectionStatus.value = "disconnected"
         Log.i(TAG, "Disconnected")
