@@ -253,12 +253,11 @@ class RemoteAgentFragment : Fragment() {
         }
         terminalScroll.viewTreeObserver.addOnScrollChangedListener(scrollChangedListener)
 
-        // Observe terminal content — skip update when user scrolled up
+        // Observe terminal content — always update text, only auto-scroll when at bottom
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.terminalContent.collectLatest { content ->
+                terminalContent.text = content
                 if (!isUserScrolledUp) {
-                    terminalContent.text = content
-                    // Wait for layout to complete before scrolling to ensure correct height
                     terminalContent.post {
                         terminalScroll.scrollTo(0, (terminalContent.height - terminalScroll.height).coerceAtLeast(0))
                     }
