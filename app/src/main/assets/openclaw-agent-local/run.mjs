@@ -15,7 +15,7 @@
 
 import { createInterface } from "node:readline";
 import { randomUUID, randomBytes } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, readFileSync, writeFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -134,7 +134,7 @@ async function ensureSessionDir() {
 /** Read only the first line of a file without loading the entire content. */
 function readFirstLine(filePath) {
   try {
-    const buf = require("node:fs").readFileSync(filePath, { encoding: "utf-8" });
+    const buf = readFileSync(filePath, { encoding: "utf-8" });
     const nl = buf.indexOf("\n");
     const cr = buf.indexOf("\r");
     const end2 = cr >= 0 && (nl < 0 || cr < nl) ? cr : nl >= 0 ? nl : buf.length;
@@ -358,15 +358,18 @@ function getHistoryPath(sessionFile) {
 function loadHistory(sessionFile, maxTurns) {
   maxTurns = maxTurns || 20;
   try {
-    const raw = require("node:fs").readFileSync(getHistoryPath(sessionFile), "utf-8");
+    const raw = readFileSync(getHistoryPath(sessionFile), "utf-8");
     const arr = JSON.parse(raw);
     return Array.isArray(arr) ? arr.slice(-maxTurns) : [];
   } catch { return []; }
 }
 function saveHistory(sessionFile, turns) {
   try {
-    require("node:fs").writeFileSync(getHistoryPath(sessionFile), JSON.stringify(turns), "utf-8");
-  } catch {}
+    writeFileSync(getHistoryPath(sessionFile), JSON.stringify(turns), "utf-8");
+    process.stderr.write("[openclaw-agent] history saved: " + turns.length + " turns\n");
+  } catch (e) {
+    process.stderr.write("[openclaw-agent] saveHistory failed: " + e.message + "\n");
+  }
 }
 function buildHistoryPrompt(turns) {
   if (!turns || turns.length === 0) return "";
