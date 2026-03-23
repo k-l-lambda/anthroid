@@ -208,12 +208,14 @@ class GatewayForegroundService : Service() {
                 // Use separate notification keys so streaming and final don't replace each other
                 val notifKey = if (isStreaming) "$sessionKey:streaming" else sessionKey
                 val notifName = displayName ?: if (isStreaming) "Agent Streaming" else "Agent"
+                val sessionLabel = manager.getSessionLabel(sessionKey)
                 notificationHelper?.showMessageNotification(
                     sessionKey = notifKey,
                     displayName = notifName,
                     messageText = messageText,
                     channelId = if (isStreaming) GatewayNotificationHelper.CHANNEL_ID_STREAMING
-                                else GatewayNotificationHelper.CHANNEL_ID
+                                else GatewayNotificationHelper.CHANNEL_ID,
+                    sessionLabel = sessionLabel,
                 )
             }
         }

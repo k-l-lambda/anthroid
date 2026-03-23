@@ -184,6 +184,9 @@ class GatewayManager(
           .takeIf { it.isNotEmpty() }
           ?: s.optString("label", "").takeIf { it.isNotEmpty() }
         val key = s.optString("key", "")
+        // Cache session label for notification channel derivation
+        val rawLabel = s.optString("label", "").takeIf { it.isNotEmpty() }
+        if (key.isNotEmpty() && rawLabel != null) setSessionLabel(key, rawLabel)
         // Parse agentId from "agent:{agentId}:{sessionName}" format
         val agentId = Regex("^agent:([^:]+):.+$").find(key)?.groupValues?.get(1)
         result.add(RemoteSessionInfo(
@@ -383,6 +386,9 @@ class GatewayManager(
       val response = gs.request("chat.history", params.toString(), timeoutMs = 15_000)
       if (response == null) return emptyList()
       val obj = JSONObject(response)
+      // Cache session label if present
+      val label = obj.optString("label", "").takeIf { it.isNotEmpty() }
+      if (label != null) setSessionLabel(sessionKey, label)
       val messages = obj.optJSONArray("messages") ?: return emptyList()
       val result = mutableListOf<Pair<String, String>>()
       for (i in 0 until messages.length()) {
@@ -416,12 +422,22 @@ class GatewayManager(
   }
 
   // Track observed sessions from gateway events for fallback listing
-  private data class ObservedSession(val sessionKey: String, var lastActivity: Long)
+  private data class ObservedSession(val sessionKey: String, var lastActivity: Long, var label: String? = null)
   private val observedSessions = mutableMapOf<String, ObservedSession>()
+
+  /** Update the display label for a session (from sessions.preview or chat.history). */
+  fun setSessionLabel(sessionKey: String, label: String) {
+    observedSessions[sessionKey]?.label = label
+  }
+
+  /** Get the display label for a session if known. */
+  fun getSessionLabel(sessionKey: String): String? = observedSessions[sessionKey]?.label
 
   private fun trackObservedSession(sessionKey: String) {
     if (sessionKey.isNotEmpty() && sessionKey != "gateway") {
-      observedSessions[sessionKey] = ObservedSession(sessionKey, System.currentTimeMillis())
+      // Preserve existing label when updating activity time
+      val existing = observedSessions[sessionKey]
+      observedSessions[sessionKey] = ObservedSession(sessionKey, System.currentTimeMillis(), existing?.label)
     }
   }
 
