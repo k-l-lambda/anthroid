@@ -146,12 +146,14 @@ async function readFirstLine(filePath) {
   });
 }
 
-async function getOrCreateSession() {
+async function getOrCreateSession(requestedSessionId) {
   await ensureSessionDir();
 
   // Find session files and sort by mtime (most recent first)
   const fileNames = await fs.readdir(SESSION_DIR).catch(() => []);
   const jsonlFiles = fileNames.filter(f => f.endsWith(".jsonl"));
+  process.stderr.write(`[openclaw-agent] getOrCreateSession: ${jsonlFiles.length} files, requested=${requestedSessionId || "(none)"}
+`);
 
   if (jsonlFiles.length > 0) {
     const withStats = await Promise.all(
@@ -169,6 +171,9 @@ async function getOrCreateSession() {
         if (!firstLine) continue;
         const header = JSON.parse(firstLine);
         if (header.type === "session" && header.id) {
+          if (requestedSessionId && header.id !== requestedSessionId) continue;
+          process.stderr.write(`[openclaw-agent] reusing session: ${header.id}
+`);
           return { sessionId: header.id, sessionFile };
         }
       } catch {
@@ -180,8 +185,10 @@ async function getOrCreateSession() {
   }
 
   // Create a new session
-  const sessionId = randomUUID();
+  const sessionId = requestedSessionId || randomUUID();
   const sessionFile = path.join(SESSION_DIR, `session-${sessionId}.jsonl`);
+  process.stderr.write(`[openclaw-agent] creating new session: ${sessionId}
+`);
   const header = {
     type: "session",
     version: 3,
@@ -352,9 +359,11 @@ function abortActiveRun() {
 // Agent execution
 // ---------------------------------------------------------------------------
 
+let requestedSessionId = null;
+
 async function runAgent(prompt, images) {
   if (!currentSessionId) {
-    const session = await getOrCreateSession();
+    const session = await getOrCreateSession(requestedSessionId);
     currentSessionId = session.sessionId;
     currentSessionFile = session.sessionFile;
   }
