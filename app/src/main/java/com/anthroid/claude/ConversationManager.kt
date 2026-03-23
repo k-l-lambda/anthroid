@@ -361,14 +361,24 @@ class ConversationManager(private val context: Context) {
      * Delete a conversation.
      */
     suspend fun deleteConversation(sessionId: String): Boolean = withContext(Dispatchers.IO) {
-        val file = File(PROJECTS_DIR, "$sessionId.jsonl")
-        if (file.exists()) {
-            val deleted = file.delete()
-            Log.i(TAG, "Deleted conversation $sessionId: $deleted")
-            deleted
-        } else {
-            false
+        // CLI/API sessions: sessionId is the filename without extension
+        val cliFile = File(PROJECTS_DIR, "$sessionId.jsonl")
+        if (cliFile.exists()) {
+            val deleted = cliFile.delete()
+            Log.i(TAG, "Deleted CLI conversation $sessionId: $deleted")
+            return@withContext deleted
         }
+        // OpenClaw sessions: filename is "session-<uuid>.jsonl", sessionId = "session-<uuid>"
+        val openclawFile = File(OPENCLAW_SESSIONS_DIR, "$sessionId.jsonl")
+        if (openclawFile.exists()) {
+            val deleted = openclawFile.delete()
+            // Also delete associated history file if present
+            File(OPENCLAW_SESSIONS_DIR, "$sessionId.history.json").delete()
+            Log.i(TAG, "Deleted OpenClaw conversation $sessionId: $deleted")
+            return@withContext deleted
+        }
+        Log.w(TAG, "Conversation not found for deletion: $sessionId")
+        false
     }
 
     /**
