@@ -45,6 +45,9 @@ class OpenClawLocalClient(private val context: Context) {
     private var baseUrl: String = ""
     private var model: String = ""
 
+    // Session ID — maintained across process restarts for conversation continuity
+    private var currentSessionId: String? = null
+
     private val prefixPath: String
         get() = "${context.filesDir.absolutePath}/usr"
 
@@ -320,6 +323,7 @@ class OpenClawLocalClient(private val context: Context) {
                     if (apiKey.isNotBlank()) put("apiKey", apiKey)
                     if (baseUrl.isNotBlank()) put("baseUrl", baseUrl)
                     if (model.isNotBlank()) put("model", model)
+                    currentSessionId?.let { put("sessionId", it) }
                 }
                 writer.write(configJson.toString())
                 writer.newLine()
@@ -395,6 +399,12 @@ class OpenClawLocalClient(private val context: Context) {
     /**
      * Cancel the current agent request by destroying the process.
      */
+    /** Reset session ID to start a fresh conversation. */
+    fun resetSession() {
+        currentSessionId = null
+        Log.i(TAG, "Session reset — next chat will create a new session")
+    }
+
     fun cancelCurrentRequest() {
         process?.let {
             try {
@@ -477,6 +487,11 @@ class OpenClawLocalClient(private val context: Context) {
             when (type) {
                 "system" -> {
                     val sessionId = json.optString("session_id", "unknown")
+                    // Persist session ID for conversation continuity across restarts
+                    if (sessionId != "unknown") {
+                        currentSessionId = sessionId
+                        Log.d(TAG, "Session ID set: $sessionId")
+                    }
                     ClaudeEvent.MessageStart(sessionId)
                 }
 
