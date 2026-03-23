@@ -1309,6 +1309,7 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         _currentResponse.value = ""
         apiClient.clearHistory()
         cliClient.clearConversation()
+        openclawClient.resetSession()
     }
 
     /**
