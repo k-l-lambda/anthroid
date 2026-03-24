@@ -15,7 +15,7 @@
 
 import { createInterface } from "node:readline";
 import { randomUUID, randomBytes } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, readFileSync, writeFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -132,21 +132,18 @@ async function ensureSessionDir() {
 }
 
 /** Read only the first line of a file without loading the entire content. */
-async function readFirstLine(filePath) {
-  return new Promise((resolve, reject) => {
-    const stream = createReadStream(filePath, { encoding: "utf-8" });
-    const rl = createInterface({ input: stream, crlfDelay: Infinity });
-    rl.once("line", (line) => {
-      rl.close();
-      stream.destroy();
-      resolve(line);
-    });
-    rl.once("close", () => resolve(null));
-    stream.once("error", reject);
-  });
+function readFirstLine(filePath) {
+  try {
+    const buf = readFileSync(filePath, { encoding: "utf-8" });
+    const nl = buf.indexOf("\n");
+    const cr = buf.indexOf("\r");
+    const end2 = cr >= 0 && (nl < 0 || cr < nl) ? cr : nl >= 0 ? nl : buf.length;
+    return buf.slice(0, end2) || null;
+  } catch { return null; }
 }
 
-async function getOrCreateSession() {
+
+async function getOrCreateSession(requestedSessionId) {
   await ensureSessionDir();
 
   // Find session files and sort by mtime (most recent first)
@@ -169,6 +166,7 @@ async function getOrCreateSession() {
         if (!firstLine) continue;
         const header = JSON.parse(firstLine);
         if (header.type === "session" && header.id) {
+          if (requestedSessionId && header.id !== requestedSessionId) continue;
           return { sessionId: header.id, sessionFile };
         }
       } catch {
@@ -180,7 +178,7 @@ async function getOrCreateSession() {
   }
 
   // Create a new session
-  const sessionId = randomUUID();
+  const sessionId = requestedSessionId || randomUUID();
   const sessionFile = path.join(SESSION_DIR, `session-${sessionId}.jsonl`);
   const header = {
     type: "session",
@@ -352,9 +350,39 @@ function abortActiveRun() {
 // Agent execution
 // ---------------------------------------------------------------------------
 
+
+// ── Conversation history (independent of SessionManager) ──────────
+function getHistoryPath(sessionFile) {
+  return sessionFile.replace(/\.jsonl$/, '.history.json');
+}
+function loadHistory(sessionFile, maxTurns) {
+  maxTurns = maxTurns || 20;
+  try {
+    const raw = readFileSync(getHistoryPath(sessionFile), "utf-8");
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.slice(-maxTurns) : [];
+  } catch { return []; }
+}
+function saveHistory(sessionFile, turns) {
+  try {
+    writeFileSync(getHistoryPath(sessionFile), JSON.stringify(turns), "utf-8");
+    process.stderr.write("[openclaw-agent] history saved: " + turns.length + " turns\n");
+  } catch (e) {
+    process.stderr.write("[openclaw-agent] saveHistory failed: " + e.message + "\n");
+  }
+}
+function buildHistoryPrompt(turns) {
+  if (!turns || turns.length === 0) return "";
+  return "<conversation_history>\n" +
+    turns.map(t => "[" + t.role + "]: " + t.text).join("\n") +
+    "\n</conversation_history>\n\nContinuing the above conversation. User says:\n";
+}
+
+let requestedSessionId = null;
+
 async function runAgent(prompt, images) {
   if (!currentSessionId) {
-    const session = await getOrCreateSession();
+    const session = await getOrCreateSession(requestedSessionId);
     currentSessionId = session.sessionId;
     currentSessionFile = session.sessionFile;
   }
@@ -419,11 +447,16 @@ async function runAgent(prompt, images) {
       };
     }
 
+    // Inject conversation history into prompt
+    const prevTurns = loadHistory(currentSessionFile, 20);
+    const historyPrefix = buildHistoryPrompt(prevTurns);
+    const effectivePrompt = historyPrefix ? historyPrefix + prompt : prompt;
+
     const result = await runEmbeddedPiAgent({
       sessionId: currentSessionId,
       sessionFile: currentSessionFile,
       workspaceDir: WORKSPACE_DIR,
-      prompt,
+      prompt: effectivePrompt,
       images: images || undefined,
       provider: PROVIDER,
       model: MODEL,
@@ -527,6 +560,14 @@ async function runAgent(prompt, images) {
       emitTextDelta(metaText);
     }
 
+    // Save conversation turn to separate history file
+    {
+      const hist = loadHistory(currentSessionFile, 50);
+      hist.push({ role: "user", text: prompt });
+      if (lastPartialText) hist.push({ role: "assistant", text: lastPartialText.trim() });
+      saveHistory(currentSessionFile, hist);
+    }
+
     emitMessageEnd();
 
     // Check for errors
@@ -587,6 +628,7 @@ async function main() {
           MODEL = msg.model;
         }
         if (msg.provider) PROVIDER = msg.provider;
+        if (msg.sessionId) requestedSessionId = msg.sessionId;
         process.stderr.write("[openclaw-agent] config received via stdin\n");
         continue;
       }
