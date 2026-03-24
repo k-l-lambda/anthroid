@@ -401,8 +401,8 @@ class OpenClawLocalClient(private val context: Context) {
      */
     /** Reset session ID to start a fresh conversation. */
     fun resetSession() {
-        currentSessionId = null
-        Log.i(TAG, "Session reset — next chat will create a new session")
+        currentSessionId = java.util.UUID.randomUUID().toString()
+        Log.i(TAG, "Session reset — new session ID: $currentSessionId")
     }
 
     fun cancelCurrentRequest() {
