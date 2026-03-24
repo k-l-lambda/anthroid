@@ -403,8 +403,10 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 }
                 // Memory sync: pull memory/ files from gateway before OPENCLAW run
                 if (agentMode == AgentMode.OPENCLAW) {
+                    Log.i(TAG, "Memory sync: pulling files before OPENCLAW run")
                     pullMemoryFiles()
                     snapshotMemoryFiles()
+                    Log.i(TAG, "Memory sync: pull complete, snapshot taken")
                 }
 
                 val hasImages = images.isNotEmpty()
@@ -1599,7 +1601,11 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
 
     /** Pull memory/ files from gateway since lastSyncTime. */
     private suspend fun pullMemoryFiles() = memorySyncMutex.withLock {
-        val manager = gatewayManager ?: return@withLock
+        val manager = gatewayManager
+        if (manager == null) {
+            Log.w(TAG, "pullMemoryFiles: gateway not connected, skipping")
+            return@withLock
+        }
         val lastSync = prefs.getLong("lastMemorySyncTime", 0)
         try {
             // Skip pull if previous push failed (local has unpushed changes)
@@ -1608,7 +1614,12 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 return@withLock
             }
 
-            val result = manager.getMemoryPatch(if (lastSync > 0) lastSync else null) ?: return@withLock
+            val result = manager.getMemoryPatch(if (lastSync > 0) lastSync else null)
+            if (result == null) {
+                Log.w(TAG, "pullMemoryFiles: getMemoryPatch returned null")
+                return@withLock
+            }
+            Log.i(TAG, "pullMemoryFiles: mode=${result.mode}, files=${result.files?.size ?: "null"}, lastSync=$lastSync")
             val memoryDir = File(openclawClient.workspacePath, "memory")
             memoryDir.mkdirs()
 

@@ -313,8 +313,9 @@ class GatewayManager(
   suspend fun getMemoryPatch(sinceTimestamp: Long? = null): MemoryPatchResult? {
     val gs = session ?: return null
     return try {
+      // Never send sinceTimestamp — Android has no git binary to apply patches.
+      // Without sinceTimestamp, server always returns mode="full" with all files.
       val params = JSONObject()
-      if (sinceTimestamp != null && sinceTimestamp > 0) params.put("sinceTimestamp", sinceTimestamp)
       val response = gs.request("agent.getMemoryPatch", params.toString(), timeoutMs = 15_000)
       val obj = JSONObject(response)
       val mode = obj.optString("mode", "full")
@@ -332,7 +333,7 @@ class GatewayManager(
         MemoryPatchResult(mode = "full", files = files, latestTimestamp = latestTimestamp)
       }
     } catch (err: Throwable) {
-      Log.d(TAG, "getMemoryPatch failed: ${err.message}")
+      Log.w(TAG, "getMemoryPatch failed: ${err.message}")
       null
     }
   }
