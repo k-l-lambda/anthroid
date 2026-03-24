@@ -173,7 +173,8 @@ class GatewayForegroundService : Service() {
                     notificationHelper?.showMessageNotification(
                         sessionKey = sessionKey,
                         displayName = "Agent",
-                        messageText = content
+                        messageText = content,
+                        sessionLabel = manager.getSessionLabel(sessionKey),
                     )
                 }
                 Log.i(TAG, "Delivered pending message for $sessionKey: ${content.take(60)}")

@@ -169,7 +169,7 @@ class GatewayNotificationHelper(private val context: Context) {
 
             // Show summary notification when multiple sessions have messages
             if (sessionNotifications.size > 1) {
-                val summaryNotification = NotificationCompat.Builder(context, CHANNEL_ID)
+                val summaryNotification = NotificationCompat.Builder(context, resolvedChannelId)
                     .setSmallIcon(R.drawable.ic_service_notification)
                     .setContentTitle("Anthroid")
                     .setContentText("${sessionNotifications.size} sessions with new messages")
