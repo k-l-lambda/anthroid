@@ -32,6 +32,8 @@ class GatewayForegroundService : Service() {
         private const val TAG = "GatewayFgService"
         private const val CHANNEL_ID = "gateway_service"
         private const val NOTIFICATION_ID = 60000
+        // Skip short noise messages from monitoring/heartbeat crons
+        private val NOISE_PATTERN = Regex("(?i)heartbeat|_ok$|^ok$|^pong$|^alive$|^ping$")
 
         const val ACTION_START = "com.anthroid.gateway.START"
         const val ACTION_STOP = "com.anthroid.gateway.STOP"
@@ -165,6 +167,12 @@ class GatewayForegroundService : Service() {
         // Drain ALL pending messages in one call (no per-key iteration needed)
         val messages = manager.drainAllPendingMessages()
         for (msg in messages) {
+            // Skip noise messages (heartbeat, monitoring pings, etc.)
+            val trimmed = msg.content.trim()
+            if (trimmed.length < 30 && NOISE_PATTERN.containsMatchIn(trimmed)) {
+                Log.d(TAG, "Skipped noise message for ${msg.sessionKey}: $trimmed")
+                continue
+            }
             manager.emitRemoteSessionEvent(
                 GatewayManager.RemoteSessionEvent(msg.sessionKey, "assistant", msg.content)
             )
