@@ -32,8 +32,10 @@ class GatewayForegroundService : Service() {
         private const val TAG = "GatewayFgService"
         private const val CHANNEL_ID = "gateway_service"
         private const val NOTIFICATION_ID = 60000
-        // Skip short noise messages from monitoring/heartbeat crons
-        private val NOISE_PATTERN = Regex("(?i)heartbeat|_ok$|^ok$|^pong$|^alive$|^ping$")
+        // Skip exact noise messages from monitoring/heartbeat crons (full match only)
+        private val NOISE_MESSAGES = setOf(
+            "HEARTBEAT_OK", "PONG",
+        )
 
         const val ACTION_START = "com.anthroid.gateway.START"
         const val ACTION_STOP = "com.anthroid.gateway.STOP"
@@ -169,7 +171,7 @@ class GatewayForegroundService : Service() {
         for (msg in messages) {
             // Skip noise messages (heartbeat, monitoring pings, etc.)
             val trimmed = msg.content.trim()
-            if (trimmed.length < 30 && NOISE_PATTERN.containsMatchIn(trimmed)) {
+            if (trimmed in NOISE_MESSAGES) {
                 Log.d(TAG, "Skipped noise message for ${msg.sessionKey}: $trimmed")
                 continue
             }
