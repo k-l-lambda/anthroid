@@ -59,6 +59,19 @@ class GatewayManager(
   )
   val remoteSessionEventFlow: SharedFlow<RemoteSessionEvent> = _remoteSessionEventFlow.asSharedFlow()
 
+  // Track recently seen message IDs (from WS events) for dedup against drainPending
+  private val recentMessageIds = LinkedHashSet<String>()
+  private val MAX_RECENT_IDS = 10
+
+  private fun trackMessageId(id: String) {
+    recentMessageIds.add(id)
+    while (recentMessageIds.size > MAX_RECENT_IDS) {
+      recentMessageIds.iterator().let { it.next(); it.remove() }
+    }
+  }
+
+  fun isMessageSeen(id: String): Boolean = recentMessageIds.contains(id)
+
   private var session: GatewaySession? = null
 
   fun connect(host: String, port: Int, token: String? = null, useTls: Boolean = true) {
@@ -255,12 +268,19 @@ class GatewayManager(
       val obj = JSONObject(response)
       val messages = obj.optJSONArray("messages") ?: return emptyList()
       val result = mutableListOf<String>()
+      var skipped = 0
       for (i in 0 until messages.length()) {
         val msg = messages.optJSONObject(i) ?: continue
+        val messageId = msg.optString("messageId", "")
+        // Skip messages already received via WS real-time events
+        if (messageId.isNotEmpty() && isMessageSeen(messageId)) {
+          skipped++
+          continue
+        }
         val content = msg.optString("content", "").trim()
         if (content.isNotEmpty()) result.add(content)
       }
-      if (result.isNotEmpty()) Log.i(TAG, "Drained ${result.size} pending messages for $sessionKey")
+      if (result.isNotEmpty() || skipped > 0) Log.i(TAG, "Drained ${result.size} pending messages for $sessionKey (skipped $skipped duplicates)")
       result
     } catch (err: Throwable) {
       Log.d(TAG, "drainPendingMessages failed (no pending or not connected): ${err.message}")
@@ -479,6 +499,9 @@ class GatewayManager(
           val sessionKey = obj.optString("sessionKey", "").takeIf { it.isNotEmpty() } ?: return
           trackObservedSession(sessionKey)
           val state = obj.optString("state", "")
+          val runId = obj.optString("runId", "").takeIf { it.isNotEmpty() }
+          // Track runId for dedup against drainPending
+          if (runId != null) trackMessageId(runId)
           // Only notify on final messages, not streaming deltas
           if (state != "final") return
           val msgObj = obj.optJSONObject("message") ?: return
