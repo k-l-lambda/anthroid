@@ -161,27 +161,22 @@ class GatewayForegroundService : Service() {
      */
     private suspend fun drainAndDeliverPending(manager: GatewayManager) {
         // Pre-warm session labels so notifications use job names (e.g. "Gold Monitor")
-        // instead of falling back to agent names (e.g. "financer")
         try { manager.listSessions() } catch (_: Exception) {}
-        val observedSessions = manager.getObservedSessionKeys()
-        for (sessionKey in observedSessions) {
-            val messages = manager.drainPendingMessages(sessionKey)
-            for (content in messages) {
-                // Emit as assistant event so RemoteAgentViewModel receives it
-                manager.emitRemoteSessionEvent(
-                    GatewayManager.RemoteSessionEvent(sessionKey, "assistant", content)
+        // Drain ALL pending messages in one call (no per-key iteration needed)
+        val messages = manager.drainAllPendingMessages()
+        for (msg in messages) {
+            manager.emitRemoteSessionEvent(
+                GatewayManager.RemoteSessionEvent(msg.sessionKey, "assistant", msg.content)
+            )
+            if (!ScreenAutomationOverlay.isAppInForeground) {
+                notificationHelper?.showMessageNotification(
+                    sessionKey = msg.sessionKey,
+                    displayName = "Agent",
+                    messageText = msg.content,
+                    sessionLabel = manager.getSessionLabel(msg.sessionKey),
                 )
-                // Also show system notification when app is in background
-                if (!ScreenAutomationOverlay.isAppInForeground) {
-                    notificationHelper?.showMessageNotification(
-                        sessionKey = sessionKey,
-                        displayName = "Agent",
-                        messageText = content,
-                        sessionLabel = manager.getSessionLabel(sessionKey),
-                    )
-                }
-                Log.i(TAG, "Delivered pending message for $sessionKey: ${content.take(60)}")
             }
+            Log.i(TAG, "Delivered pending message for ${msg.sessionKey}: ${msg.content.take(60)}")
         }
     }
 

@@ -260,6 +260,38 @@ class GatewayManager(
    * Called by the polling service every ~60s to receive timed/scheduled messages.
    * Returns list of message strings (content), or empty list on failure.
    */
+  data class DrainedMessage(val sessionKey: String, val content: String, val messageId: String)
+
+  /** Drain ALL pending messages across all sessions in one call. */
+  suspend fun drainAllPendingMessages(): List<DrainedMessage> {
+    val gs = session ?: return emptyList()
+    return try {
+      val response = gs.request("session.drainAllPending", "{}", timeoutMs = 10_000)
+      val obj = JSONObject(response)
+      val messages = obj.optJSONArray("messages") ?: return emptyList()
+      val result = mutableListOf<DrainedMessage>()
+      var skipped = 0
+      for (i in 0 until messages.length()) {
+        val msg = messages.optJSONObject(i) ?: continue
+        val messageId = msg.optString("messageId", "")
+        if (messageId.isNotEmpty() && isMessageSeen(messageId)) {
+          skipped++
+          continue
+        }
+        val content = msg.optString("content", "").trim()
+        val key = msg.optString("sessionKey", "")
+        if (content.isNotEmpty() && key.isNotEmpty()) {
+          result.add(DrainedMessage(key, content, messageId))
+        }
+      }
+      if (result.isNotEmpty() || skipped > 0) Log.i(TAG, "DrainAll: ${result.size} messages (skipped $skipped duplicates)")
+      result
+    } catch (err: Throwable) {
+      Log.d(TAG, "drainAllPendingMessages failed: ${err.message}")
+      emptyList()
+    }
+  }
+
   suspend fun drainPendingMessages(sessionKey: String): List<String> {
     val gs = session ?: return emptyList()
     return try {
