@@ -45,8 +45,8 @@ class OpenClawLocalClient(private val context: Context) {
     private var baseUrl: String = ""
     private var model: String = ""
 
-    // Session ID — maintained across process restarts for conversation continuity
-    private var currentSessionId: String? = null
+    // Session ID — fresh UUID on each app launch; maintained across messages within a session
+    private var currentSessionId: String? = java.util.UUID.randomUUID().toString()
 
     private val prefixPath: String
         get() = "${context.filesDir.absolutePath}/usr"
