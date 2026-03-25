@@ -160,6 +160,9 @@ class GatewayForegroundService : Service() {
      * and trigger notifications.
      */
     private suspend fun drainAndDeliverPending(manager: GatewayManager) {
+        // Pre-warm session labels so notifications use job names (e.g. "Gold Monitor")
+        // instead of falling back to agent names (e.g. "financer")
+        try { manager.listSessions() } catch (_: Exception) {}
         val observedSessions = manager.getObservedSessionKeys()
         for (sessionKey in observedSessions) {
             val messages = manager.drainPendingMessages(sessionKey)
