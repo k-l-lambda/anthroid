@@ -54,62 +54,54 @@ class SshTmuxClient {
     }
 
     /**
-     * Get current tmux window-size option (smallest/largest/latest/manual).
+     * Create a temporary tmux window linked to the target session, resized to the given columns.
+     * Returns the temporary window name (e.g. "starry-anthroid") or null on failure.
+     * This avoids resizing the original window, which affects other viewers.
      */
-    suspend fun getWindowSizeOption(hostname: String, session: String): String? = withContext(Dispatchers.IO) {
+    suspend fun createTempWindow(hostname: String, session: String, columns: Int): String? = withContext(Dispatchers.IO) {
         if (!TerminalCommandBridge.isAvailable()) return@withContext null
         if (!isSafeHostname(hostname) || !isSafeSession(session)) return@withContext null
+        if (columns < 20) return@withContext null
 
-        val result = TerminalCommandBridge.executeCommand(
-            "ssh -o ConnectTimeout=5 $hostname 'tmux show-window-option -t $session -v window-size 2>/dev/null'",
-            timeout = 10000
-        )
-        if (!result.success) return@withContext null
-        result.output.trim().takeIf { it.isNotEmpty() }
+        val tempWindow = "$session-anthroid"
+        Log.i(TAG, "createTempWindow: $hostname:$tempWindow (${columns}col)")
+        // Link a new window to the session's current pane, resize it, then select original window back
+        val cmd = "ssh -o ConnectTimeout=5 $hostname '" +
+            "tmux new-window -t $session -n anthroid 2>/dev/null; " +
+            "tmux resize-window -t $session:anthroid -x $columns 2>/dev/null; " +
+            "tmux select-window -t $session:0 2>/dev/null" +
+            "'"
+        val result = TerminalCommandBridge.executeCommand(cmd, timeout = 10000)
+        if (!result.success) {
+            Log.w(TAG, "createTempWindow failed: ${result.output.take(100)}")
+            return@withContext null
+        }
+        tempWindow
     }
 
     /**
-     * Resize the tmux window width. This switches window-size to "manual" mode.
+     * Kill the temporary anthroid window. Best-effort — failure doesn't affect the original session.
      */
-    suspend fun resizeWindow(hostname: String, session: String, columns: Int) = withContext(Dispatchers.IO) {
-        if (!TerminalCommandBridge.isAvailable()) return@withContext
-        if (!isSafeHostname(hostname) || !isSafeSession(session)) return@withContext
-        if (columns < 20) return@withContext
-
-        Log.i(TAG, "resizeWindow: host=$hostname session=$session columns=$columns")
-        val result = TerminalCommandBridge.executeCommand(
-            "ssh -o ConnectTimeout=5 $hostname 'tmux resize-window -t $session -x $columns 2>/dev/null'",
-            timeout = 10000
-        )
-        if (!result.success) {
-            Log.w(TAG, "resize-window failed (non-fatal): ${result.output.take(100)}")
-        }
-    }
-
-    /**
-     * Restore tmux window-size option to re-enable auto-resize, then trigger adjustment.
-     */
-    suspend fun restoreWindowSizeOption(hostname: String, session: String, option: String) = withContext(Dispatchers.IO) {
+    suspend fun killTempWindow(hostname: String, session: String) = withContext(Dispatchers.IO) {
         if (!TerminalCommandBridge.isAvailable()) return@withContext
         if (!isSafeHostname(hostname) || !isSafeSession(session)) return@withContext
 
-        Log.i(TAG, "restoreWindowSizeOption: $hostname:$session → $option")
-        // Order matters: -A adjusts size first, then set-window-option restores auto mode.
-        // Reversed order would have -A overwrite the option back to "manual".
-        val result = TerminalCommandBridge.executeCommand(
-            "ssh -o ConnectTimeout=5 $hostname 'tmux resize-window -t $session -A 2>/dev/null && tmux set-window-option -t $session window-size $option 2>/dev/null'",
+        Log.i(TAG, "killTempWindow: $hostname:$session:anthroid")
+        TerminalCommandBridge.executeCommand(
+            "ssh -o ConnectTimeout=5 $hostname 'tmux kill-window -t $session:anthroid 2>/dev/null'",
             timeout = 10000
         )
-        if (!result.success) {
-            Log.w(TAG, "restoreWindowSizeOption failed (non-fatal): ${result.output.take(100)}")
-        }
     }
 
     /**
      * Capture tmux pane content from a remote session.
      * Returns last 500 lines of the pane.
      */
-    suspend fun capturePaneContent(hostname: String, session: String): String = withContext(Dispatchers.IO) {
+    /**
+     * Capture tmux pane content. If useTempWindow is true, captures from the
+     * anthroid temp window (which has the correct width for mobile display).
+     */
+    suspend fun capturePaneContent(hostname: String, session: String, useTempWindow: Boolean = false): String = withContext(Dispatchers.IO) {
         if (!TerminalCommandBridge.isAvailable()) {
             throw IllegalStateException("Terminal bridge not available")
         }
@@ -117,8 +109,9 @@ class SshTmuxClient {
             throw IllegalArgumentException("Unsafe hostname or session name")
         }
 
+        val target = if (useTempWindow) "$session:anthroid" else session
         val result = TerminalCommandBridge.executeCommand(
-            "ssh -o ConnectTimeout=5 $hostname 'tmux capture-pane -t $session -p -S -500 2>/dev/null'",
+            "ssh -o ConnectTimeout=5 $hostname 'tmux capture-pane -t $target -p -S -500 2>/dev/null'",
             timeout = 15000
         )
 

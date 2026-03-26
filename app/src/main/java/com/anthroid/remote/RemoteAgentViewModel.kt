@@ -66,7 +66,7 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
     private var targetSessionKey: String? = null
     private var tmuxHostname: String? = null
     private var tmuxSessionName: String? = null
-    private var tmuxOriginalWindowSizeOption: String? = null
+    private var tmuxHasTempWindow = false
     private var tmuxSyncJob: Job? = null
     private var connectionWatchJob: Job? = null
 
@@ -213,21 +213,21 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
 
         // Start periodic sync
         tmuxSyncJob = viewModelScope.launch {
-            // Save window-size option, then resize to match Anthroid terminal width
+            // Create a temporary tmux window sized to Anthroid's terminal width
             if (columns > 0) {
                 try {
-                    tmuxOriginalWindowSizeOption = sshClient.getWindowSizeOption(hostname, sessionName)
-                    Log.i(TAG, "Saved tmux window-size option: $tmuxOriginalWindowSizeOption")
-                    sshClient.resizeWindow(hostname, sessionName, columns)
+                    val tempName = sshClient.createTempWindow(hostname, sessionName, columns)
+                    tmuxHasTempWindow = tempName != null
+                    Log.i(TAG, "Temp tmux window: ${tempName ?: "failed, using original"}")
                 } catch (e: Exception) {
-                    Log.w(TAG, "tmux resize failed (non-fatal): ${e.message}")
+                    Log.w(TAG, "createTempWindow failed (non-fatal): ${e.message}")
                 }
             }
             var firstSync = true
             while (isActive) {
                 try {
                     _isSyncing.value = true
-                    val content = sshClient.capturePaneContent(hostname, sessionName)
+                    val content = sshClient.capturePaneContent(hostname, sessionName, useTempWindow = tmuxHasTempWindow)
                     _isSyncing.value = false
                     _terminalContent.value = content
                     if (firstSync) {
@@ -344,12 +344,13 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
 
         val hostname = tmuxHostname
         val sessionName = tmuxSessionName
-        val savedOption = tmuxOriginalWindowSizeOption ?: "smallest"
+        val hadTempWindow = tmuxHasTempWindow
         val wasTmux = hostname != null && sessionName != null && mode == RemoteSessionInfo.Source.SSH_TMUX
         val syncJob = tmuxSyncJob
         val watchJob = connectionWatchJob
         tmuxSyncJob = null
         connectionWatchJob = null
+        tmuxHasTempWindow = false
 
         _connectionStatus.value = "disconnected"
 
@@ -357,13 +358,13 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
         teardownScope.launch {
             syncJob?.cancelAndJoin()
             watchJob?.cancelAndJoin()
-            if (wasTmux) {
+            if (wasTmux && hadTempWindow) {
                 try {
-                    Log.i(TAG, "Restoring tmux window-size option '$savedOption' for $hostname:$sessionName")
-                    sshClient.restoreWindowSizeOption(hostname!!, sessionName!!, savedOption)
-                    Log.i(TAG, "tmux auto-size restored")
+                    Log.i(TAG, "Killing temp tmux window for $hostname:$sessionName")
+                    sshClient.killTempWindow(hostname!!, sessionName!!)
+                    Log.i(TAG, "Temp window killed")
                 } catch (e: Exception) {
-                    Log.w(TAG, "Failed to restore tmux auto-size: ${e.message}")
+                    Log.w(TAG, "Failed to kill temp window (non-fatal): ${e.message}")
                 }
             }
             Log.i(TAG, "Disconnected")
