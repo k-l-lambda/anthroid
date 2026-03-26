@@ -34,8 +34,12 @@ class GatewayForegroundService : Service() {
         private const val NOTIFICATION_ID = 60000
         // Skip exact noise messages from monitoring/heartbeat crons (full match only)
         private val NOISE_MESSAGES = setOf(
-            "HEARTBEAT_OK", "PONG",
+            "HEARTBEAT_OK", "PONG", "NO",
         )
+
+        /** Session key of the currently open remote OpenClaw view (null if none). */
+        @Volatile
+        var activeRemoteSessionKey: String? = null
 
         const val ACTION_START = "com.anthroid.gateway.START"
         const val ACTION_STOP = "com.anthroid.gateway.STOP"
@@ -178,7 +182,10 @@ class GatewayForegroundService : Service() {
             manager.emitRemoteSessionEvent(
                 GatewayManager.RemoteSessionEvent(msg.sessionKey, "assistant", msg.content)
             )
-            if (!ScreenAutomationOverlay.isAppInForeground) {
+            // Only suppress notification if the user is viewing THIS session in remote agent view
+            val viewingThisSession = ScreenAutomationOverlay.isAppInForeground
+                && msg.sessionKey == activeRemoteSessionKey
+            if (!viewingThisSession) {
                 notificationHelper?.showMessageNotification(
                     sessionKey = msg.sessionKey,
                     displayName = "Agent",
@@ -202,6 +209,7 @@ class GatewayForegroundService : Service() {
 
         // Wire up notification.push events
         manager.onNotification = { title, body ->
+            // notification.push has no session — always show unless app is foreground
             if (!ScreenAutomationOverlay.isAppInForeground) {
                 notificationHelper?.showMessageNotification(
                     sessionKey = "notification",
@@ -213,7 +221,9 @@ class GatewayForegroundService : Service() {
 
         // Wire up chat message events
         manager.onChatMessage = { sessionKey, displayName, messageText, isStreaming ->
-            if (!ScreenAutomationOverlay.isAppInForeground && !messageText.isNullOrBlank()) {
+            val viewingThisSession = ScreenAutomationOverlay.isAppInForeground
+                && sessionKey == activeRemoteSessionKey
+            if (!viewingThisSession && !messageText.isNullOrBlank()) {
                 // Use separate notification keys so streaming and final don't replace each other
                 val notifKey = if (isStreaming) "$sessionKey:streaming" else sessionKey
                 val notifName = displayName ?: if (isStreaming) "Agent Streaming" else "Agent"

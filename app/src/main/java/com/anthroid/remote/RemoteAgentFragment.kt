@@ -155,7 +155,10 @@ class RemoteAgentFragment : Fragment() {
 
         // Setup based on source
         when (source) {
-            RemoteSessionInfo.Source.OPENCLAW -> setupOpenClawMode(sessionKey)
+            RemoteSessionInfo.Source.OPENCLAW -> {
+                com.anthroid.gateway.GatewayForegroundService.activeRemoteSessionKey = sessionKey
+                setupOpenClawMode(sessionKey)
+            }
             RemoteSessionInfo.Source.SSH_TMUX -> setupSshTmuxMode(sessionKey, hostname ?: "")
         }
 
@@ -410,6 +413,9 @@ class RemoteAgentFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        // Clear active remote session so notifications resume
+        com.anthroid.gateway.GatewayForegroundService.activeRemoteSessionKey = null
+
         // Remove scroll listener to avoid leaks
         scrollChangedListener?.let { listener ->
             val vto = terminalScroll.viewTreeObserver
