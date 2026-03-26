@@ -264,9 +264,14 @@ class GatewayManager(
 
   /** Drain ALL pending messages across all sessions in one call. */
   suspend fun drainAllPendingMessages(): List<DrainedMessage> {
-    val gs = session ?: return emptyList()
+    val gs = session
+    if (gs == null) {
+      Log.w(TAG, "drainAllPendingMessages: session is null")
+      return emptyList()
+    }
     return try {
       val response = gs.request("session.drainAllPending", "{}", timeoutMs = 10_000)
+      Log.i(TAG, "drainAllPending response: ${response?.take(200)}")
       val obj = JSONObject(response)
       val messages = obj.optJSONArray("messages") ?: return emptyList()
       val result = mutableListOf<DrainedMessage>()
@@ -287,7 +292,7 @@ class GatewayManager(
       if (result.isNotEmpty() || skipped > 0) Log.i(TAG, "DrainAll: ${result.size} messages (skipped $skipped duplicates)")
       result
     } catch (err: Throwable) {
-      Log.d(TAG, "drainAllPendingMessages failed: ${err.message}")
+      Log.w(TAG, "drainAllPendingMessages failed: ${err.message}")
       emptyList()
     }
   }
