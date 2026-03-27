@@ -223,7 +223,7 @@ class GatewayForegroundService : Service() {
         manager.onChatMessage = { sessionKey, displayName, messageText, isStreaming ->
             val viewingThisSession = ScreenAutomationOverlay.isAppInForeground
                 && sessionKey == activeRemoteSessionKey
-            if (!viewingThisSession && !messageText.isNullOrBlank()) {
+            if (!viewingThisSession && !messageText.isNullOrBlank() && messageText.trim() !in NOISE_MESSAGES) {
                 // Use separate notification keys so streaming and final don't replace each other
                 val notifKey = if (isStreaming) "$sessionKey:streaming" else sessionKey
                 val notifName = displayName ?: if (isStreaming) "Agent Streaming" else "Agent"

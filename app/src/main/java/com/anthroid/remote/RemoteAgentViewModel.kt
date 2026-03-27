@@ -213,21 +213,21 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
 
         // Start periodic sync
         tmuxSyncJob = viewModelScope.launch {
-            // Create a temporary tmux window sized to Anthroid's terminal width
+            // Create a grouped tmux session sized to Anthroid's terminal width
             if (columns > 0) {
                 try {
-                    val tempName = sshClient.createTempWindow(hostname, sessionName, columns)
-                    tmuxHasTempWindow = tempName != null
-                    Log.i(TAG, "Temp tmux window: ${tempName ?: "failed, using original"}")
+                    val groupedName = sshClient.createGroupedSession(hostname, sessionName, columns)
+                    tmuxHasTempWindow = groupedName != null
+                    Log.i(TAG, "Grouped tmux session: ${groupedName ?: "failed, using original"}")
                 } catch (e: Exception) {
-                    Log.w(TAG, "createTempWindow failed (non-fatal): ${e.message}")
+                    Log.w(TAG, "createGroupedSession failed (non-fatal): ${e.message}")
                 }
             }
             var firstSync = true
             while (isActive) {
                 try {
                     _isSyncing.value = true
-                    val content = sshClient.capturePaneContent(hostname, sessionName, useTempWindow = tmuxHasTempWindow)
+                    val content = sshClient.capturePaneContent(hostname, sessionName, useGroupedSession = tmuxHasTempWindow)
                     _isSyncing.value = false
                     _terminalContent.value = content
                     if (firstSync) {
@@ -360,11 +360,11 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
             watchJob?.cancelAndJoin()
             if (wasTmux && hadTempWindow) {
                 try {
-                    Log.i(TAG, "Killing temp tmux window for $hostname:$sessionName")
-                    sshClient.killTempWindow(hostname!!, sessionName!!)
-                    Log.i(TAG, "Temp window killed")
+                    Log.i(TAG, "Killing grouped tmux session for $hostname:$sessionName")
+                    sshClient.killGroupedSession(hostname!!, sessionName!!)
+                    Log.i(TAG, "Grouped session killed")
                 } catch (e: Exception) {
-                    Log.w(TAG, "Failed to kill temp window (non-fatal): ${e.message}")
+                    Log.w(TAG, "Failed to kill grouped session (non-fatal): ${e.message}")
                 }
             }
             Log.i(TAG, "Disconnected")
