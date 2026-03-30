@@ -60,12 +60,12 @@ class DebugReceiver : BroadcastReceiver() {
         private val _gatewayConfigFlow = MutableSharedFlow<GatewayConfig>(replay = 1, extraBufferCapacity = 1)
         val gatewayConfigFlow = _gatewayConfigFlow.asSharedFlow()
 
-        // Global event flow for read conversation requests
-        private val _readConversationFlow = MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1)
+        // Global event flow for read conversation requests (one-shot, no replay)
+        private val _readConversationFlow = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
         val readConversationFlow = _readConversationFlow.asSharedFlow()
 
-        // Global event flow for opening remote sessions
-        private val _openRemoteSessionFlow = MutableSharedFlow<String>(replay = 1, extraBufferCapacity = 1)
+        // Global event flow for opening remote sessions (one-shot, no replay)
+        private val _openRemoteSessionFlow = MutableSharedFlow<String>(extraBufferCapacity = 1)
         val openRemoteSessionFlow = _openRemoteSessionFlow.asSharedFlow()
 
         // Store last conversation for writing to file

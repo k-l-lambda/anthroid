@@ -173,14 +173,6 @@ class ClaudeFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // Remove stale RemoteAgentFragment restored from saved state (e.g. after rotation).
-        // The fragment's SSH/WS connections don't survive recreation, so it's useless.
-        if (savedInstanceState != null) {
-            parentFragmentManager.findFragmentByTag(REMOTE_AGENT_TAG)?.let { stale ->
-                parentFragmentManager.beginTransaction().remove(stale).commit()
-                parentFragmentManager.popBackStack(REMOTE_AGENT_TAG, androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE)
-            }
-        }
 
         // Initialize ViewModel - scoped to Activity to survive fragment recreation
         viewModel = ViewModelProvider(requireActivity())[ClaudeViewModel::class.java]
