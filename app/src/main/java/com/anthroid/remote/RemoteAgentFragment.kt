@@ -413,8 +413,11 @@ class RemoteAgentFragment : Fragment() {
     }
 
     override fun onDestroyView() {
-        // Clear active remote session so notifications resume
-        com.anthroid.gateway.GatewayForegroundService.activeRemoteSessionKey = null
+        // Clear active remote session so notifications resume — only if WE own it
+        val mySessionKey = arguments?.getString(ARG_SESSION_KEY)
+        if (mySessionKey != null && com.anthroid.gateway.GatewayForegroundService.activeRemoteSessionKey == mySessionKey) {
+            com.anthroid.gateway.GatewayForegroundService.activeRemoteSessionKey = null
+        }
 
         // Remove scroll listener to avoid leaks
         scrollChangedListener?.let { listener ->

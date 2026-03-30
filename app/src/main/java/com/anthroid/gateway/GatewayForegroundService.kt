@@ -193,7 +193,7 @@ class GatewayForegroundService : Service() {
                     sessionLabel = manager.getSessionLabel(msg.sessionKey),
                 )
             }
-            Log.i(TAG, "Delivered pending message for ${msg.sessionKey}: ${msg.content.take(60)}")
+            Log.i(TAG, "Delivered pending message for ${msg.sessionKey} (${msg.content.length} chars)")
         }
     }
 

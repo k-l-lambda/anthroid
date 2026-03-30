@@ -211,7 +211,8 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
 
         _connectionStatus.value = "connecting..."
 
-        // Start periodic sync
+        // Cancel any previous sync job before starting a new one
+        tmuxSyncJob?.cancel()
         tmuxColumns = columns
         tmuxSyncJob = viewModelScope.launch {
             var firstSync = true

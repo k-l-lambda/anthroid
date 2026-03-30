@@ -48,8 +48,8 @@ class DebugReceiver : BroadcastReceiver() {
         const val EXTRA_GATEWAY_TOKEN = "token"
         const val EXTRA_GATEWAY_USE_TLS = "tls"
 
-        // Global event flow for debug messages (replay=1 ensures late collectors get the message)
-        private val _debugMessageFlow = MutableSharedFlow<String>(replay = 1, extraBufferCapacity = 1)
+        // Global event flow for debug messages (one-shot, no replay)
+        private val _debugMessageFlow = MutableSharedFlow<String>(extraBufferCapacity = 1)
         val debugMessageFlow = _debugMessageFlow.asSharedFlow()
 
         // Global event flow for API config changes

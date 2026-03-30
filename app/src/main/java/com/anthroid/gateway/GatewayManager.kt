@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -59,10 +61,12 @@ class GatewayManager(
   )
   val remoteSessionEventFlow: SharedFlow<RemoteSessionEvent> = _remoteSessionEventFlow.asSharedFlow()
 
-  // Track recently seen message IDs (from WS events) for dedup against drainPending
+  // Track recently seen message IDs (from WS events) for dedup against drainPending.
+  // All access must go through synchronized helpers below.
   private val recentMessageIds = LinkedHashSet<String>()
   private val MAX_RECENT_IDS = 10
 
+  @Synchronized
   private fun trackMessageId(id: String) {
     recentMessageIds.add(id)
     while (recentMessageIds.size > MAX_RECENT_IDS) {
@@ -70,6 +74,7 @@ class GatewayManager(
     }
   }
 
+  @Synchronized
   fun isMessageSeen(id: String): Boolean = recentMessageIds.contains(id)
 
   private var session: GatewaySession? = null
@@ -227,7 +232,7 @@ class GatewayManager(
       put("message", text)
     }
     gatewaySession.request("chat.inject", params.toString(), timeoutMs = 10_000)
-    Log.d(TAG, "Injected message to session $sessionKey: ${text.take(50)}")
+    Log.d(TAG, "Injected message to session $sessionKey (${text.length} chars)")
   }
 
   /**
@@ -244,7 +249,7 @@ class GatewayManager(
       put("idempotencyKey", idempotencyKey)
     }
     gatewaySession.request("chat.send", params.toString(), timeoutMs = 30_000)
-    Log.d(TAG, "Sent user message to session $sessionKey: ${text.take(50)}")
+    Log.d(TAG, "Sent user message to session $sessionKey (${text.length} chars)")
   }
 
   /** Returns observed session keys for polling. */
@@ -271,7 +276,7 @@ class GatewayManager(
     }
     return try {
       val response = gs.request("session.drainAllPending", "{}", timeoutMs = 10_000)
-      Log.i(TAG, "drainAllPending response: ${response?.take(200)}")
+      Log.d(TAG, "drainAllPending response: ${response?.length ?: 0} chars")
       val obj = JSONObject(response)
       val messages = obj.optJSONArray("messages") ?: return emptyList()
       val result = mutableListOf<DrainedMessage>()
@@ -479,26 +484,30 @@ class GatewayManager(
     }
   }
 
-  // Track observed sessions from gateway events for fallback listing
+  // Track observed sessions from gateway events for fallback listing.
+  // All access must be @Synchronized.
   private data class ObservedSession(val sessionKey: String, var lastActivity: Long, var label: String? = null)
   private val observedSessions = mutableMapOf<String, ObservedSession>()
 
   /** Update the display label for a session (from sessions.preview or chat.history). */
+  @Synchronized
   fun setSessionLabel(sessionKey: String, label: String) {
     observedSessions[sessionKey]?.label = label
   }
 
   /** Get the display label for a session if known. */
+  @Synchronized
   fun getSessionLabel(sessionKey: String): String? = observedSessions[sessionKey]?.label
 
+  @Synchronized
   private fun trackObservedSession(sessionKey: String) {
     if (sessionKey.isNotEmpty() && sessionKey != "gateway") {
-      // Preserve existing label when updating activity time
       val existing = observedSessions[sessionKey]
       observedSessions[sessionKey] = ObservedSession(sessionKey, System.currentTimeMillis(), existing?.label)
     }
   }
 
+  @Synchronized
   fun getObservedSessions(): List<RemoteSessionInfo> {
     return observedSessions.values
       .sortedByDescending { it.lastActivity }
@@ -513,10 +522,10 @@ class GatewayManager(
       }
   }
 
-  // Cumulative assistant text per runId (data.text from agent/assistant is cumulative, not delta)
-  private val agentTextBuffers = mutableMapOf<String, String>()
-  private val agentSessionKeys = mutableMapOf<String, String>()
-  private val processedAgentRuns = mutableSetOf<String>()
+  // Cumulative assistant text per runId — use ConcurrentHashMap for thread safety
+  private val agentTextBuffers = java.util.concurrent.ConcurrentHashMap<String, String>()
+  private val agentSessionKeys = java.util.concurrent.ConcurrentHashMap<String, String>()
+  private val processedAgentRuns = java.util.Collections.synchronizedSet(mutableSetOf<String>())
 
   private fun handleGatewayEvent(event: String, payloadJson: String?) {
     when (event) {
