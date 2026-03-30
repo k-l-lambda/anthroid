@@ -54,50 +54,11 @@ class SshTmuxClient {
     }
 
     /**
-     * Create a grouped tmux session that shares the original session's windows/panes
-     * but has its own independent size. Returns the grouped session name or null.
-     * This avoids resizing the original session, which affects other viewers.
+     * Capture tmux pane content with atomic resize-capture-restore.
+     * If columns > 0, temporarily resizes the window, captures, then restores — all in one
+     * SSH command so restore is guaranteed even if the client dies mid-flight.
      */
-    suspend fun createGroupedSession(hostname: String, session: String, columns: Int): String? = withContext(Dispatchers.IO) {
-        if (!TerminalCommandBridge.isAvailable()) return@withContext null
-        if (!isSafeHostname(hostname) || !isSafeSession(session)) return@withContext null
-        if (columns < 20) return@withContext null
-
-        val groupedName = "$session-anthroid"
-        Log.i(TAG, "createGroupedSession: $hostname:$groupedName (${columns}col)")
-        // Kill stale grouped session if exists, then create fresh one
-        val cmd = "ssh -o ConnectTimeout=5 $hostname '" +
-            "tmux kill-session -t $groupedName 2>/dev/null; " +
-            "tmux new-session -d -t $session -s $groupedName -x $columns -y 50 2>/dev/null" +
-            "'"
-        val result = TerminalCommandBridge.executeCommand(cmd, timeout = 10000)
-        if (!result.success) {
-            Log.w(TAG, "createGroupedSession failed: ${result.output.take(100)}")
-            return@withContext null
-        }
-        groupedName
-    }
-
-    /**
-     * Kill the grouped anthroid session. Best-effort — failure doesn't affect the original session.
-     */
-    suspend fun killGroupedSession(hostname: String, session: String) = withContext(Dispatchers.IO) {
-        if (!TerminalCommandBridge.isAvailable()) return@withContext
-        if (!isSafeHostname(hostname) || !isSafeSession(session)) return@withContext
-
-        val groupedName = "$session-anthroid"
-        Log.i(TAG, "killGroupedSession: $hostname:$groupedName")
-        TerminalCommandBridge.executeCommand(
-            "ssh -o ConnectTimeout=5 $hostname 'tmux kill-session -t $groupedName 2>/dev/null'",
-            timeout = 10000
-        )
-    }
-
-    /**
-     * Capture tmux pane content. If useGroupedSession is true, captures from the
-     * grouped anthroid session (which has the correct width for mobile display).
-     */
-    suspend fun capturePaneContent(hostname: String, session: String, useGroupedSession: Boolean = false): String = withContext(Dispatchers.IO) {
+    suspend fun capturePaneContent(hostname: String, session: String, columns: Int = 0): String = withContext(Dispatchers.IO) {
         if (!TerminalCommandBridge.isAvailable()) {
             throw IllegalStateException("Terminal bridge not available")
         }
@@ -105,11 +66,20 @@ class SshTmuxClient {
             throw IllegalArgumentException("Unsafe hostname or session name")
         }
 
-        val target = if (useGroupedSession) "$session-anthroid" else session
-        val result = TerminalCommandBridge.executeCommand(
-            "ssh -o ConnectTimeout=5 $hostname 'tmux capture-pane -t $target -p -S -500 2>/dev/null'",
-            timeout = 15000
-        )
+        val cmd = if (columns > 0) {
+            // Atomic: save window-size → resize → capture → restore → reset window-size
+            // All 4 commands sent as one SSH command — remote shell executes all even if SSH drops
+            "ssh -o ConnectTimeout=5 $hostname '" +
+                "WS=\$(tmux show-window-option -t $session -v window-size 2>/dev/null || echo smallest); " +
+                "tmux resize-window -t $session -x $columns 2>/dev/null; " +
+                "tmux capture-pane -t $session -p -S -500 2>/dev/null; " +
+                "tmux resize-window -t $session -A 2>/dev/null; " +
+                "tmux set-window-option -t $session window-size \$WS 2>/dev/null" +
+                "'"
+        } else {
+            "ssh -o ConnectTimeout=5 $hostname 'tmux capture-pane -t $session -p -S -500 2>/dev/null'"
+        }
+        val result = TerminalCommandBridge.executeCommand(cmd, timeout = 15000)
 
         if (!result.success) {
             Log.w(TAG, "capture-pane failed: ${result.output}")

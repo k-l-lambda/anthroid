@@ -66,7 +66,7 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
     private var targetSessionKey: String? = null
     private var tmuxHostname: String? = null
     private var tmuxSessionName: String? = null
-    private var tmuxHasTempWindow = false
+    private var tmuxColumns: Int = 0
     private var tmuxSyncJob: Job? = null
     private var connectionWatchJob: Job? = null
 
@@ -212,22 +212,14 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
         _connectionStatus.value = "connecting..."
 
         // Start periodic sync
+        tmuxColumns = columns
         tmuxSyncJob = viewModelScope.launch {
-            // Create a grouped tmux session sized to Anthroid's terminal width
-            if (columns > 0) {
-                try {
-                    val groupedName = sshClient.createGroupedSession(hostname, sessionName, columns)
-                    tmuxHasTempWindow = groupedName != null
-                    Log.i(TAG, "Grouped tmux session: ${groupedName ?: "failed, using original"}")
-                } catch (e: Exception) {
-                    Log.w(TAG, "createGroupedSession failed (non-fatal): ${e.message}")
-                }
-            }
             var firstSync = true
             while (isActive) {
                 try {
                     _isSyncing.value = true
-                    val content = sshClient.capturePaneContent(hostname, sessionName, useGroupedSession = tmuxHasTempWindow)
+                    // Atomic resize-capture-restore: resize only lasts for the capture moment
+                    val content = sshClient.capturePaneContent(hostname, sessionName, columns = tmuxColumns)
                     _isSyncing.value = false
                     _terminalContent.value = content
                     if (firstSync) {
@@ -342,31 +334,18 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
         if (disconnected) return
         disconnected = true
 
-        val hostname = tmuxHostname
-        val sessionName = tmuxSessionName
-        val hadTempWindow = tmuxHasTempWindow
-        val wasTmux = hostname != null && sessionName != null && mode == RemoteSessionInfo.Source.SSH_TMUX
         val syncJob = tmuxSyncJob
         val watchJob = connectionWatchJob
         tmuxSyncJob = null
         connectionWatchJob = null
-        tmuxHasTempWindow = false
 
         _connectionStatus.value = "disconnected"
 
-        // teardownScope outlives viewModelScope — safe to use in onCleared
+        // No tmux cleanup needed — atomic resize-capture-restore ensures
+        // the window is always restored within each sync cycle
         teardownScope.launch {
             syncJob?.cancelAndJoin()
             watchJob?.cancelAndJoin()
-            if (wasTmux && hadTempWindow) {
-                try {
-                    Log.i(TAG, "Killing grouped tmux session for $hostname:$sessionName")
-                    sshClient.killGroupedSession(hostname!!, sessionName!!)
-                    Log.i(TAG, "Grouped session killed")
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to kill grouped session (non-fatal): ${e.message}")
-                }
-            }
             Log.i(TAG, "Disconnected")
         }
     }
