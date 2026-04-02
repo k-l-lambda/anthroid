@@ -213,12 +213,9 @@ class BackupManager(private val context: Context) {
     }
 
     private fun backupClaudeConfig(): JSONObject {
-        val prefs = context.getSharedPreferences("claude_config", Context.MODE_PRIVATE)
-        return JSONObject().apply {
-            // Don't backup API key for security, user should re-enter
-            put("base_url", prefs.getString("base_url", ""))
-            put("model", prefs.getString("model", ""))
-        }
+        // API credentials (api_key, base_url, model) are stored in the claude wrapper file,
+        // not in SharedPreferences — nothing to back up here.
+        return JSONObject()
     }
 
     private fun backupDefaultPreferences(): JSONObject {
@@ -230,12 +227,7 @@ class BackupManager(private val context: Context) {
     }
 
     private fun restoreClaudeConfig(json: JSONObject) {
-        val prefs = context.getSharedPreferences("claude_config", Context.MODE_PRIVATE)
-        prefs.edit().apply {
-            json.optString("base_url", "").let { if (it.isNotEmpty()) putString("base_url", it) }
-            json.optString("model", "").let { if (it.isNotEmpty()) putString("model", it) }
-            apply()
-        }
+        // Nothing to restore — credentials live in the claude wrapper file.
     }
 
     private fun restoreDefaultPreferences(json: JSONObject) {

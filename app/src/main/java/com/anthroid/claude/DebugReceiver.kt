@@ -166,16 +166,7 @@ class DebugReceiver : BroadcastReceiver() {
         val baseUrl = intent.getStringExtra(EXTRA_BASE_URL)
         val model = intent.getStringExtra(EXTRA_MODEL)
 
-        // Save to SharedPreferences
-        val prefs = context.getSharedPreferences("claude_config", Context.MODE_PRIVATE)
-        prefs.edit().apply {
-            putString("api_key", apiKey)
-            baseUrl?.let { putString("base_url", it) }
-            model?.let { putString("model", it) }
-            apply()
-        }
-
-        Log.i(TAG, "API config saved: key=${apiKey.take(10)}..., baseUrl=$baseUrl, model=$model")
+        Log.i(TAG, "API config received: key=${apiKey.take(10)}..., baseUrl=$baseUrl, model=$model")
 
         // Emit config change event
         emitApiConfig(ApiConfig(apiKey, baseUrl, model))

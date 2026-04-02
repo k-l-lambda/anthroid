@@ -192,29 +192,27 @@ class ClaudeFragment : Fragment() {
     }
 
     private fun configureApiFromPrefs() {
-        val prefs = requireActivity().getSharedPreferences("claude_config", android.content.Context.MODE_PRIVATE)
-        var apiKey = prefs.getString("api_key", "") ?: ""
-        var baseUrl = prefs.getString("base_url", BuildConfig.CLAUDE_API_BASE_URL) ?: BuildConfig.CLAUDE_API_BASE_URL
-        var model = prefs.getString("model", BuildConfig.CLAUDE_API_MODEL) ?: BuildConfig.CLAUDE_API_MODEL
+        // Credentials are sourced exclusively from the claude wrapper file (set by set_wrapper).
+        // SharedPreferences is no longer used to store api_key / base_url / model.
+        var apiKey = ""
+        var baseUrl = BuildConfig.CLAUDE_API_BASE_URL
+        var model = BuildConfig.CLAUDE_API_MODEL
 
-        // Fall back to reading credentials from the claude wrapper file (set by set_wrapper)
-        if (apiKey.isBlank()) {
-            val wrapperFile = java.io.File("${requireContext().filesDir}/usr/bin/claude")
-            if (wrapperFile.exists()) {
-                wrapperFile.readLines().forEach { line ->
-                    val clean = line.trim().removePrefix("export ")
-                    when {
-                        clean.startsWith("ANTHROPIC_AUTH_TOKEN=") ->
-                            apiKey = clean.substringAfter("=").trim('"')
-                        clean.startsWith("ANTHROPIC_BASE_URL=") ->
-                            baseUrl = clean.substringAfter("=").trim('"')
-                        clean.startsWith("ANTHROPIC_MODEL=") && !clean.startsWith("ANTHROPIC_MODEL=\"$") ->
-                            model = clean.substringAfter("=").trim('"')
-                    }
+        val wrapperFile = java.io.File("${requireContext().filesDir}/usr/bin/claude")
+        if (wrapperFile.exists()) {
+            wrapperFile.readLines().forEach { line ->
+                val clean = line.trim().removePrefix("export ")
+                when {
+                    clean.startsWith("ANTHROPIC_AUTH_TOKEN=") ->
+                        apiKey = clean.substringAfter("=").trim('"')
+                    clean.startsWith("ANTHROPIC_BASE_URL=") ->
+                        baseUrl = clean.substringAfter("=").trim('"')
+                    clean.startsWith("ANTHROPIC_MODEL=") && !clean.startsWith("ANTHROPIC_MODEL=\"$") ->
+                        model = clean.substringAfter("=").trim('"')
                 }
-                if (apiKey.isNotBlank()) {
-                    Log.i(TAG, "API credentials loaded from claude wrapper")
-                }
+            }
+            if (apiKey.isNotBlank()) {
+                Log.i(TAG, "API credentials loaded from claude wrapper")
             }
         }
 
@@ -1253,12 +1251,8 @@ class ClaudeFragment : Fragment() {
      * Show dialog to configure API key for Android tools support.
      */
     fun showApiConfigDialog() {
-        val prefs = requireActivity().getSharedPreferences("claude_config", android.content.Context.MODE_PRIVATE)
-        val currentKey = prefs.getString("api_key", "") ?: ""
-
         val input = EditText(requireContext()).apply {
             hint = "sk-ant-api03-..."
-            setText(currentKey)
             setPadding(48, 32, 48, 32)
         }
 
@@ -1267,8 +1261,6 @@ class ClaudeFragment : Fragment() {
             .setMessage("Enter your Anthropic API key to enable Android tools (notification, location, calendar, etc.)")
             .setView(input)
             .setPositiveButton("Save") { _, _ ->
-                val key = input.text.toString().trim()
-                prefs.edit().putString("api_key", key).apply()
                 configureApiFromPrefs()
                 viewModel.checkClaudeInstallation()
             }

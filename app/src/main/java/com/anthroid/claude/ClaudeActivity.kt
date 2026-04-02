@@ -119,11 +119,24 @@ class ClaudeActivity : AppCompatActivity() {
     }
 
     private fun configureApiFromPrefs() {
-        val prefs = getSharedPreferences("claude_config", MODE_PRIVATE)
-        val apiKey = prefs.getString("api_key", "") ?: ""
-        // Use BuildConfig defaults, allow override from prefs
-        val baseUrl = prefs.getString("base_url", BuildConfig.CLAUDE_API_BASE_URL) ?: BuildConfig.CLAUDE_API_BASE_URL
-        val model = prefs.getString("model", BuildConfig.CLAUDE_API_MODEL) ?: BuildConfig.CLAUDE_API_MODEL
+        var apiKey = ""
+        var baseUrl = BuildConfig.CLAUDE_API_BASE_URL
+        var model = BuildConfig.CLAUDE_API_MODEL
+
+        val wrapperFile = java.io.File("${filesDir}/usr/bin/claude")
+        if (wrapperFile.exists()) {
+            wrapperFile.readLines().forEach { line ->
+                val clean = line.trim().removePrefix("export ")
+                when {
+                    clean.startsWith("ANTHROPIC_AUTH_TOKEN=") ->
+                        apiKey = clean.substringAfter("=").trim('"')
+                    clean.startsWith("ANTHROPIC_BASE_URL=") ->
+                        baseUrl = clean.substringAfter("=").trim('"')
+                    clean.startsWith("ANTHROPIC_MODEL=") && !clean.startsWith("ANTHROPIC_MODEL=\"$") ->
+                        model = clean.substringAfter("=").trim('"')
+                }
+            }
+        }
 
         if (apiKey.isNotBlank()) {
             viewModel.configureApi(apiKey, baseUrl, model)
