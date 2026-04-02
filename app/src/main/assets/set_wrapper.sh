@@ -63,6 +63,27 @@ else
 fi
 
 chmod +x "$WRAPPER"
+
+# Update openclaw-agent-local/config.json model field
+CONFIG_JSON="$HOME/openclaw-agent-local/config.json"
+if [ -f "$CONFIG_JSON" ]; then
+    UPDATE_MODEL="$MODEL" UPDATE_FILE="$CONFIG_JSON" node -e "
+const fs = require('fs');
+const p = process.env.UPDATE_FILE;
+const m = process.env.UPDATE_MODEL;
+try {
+  const cfg = JSON.parse(fs.readFileSync(p, 'utf8'));
+  cfg.model = m;
+  fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + '\n');
+  console.log('config.json model updated: ' + m);
+} catch(e) {
+  process.stderr.write('Failed to update config.json: ' + e.message + '\n');
+}
+"
+else
+    echo "config.json not found at $CONFIG_JSON (skipped)"
+fi
+
 echo "Claude wrapper configured successfully."
 echo "  Base URL: $BASE_URL"
 echo "  Model: $MODEL"
