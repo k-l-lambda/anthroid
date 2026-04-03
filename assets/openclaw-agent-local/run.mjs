@@ -36,9 +36,16 @@ const WORKSPACE_DIR = process.env.WORKSPACE_DIR
 
 const TIMEOUT_MS = parseInt(process.env.TIMEOUT_MS || "300000", 10); // 5 min default
 
+// Load config.json defaults (lowest priority — overridden by env vars and stdin config)
+let _cfgJson = {};
+try {
+  const _cfgPath = new URL("./config.json", import.meta.url).pathname;
+  _cfgJson = JSON.parse(readFileSync(_cfgPath, "utf8"));
+} catch {}
+
 // Provider config — defaults to Anthropic, overridable via env or stdin config
-let PROVIDER = process.env.PROVIDER || "anthropic";
-let MODEL = process.env.MODEL || undefined; // let agent pick default
+let PROVIDER = process.env.PROVIDER || _cfgJson.provider || "anthropic";
+let MODEL = process.env.MODEL || _cfgJson.model || undefined;
 
 // Base URL for provider API (e.g. ppinfra proxy)
 let BASE_URL = process.env.ANTHROPIC_BASE_URL || "";
