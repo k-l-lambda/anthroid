@@ -69,15 +69,17 @@ class SshTmuxClient {
         val cmd = if (columns > 0) {
             // Atomic: save window-size → resize → capture → restore → reset window-size
             // All 4 commands sent as one SSH command — remote shell executes all even if SSH drops
+            // Pipe through tail -150 to limit output size and prevent Termux transcript buffer
+            // overflow (buffer is 2000 rows; dense/wide content could exceed this at narrow widths).
             "ssh -o ConnectTimeout=5 $hostname '" +
                 "WS=\$(tmux show-window-option -t $session -v window-size 2>/dev/null || echo smallest); " +
                 "tmux resize-window -t $session -x $columns 2>/dev/null; " +
-                "tmux capture-pane -t $session -p -S -500 2>/dev/null; " +
+                "tmux capture-pane -t $session -p -S -500 2>/dev/null | tail -150; " +
                 "tmux resize-window -t $session -A 2>/dev/null; " +
                 "tmux set-window-option -t $session window-size \$WS 2>/dev/null" +
                 "'"
         } else {
-            "ssh -o ConnectTimeout=5 $hostname 'tmux capture-pane -t $session -p -S -500 2>/dev/null'"
+            "ssh -o ConnectTimeout=5 $hostname 'tmux capture-pane -t $session -p -S -500 2>/dev/null | tail -150'"
         }
         val result = TerminalCommandBridge.executeCommand(cmd, timeout = 15000)
 

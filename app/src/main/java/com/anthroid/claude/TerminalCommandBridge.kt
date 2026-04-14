@@ -185,8 +185,12 @@ object TerminalCommandBridge {
                         val outputLines = lines.subList(cmdLineIndex + 1, markerLineIndex)
                         output = outputLines.joinToString("\n").trim()
                     } else {
-                        // Fallback: couldn't find command echo, take some lines before marker
-                        output = ""
+                        // Fallback: command echo scrolled out of transcript buffer (dense/wide
+                        // output exceeded the 2000-row scrollback limit).
+                        // Return the last 150 lines before the marker instead of empty string.
+                        val startIdx = maxOf(0, markerLineIndex - 150)
+                        output = lines.subList(startIdx, markerLineIndex).joinToString("\n").trim()
+                        Log.w(TAG, "Command echo not found in transcript — returning last ${markerLineIndex - startIdx} lines before marker")
                     }
                 }
                 break
