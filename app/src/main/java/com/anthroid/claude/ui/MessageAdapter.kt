@@ -124,6 +124,7 @@ class MessageAdapter(
         private val thinkingContent: TextView? = itemView.findViewById(R.id.thinking_content)
 
         private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+        private val dateTimeFormat = SimpleDateFormat("M/d HH:mm", Locale.getDefault())
         private val markwon: Markwon by lazy { getMarkwon(itemView.context) }
 
         init {
@@ -132,11 +133,22 @@ class MessageAdapter(
             }
         }
 
+        private fun formatTimestamp(timestamp: Long): String {
+            val cal = java.util.Calendar.getInstance()
+            val todayYear = cal.get(java.util.Calendar.YEAR)
+            val todayDay = cal.get(java.util.Calendar.DAY_OF_YEAR)
+            cal.timeInMillis = timestamp
+            val isToday = cal.get(java.util.Calendar.YEAR) == todayYear &&
+                cal.get(java.util.Calendar.DAY_OF_YEAR) == todayDay
+            return if (isToday) timeFormat.format(Date(timestamp))
+                   else dateTimeFormat.format(Date(timestamp))
+        }
+
         fun bind(message: Message) {
             Log.d(TAG, "bind: id=${message.id.take(8)}, len=${message.content.length}, streaming=${message.isStreaming}, thinking=${message.isThinking}, interrupted=${message.isInterrupted}, images=${message.images.size}")
             updateContent(message)
             updateImages(message)
-            timestampText.text = timeFormat.format(Date(message.timestamp))
+            timestampText.text = formatTimestamp(message.timestamp)
         }
 
         fun updateContent(message: Message) {
