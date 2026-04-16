@@ -187,10 +187,11 @@ class RemoteAgentViewModel(application: Application) : AndroidViewModel(applicat
                     manager.loadSessionHistory(sessionKey, limit = 40)
                 }
                 if (items.isNotEmpty() && _messages.value.isEmpty()) {
-                    val messages = items.map { (role, text) ->
+                    val messages = items.map { (role, text, ts) ->
                         Message(
                             role = if (role == "user") MessageRole.USER else MessageRole.ASSISTANT,
                             content = text,
+                            timestamp = if (ts > 0L) ts else System.currentTimeMillis(),
                         )
                     }
                     _messages.value = messages

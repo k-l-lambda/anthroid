@@ -438,7 +438,7 @@ class GatewayManager(
    * Load recent conversation history for a session via sessions.preview RPC.
    * Returns list of (role, text) pairs ordered oldest-first, or empty list on failure.
    */
-  suspend fun loadSessionHistory(sessionKey: String, limit: Int = 40): List<Pair<String, String>> {
+  suspend fun loadSessionHistory(sessionKey: String, limit: Int = 40): List<Triple<String, String, Long>> {
     val gs = session ?: return emptyList()
     return try {
       val params = JSONObject().apply {
@@ -453,7 +453,7 @@ class GatewayManager(
       val label = obj.optString("label", "").takeIf { it.isNotEmpty() }
       if (label != null) setSessionLabel(sessionKey, label)
       val messages = obj.optJSONArray("messages") ?: return emptyList()
-      val result = mutableListOf<Pair<String, String>>()
+      val result = mutableListOf<Triple<String, String, Long>>()
       for (i in 0 until messages.length()) {
         val msg = messages.optJSONObject(i) ?: continue
         val role = msg.optString("role", "")
@@ -472,8 +472,13 @@ class GatewayManager(
         } else {
           msg.optString("content", "").trim()
         }
+        // Extract timestamp (try common field names; 0 means unknown)
+        val ts = msg.optLong("timestamp", 0L).takeIf { it > 0 }
+          ?: msg.optLong("createdAt", 0L).takeIf { it > 0 }
+          ?: msg.optLong("created_at", 0L).takeIf { it > 0 }
+          ?: 0L
         if (text.isNotEmpty()) {
-          result.add(role to text)
+          result.add(Triple(role, text, ts))
         }
       }
       Log.d(TAG, "Loaded ${result.size} history items for session $sessionKey")
