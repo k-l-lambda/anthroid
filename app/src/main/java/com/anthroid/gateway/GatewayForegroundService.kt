@@ -289,10 +289,13 @@ class GatewayForegroundService : Service() {
             this, 0, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        val isError = statusText.startsWith("Gateway error:") || statusText.startsWith("Gateway closed:")
+        val iconRes = if (isError) R.drawable.ic_gateway_error_notification
+                      else R.drawable.ic_service_notification
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Anthroid Gateway")
             .setContentText(statusText)
-            .setSmallIcon(R.drawable.ic_service_notification)
+            .setSmallIcon(iconRes)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .setContentIntent(pendingIntent)
