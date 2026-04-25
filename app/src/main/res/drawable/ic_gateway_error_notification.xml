@@ -3,13 +3,14 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <!-- Anthroid gateway error notification icon: warning triangle (⚠) -->
-    <!-- evenOdd rule: outer triangle (ring 1) − inner triangle (ring 2) + exclamation (ring 3) -->
+    <!-- Anthroid gateway error icon: robot head, no antennas, flat/closed eyes -->
+
+    <!-- Head (dome + body) with horizontal-slit eye cutouts -->
     <path
         android:fillType="evenOdd"
-        android:pathData="M12,2 L22,20.5 L2,20.5 Z
-                          M12,5.2 L4.6,18.5 L19.4,18.5 Z
-                          M11,9 L13,9 L13,14 L11,14 Z
-                          M11,15.5 L13,15.5 L13,17.5 L11,17.5 Z"
+        android:pathData="M4,22 V14 A8,8 0 0,1 20,14 V22 Z
+                          M7.5,15.6 L10.5,15.6 L10.5,16.4 L7.5,16.4 Z
+                          M13.5,15.6 L16.5,15.6 L16.5,16.4 L13.5,16.4 Z"
         android:fillColor="#ffffff"/>
+
 </vector>
