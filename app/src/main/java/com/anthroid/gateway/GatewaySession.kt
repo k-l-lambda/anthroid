@@ -20,6 +20,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
@@ -67,7 +68,9 @@ class GatewaySession(
   private val disconnectNotified = AtomicBoolean(false)
 
   // Shared OkHttpClient — reused across reconnections to avoid thread pool leaks
+  // HTTP/1.1 only: WebSocket upgrade requires HTTP/1.1; h2 breaks it via TLS-ALPN proxies
   private val httpClient: OkHttpClient = OkHttpClient.Builder()
+    .protocols(listOf(Protocol.HTTP_1_1))
     .writeTimeout(60, TimeUnit.SECONDS)
     .readTimeout(0, TimeUnit.SECONDS)
     .pingInterval(30, TimeUnit.SECONDS)
