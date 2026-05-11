@@ -33,7 +33,7 @@ class GatewayManager(
     private const val TAG = "GatewayManager"
     private const val CLIENT_ID = "openclaw-android"
     private const val CLIENT_MODE = "anthroid"
-    private const val CLIENT_VERSION = "0.10.9"
+    private const val CLIENT_VERSION = "1.0.15"
     private const val CLIENT_PLATFORM = "android"
     private const val DEFAULT_ROLE = "operator"
     // operator.admin is NOT included by default (least privilege).

@@ -60,7 +60,7 @@ class GatewaySession(
   private companion object {
     private const val TAG = "AnthroidGateway"
     private const val CONNECT_RPC_TIMEOUT_MS = 12_000L
-    private const val GATEWAY_PROTOCOL_VERSION = 3
+    private const val GATEWAY_PROTOCOL_VERSION = 4
   }
 
   private val writeLock = Mutex()
