@@ -235,6 +235,7 @@ class GatewayForegroundService : Service() {
                     channelId = if (isStreaming) GatewayNotificationHelper.CHANNEL_ID_STREAMING
                                 else GatewayNotificationHelper.CHANNEL_ID,
                     sessionLabel = sessionLabel,
+                    deepLinkSessionKey = sessionKey,
                 )
             }
         }

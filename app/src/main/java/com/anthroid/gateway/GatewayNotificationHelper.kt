@@ -122,6 +122,7 @@ class GatewayNotificationHelper(private val context: Context) {
         messageText: String,
         channelId: String = CHANNEL_ID,
         sessionLabel: String? = null,
+        deepLinkSessionKey: String = sessionKey,
     ) {
         // Resolve dynamic channel for non-streaming messages
         val resolvedChannelId = if (channelId == CHANNEL_ID_STREAMING) {
@@ -145,7 +146,7 @@ class GatewayNotificationHelper(private val context: Context) {
 
         val intent = Intent(context, MainPagerActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra(EXTRA_SESSION_KEY, sessionKey)
+            putExtra(EXTRA_SESSION_KEY, deepLinkSessionKey)
         }
         val pendingIntent = PendingIntent.getActivity(
             context, state.notificationId, intent,

@@ -587,9 +587,8 @@ class GatewayManager(
           val obj = if (payloadJson != null) JSONObject(payloadJson) else return
           val runId = obj.optString("runId", "").takeIf { it.isNotEmpty() } ?: return
           val stream = obj.optString("stream", "")
-          // Try both "sessionKey" and nested "sessionId" for session tracking
-          val sessionKey = (obj.optString("sessionKey", "").takeIf { it.isNotEmpty() }
-            ?: obj.optString("sessionId", "").takeIf { it.isNotEmpty() })
+          val sessionKey = obj.optString("sessionKey", "")
+            .takeIf { it.startsWith("agent:") }
           if (sessionKey != null) {
             agentSessionKeys[runId] = sessionKey
             trackObservedSession(sessionKey)
