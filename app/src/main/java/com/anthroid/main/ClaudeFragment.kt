@@ -3,6 +3,7 @@ package com.anthroid.main
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Dialog
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -26,6 +27,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import android.widget.ArrayAdapter
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
@@ -34,6 +36,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.anthroid.BuildConfig
+import com.anthroid.app.TermuxActivity
 import com.anthroid.accessibility.ScreenAutomationOverlay
 import com.anthroid.R
 import com.anthroid.claude.ClaudeViewModel
@@ -1316,26 +1319,79 @@ class ClaudeFragment : Fragment() {
 
     private fun showSessionListDialog(sessions: List<RemoteSessionInfo>, hostname: String?) {
         val title = if (hostname != null) "tmux sessions on $hostname" else "Gateway sessions"
-        val items = sessions.map { s ->
-            val elapsed = if (s.lastActivity > 0) {
-                val ago = (System.currentTimeMillis() - s.lastActivity) / 1000
-                when {
-                    ago < 60 -> "${ago}s ago"
-                    ago < 3600 -> "${ago / 60}m ago"
-                    else -> "${ago / 3600}h ago"
+        val adapter = object : ArrayAdapter<RemoteSessionInfo>(requireContext(), 0, sessions) {
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val density = resources.displayMetrics.density
+                val row = (convertView as? LinearLayout) ?: LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    setPadding((16 * density).toInt(), (4 * density).toInt(), (16 * density).toInt(), (4 * density).toInt())
+                    addView(ImageView(context).apply {
+                        id = android.R.id.icon
+                        layoutParams = LinearLayout.LayoutParams((32 * density).toInt(), (32 * density).toInt()).apply {
+                            rightMargin = (8 * density).toInt()
+                        }
+                        setPadding((5 * density).toInt(), (5 * density).toInt(), (5 * density).toInt(), (5 * density).toInt())
+                    })
+                    addView(TextView(context).apply {
+                        id = android.R.id.text1
+                        textSize = 14f
+                        setTextColor(ContextCompat.getColor(context, android.R.color.black))
+                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    })
                 }
-            } else ""
-            val agentSuffix = s.agentId?.let { " [$it]" } ?: ""
-            "[${s.sourceTag}] ${s.label}$agentSuffix${if (elapsed.isNotEmpty()) " — $elapsed" else ""}"
-        }.toTypedArray()
+                val session = getItem(position)!!
+                val icon = row.findViewById<ImageView>(android.R.id.icon)
+                val text = row.findViewById<TextView>(android.R.id.text1)
+                val elapsed = if (session.lastActivity > 0) {
+                    val ago = (System.currentTimeMillis() - session.lastActivity) / 1000
+                    when {
+                        ago < 60 -> "${ago}s ago"
+                        ago < 3600 -> "${ago / 60}m ago"
+                        else -> "${ago / 3600}h ago"
+                    }
+                } else ""
+                val agentSuffix = session.agentId?.let { " [$it]" } ?: ""
+                text.text = "[${session.sourceTag}] ${session.label}$agentSuffix${if (elapsed.isNotEmpty()) " — $elapsed" else ""}"
+
+                if (session.source == RemoteSessionInfo.Source.SSH_TMUX && hostname != null) {
+                    icon.setImageResource(R.drawable.ic_termux_notification)
+                    icon.setColorFilter(ContextCompat.getColor(context, android.R.color.black))
+                    icon.visibility = View.VISIBLE
+                    icon.isClickable = true
+                    icon.setOnClickListener {
+                        openSshTmuxTerminal(hostname, session)
+                    }
+                } else {
+                    icon.setImageDrawable(null)
+                    icon.visibility = View.GONE
+                    icon.setOnClickListener(null)
+                    icon.isClickable = false
+                }
+                return row
+            }
+        }
 
         AlertDialog.Builder(requireContext())
             .setTitle(title)
-            .setItems(items) { _, which ->
+            .setAdapter(adapter) { _, which ->
                 openRemoteAgentView(sessions[which])
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    private fun openSshTmuxTerminal(hostname: String, session: RemoteSessionInfo) {
+        if (!SshTmuxClient.isSafeHostname(hostname) || !SshTmuxClient.isSafeSession(session.sessionKey)) {
+            Toast.makeText(requireContext(), "Unsafe SSH or tmux session name", Toast.LENGTH_LONG).show()
+            return
+        }
+        val command = "ssh -t $hostname 'tmux a -t ${session.sessionKey}'"
+        val intent = Intent(requireContext(), TermuxActivity::class.java).apply {
+            putExtra(TermuxActivity.EXTRA_INITIAL_COMMAND, command)
+            putExtra(TermuxActivity.EXTRA_INITIAL_SESSION_NAME, "ssh:${session.sessionKey}")
+        }
+        startActivity(intent)
     }
 
     private fun openRemoteAgentView(session: RemoteSessionInfo) {

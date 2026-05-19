@@ -81,6 +81,9 @@ import java.util.Arrays;
  */
 public final class TermuxActivity extends AppCompatActivity implements ServiceConnection {
 
+    public static final String EXTRA_INITIAL_COMMAND = "com.anthroid.app.TermuxActivity.EXTRA_INITIAL_COMMAND";
+    public static final String EXTRA_INITIAL_SESSION_NAME = "com.anthroid.app.TermuxActivity.EXTRA_INITIAL_SESSION_NAME";
+
     /**
      * The connection to the {@link TermuxService}. Requested in {@link #onCreate(Bundle)} with a call to
      * {@link #bindService(Intent, ServiceConnection, int)}, and obtained and stored in
@@ -330,6 +333,24 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        if (intent != null && intent.hasExtra(EXTRA_INITIAL_COMMAND)) {
+            setIntent(null);
+            if (mTermuxService != null) {
+                TermuxInstaller.setupBootstrapIfNeeded(TermuxActivity.this, () -> {
+                    if (mTermuxService == null) return;
+                    openInitialCommandSession(intent.getStringExtra(EXTRA_INITIAL_COMMAND), intent.getStringExtra(EXTRA_INITIAL_SESSION_NAME));
+                });
+            } else {
+                setIntent(intent);
+            }
+        } else {
+            setIntent(intent);
+        }
+    }
+
+    @Override
     protected void onStop() {
         super.onStop();
 
@@ -407,7 +428,16 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         final Intent intent = getIntent();
         setIntent(null);
 
-        if (mTermuxService.isTermuxSessionsEmpty()) {
+        if (intent != null && intent.hasExtra(EXTRA_INITIAL_COMMAND)) {
+            TermuxInstaller.setupBootstrapIfNeeded(TermuxActivity.this, () -> {
+                if (mTermuxService == null) return;
+                try {
+                    openInitialCommandSession(intent.getStringExtra(EXTRA_INITIAL_COMMAND), intent.getStringExtra(EXTRA_INITIAL_SESSION_NAME));
+                } catch (WindowManager.BadTokenException e) {
+                    // Activity finished - ignore.
+                }
+            });
+        } else if (mTermuxService.isTermuxSessionsEmpty()) {
             // Always create a session when empty (needed for Claude agent terminal access)
             TermuxInstaller.setupBootstrapIfNeeded(TermuxActivity.this, () -> {
                 if (mTermuxService == null) return; // Activity might have been destroyed.
@@ -450,6 +480,24 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         finishActivityIfNotFinishing();
     }
 
+
+
+    private void openInitialCommandSession(String command, String sessionName) {
+        if (mTermuxService == null || command == null || command.trim().isEmpty()) return;
+
+        String workingDirectory = mProperties.getDefaultWorkingDirectory();
+        TerminalSession currentSession = getCurrentSession();
+        if (currentSession != null) {
+            workingDirectory = currentSession.getCwd();
+        }
+
+        com.anthroid.shared.termux.shell.command.runner.terminal.TermuxSession termuxSession =
+            mTermuxService.createTermuxSession("/system/bin/sh", new String[] { "-lc", command }, null, workingDirectory, false, sessionName);
+        if (termuxSession == null) return;
+
+        mTermuxTerminalSessionActivityClient.setCurrentSession(termuxSession.getTerminalSession());
+        getDrawer().closeDrawers();
+    }
 
 
 
