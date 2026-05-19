@@ -83,6 +83,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     public static final String EXTRA_INITIAL_COMMAND = "com.anthroid.app.TermuxActivity.EXTRA_INITIAL_COMMAND";
     public static final String EXTRA_INITIAL_SESSION_NAME = "com.anthroid.app.TermuxActivity.EXTRA_INITIAL_SESSION_NAME";
+    public static final String EXTRA_RETURN_TO_CHAT_ON_BACK = "com.anthroid.app.TermuxActivity.EXTRA_RETURN_TO_CHAT_ON_BACK";
+
+    private TerminalSession mReturnToChatSession;
 
     /**
      * The connection to the {@link TermuxService}. Requested in {@link #onCreate(Bundle)} with a call to
@@ -340,7 +343,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             if (mTermuxService != null) {
                 TermuxInstaller.setupBootstrapIfNeeded(TermuxActivity.this, () -> {
                     if (mTermuxService == null) return;
-                    openInitialCommandSession(intent.getStringExtra(EXTRA_INITIAL_COMMAND), intent.getStringExtra(EXTRA_INITIAL_SESSION_NAME));
+                    openInitialCommandSession(intent.getStringExtra(EXTRA_INITIAL_COMMAND), intent.getStringExtra(EXTRA_INITIAL_SESSION_NAME), intent.getBooleanExtra(EXTRA_RETURN_TO_CHAT_ON_BACK, false));
                 });
             } else {
                 setIntent(intent);
@@ -432,7 +435,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             TermuxInstaller.setupBootstrapIfNeeded(TermuxActivity.this, () -> {
                 if (mTermuxService == null) return;
                 try {
-                    openInitialCommandSession(intent.getStringExtra(EXTRA_INITIAL_COMMAND), intent.getStringExtra(EXTRA_INITIAL_SESSION_NAME));
+                    openInitialCommandSession(intent.getStringExtra(EXTRA_INITIAL_COMMAND), intent.getStringExtra(EXTRA_INITIAL_SESSION_NAME), intent.getBooleanExtra(EXTRA_RETURN_TO_CHAT_ON_BACK, false));
                 } catch (WindowManager.BadTokenException e) {
                     // Activity finished - ignore.
                 }
@@ -482,7 +485,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
 
 
-    private void openInitialCommandSession(String command, String sessionName) {
+    private void openInitialCommandSession(String command, String sessionName, boolean returnToChatOnBack) {
         if (mTermuxService == null || command == null || command.trim().isEmpty()) return;
 
         String workingDirectory = mProperties.getDefaultWorkingDirectory();
@@ -495,7 +498,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             mTermuxService.createTermuxSession("/system/bin/sh", new String[] { "-lc", command }, null, workingDirectory, false, sessionName);
         if (termuxSession == null) return;
 
-        mTermuxTerminalSessionActivityClient.setCurrentSession(termuxSession.getTerminalSession());
+        TerminalSession terminalSession = termuxSession.getTerminalSession();
+        if (returnToChatOnBack) {
+            mReturnToChatSession = terminalSession;
+        }
+        mTermuxTerminalSessionActivityClient.setCurrentSession(terminalSession);
         getDrawer().closeDrawers();
     }
 
@@ -681,6 +688,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     public void onBackPressed() {
         if (getDrawer().isDrawerOpen(Gravity.LEFT)) {
             getDrawer().closeDrawers();
+        } else if (mReturnToChatSession != null && getCurrentSession() == mReturnToChatSession) {
+            mReturnToChatSession.finishIfRunning();
+            mReturnToChatSession = null;
+            Intent intent = new Intent(this, MainPagerActivity.class);
+            intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            startActivity(intent);
         } else {
             finishActivityIfNotFinishing();
         }

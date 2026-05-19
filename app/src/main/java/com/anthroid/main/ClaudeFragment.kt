@@ -1390,6 +1390,7 @@ class ClaudeFragment : Fragment() {
         val intent = Intent(requireContext(), TermuxActivity::class.java).apply {
             putExtra(TermuxActivity.EXTRA_INITIAL_COMMAND, command)
             putExtra(TermuxActivity.EXTRA_INITIAL_SESSION_NAME, "ssh:${session.sessionKey}")
+            putExtra(TermuxActivity.EXTRA_RETURN_TO_CHAT_ON_BACK, true)
         }
         startActivity(intent)
     }
