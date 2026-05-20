@@ -39,6 +39,16 @@ class GatewayManager(
     // operator.admin is NOT included by default (least privilege).
     // sessions.list RPC falls back to observed sessions when admin scope is unavailable.
     private val DEFAULT_SCOPES = listOf("operator.read", "operator.write")
+
+    fun canonicalSessionKey(sessionKey: String): String {
+      val runMarker = ":run:"
+      val runIndex = sessionKey.indexOf(runMarker)
+      return if (sessionKey.startsWith("agent:") && runIndex > 0) {
+        sessionKey.substring(0, runIndex)
+      } else {
+        sessionKey
+      }
+    }
   }
 
   private val identityStore = DeviceIdentityStore(context)
@@ -290,8 +300,9 @@ class GatewayManager(
         }
         val content = msg.optString("content", "").trim()
         val key = msg.optString("sessionKey", "")
-        if (content.isNotEmpty() && key.isNotEmpty()) {
-          result.add(DrainedMessage(key, content, messageId))
+        val canonicalKey = canonicalSessionKey(key)
+        if (content.isNotEmpty() && canonicalKey.isNotEmpty()) {
+          result.add(DrainedMessage(canonicalKey, content, messageId))
         }
       }
       if (result.isNotEmpty() || skipped > 0) Log.i(TAG, "DrainAll: ${result.size} messages (skipped $skipped duplicates)")
@@ -547,7 +558,8 @@ class GatewayManager(
       "chat" -> {
         try {
           val obj = if (payloadJson != null) JSONObject(payloadJson) else return
-          val sessionKey = obj.optString("sessionKey", "").takeIf { it.isNotEmpty() } ?: return
+          val rawSessionKey = obj.optString("sessionKey", "").takeIf { it.isNotEmpty() } ?: return
+          val sessionKey = canonicalSessionKey(rawSessionKey)
           trackObservedSession(sessionKey)
           val state = obj.optString("state", "")
           val runId = obj.optString("runId", "").takeIf { it.isNotEmpty() }
@@ -589,6 +601,7 @@ class GatewayManager(
           val stream = obj.optString("stream", "")
           val sessionKey = obj.optString("sessionKey", "")
             .takeIf { it.startsWith("agent:") }
+            ?.let { canonicalSessionKey(it) }
           if (sessionKey != null) {
             agentSessionKeys[runId] = sessionKey
             trackObservedSession(sessionKey)
@@ -640,7 +653,7 @@ class GatewayManager(
         if (payloadJson != null) {
           try {
             val obj = JSONObject(payloadJson)
-            val sessionKey = obj.optString("sessionKey", "").takeIf { it.isNotEmpty() }
+            val sessionKey = obj.optString("sessionKey", "").takeIf { it.isNotEmpty() }?.let { canonicalSessionKey(it) }
             if (sessionKey != null) {
               trackObservedSession(sessionKey)
             }

@@ -27,6 +27,7 @@ import com.anthroid.claude.DebugReceiver
 import com.anthroid.claude.TerminalCommandBridge
 import com.anthroid.gateway.GatewayForegroundService
 import com.anthroid.gateway.GatewayNotificationHelper
+import com.anthroid.gateway.GatewayManager
 import com.anthroid.terminal.TerminalSession
 
 /**
@@ -228,9 +229,10 @@ class MainPagerActivity : AppCompatActivity() {
     private fun handleNotificationDeepLink(intent: Intent) {
         val sessionKey = intent.getStringExtra(GatewayNotificationHelper.EXTRA_SESSION_KEY)
         if (sessionKey != null) {
-            Log.d(TAG, "Notification deep-link to session: $sessionKey")
+            val canonicalSessionKey = GatewayManager.canonicalSessionKey(sessionKey)
+            Log.d(TAG, "Notification deep-link to session: $sessionKey -> $canonicalSessionKey")
             GatewayForegroundService.instance?.notificationHelper?.clearSession(sessionKey)
-            DebugReceiver.emitOpenRemoteSession(sessionKey)
+            DebugReceiver.emitOpenRemoteSession(canonicalSessionKey)
         }
     }
 

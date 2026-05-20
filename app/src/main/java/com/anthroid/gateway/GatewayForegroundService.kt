@@ -179,18 +179,20 @@ class GatewayForegroundService : Service() {
                 Log.d(TAG, "Skipped noise message for ${msg.sessionKey}: $trimmed")
                 continue
             }
+            val canonicalSessionKey = GatewayManager.canonicalSessionKey(msg.sessionKey)
             manager.emitRemoteSessionEvent(
-                GatewayManager.RemoteSessionEvent(msg.sessionKey, "assistant", msg.content)
+                GatewayManager.RemoteSessionEvent(canonicalSessionKey, "assistant", msg.content)
             )
             // Only suppress notification if the user is viewing THIS session in remote agent view
             val viewingThisSession = ScreenAutomationOverlay.isAppInForeground
-                && msg.sessionKey == activeRemoteSessionKey
+                && canonicalSessionKey == GatewayManager.canonicalSessionKey(activeRemoteSessionKey ?: "")
             if (!viewingThisSession) {
                 notificationHelper?.showMessageNotification(
                     sessionKey = msg.sessionKey,
                     displayName = "Agent",
                     messageText = msg.content,
-                    sessionLabel = manager.getSessionLabel(msg.sessionKey),
+                    sessionLabel = manager.getSessionLabel(canonicalSessionKey),
+                    deepLinkSessionKey = canonicalSessionKey,
                 )
             }
             Log.i(TAG, "Delivered pending message for ${msg.sessionKey} (${msg.content.length} chars)")
@@ -221,13 +223,14 @@ class GatewayForegroundService : Service() {
 
         // Wire up chat message events
         manager.onChatMessage = { sessionKey, displayName, messageText, isStreaming ->
+            val canonicalSessionKey = GatewayManager.canonicalSessionKey(sessionKey)
             val viewingThisSession = ScreenAutomationOverlay.isAppInForeground
-                && sessionKey == activeRemoteSessionKey
+                && canonicalSessionKey == GatewayManager.canonicalSessionKey(activeRemoteSessionKey ?: "")
             if (!viewingThisSession && !messageText.isNullOrBlank() && messageText.trim() !in NOISE_MESSAGES) {
                 // Use separate notification keys so streaming and final don't replace each other
                 val notifKey = if (isStreaming) "$sessionKey:streaming" else sessionKey
                 val notifName = displayName ?: if (isStreaming) "Agent Streaming" else "Agent"
-                val sessionLabel = manager.getSessionLabel(sessionKey)
+                val sessionLabel = manager.getSessionLabel(canonicalSessionKey)
                 notificationHelper?.showMessageNotification(
                     sessionKey = notifKey,
                     displayName = notifName,
@@ -235,7 +238,7 @@ class GatewayForegroundService : Service() {
                     channelId = if (isStreaming) GatewayNotificationHelper.CHANNEL_ID_STREAMING
                                 else GatewayNotificationHelper.CHANNEL_ID,
                     sessionLabel = sessionLabel,
-                    deepLinkSessionKey = sessionKey,
+                    deepLinkSessionKey = canonicalSessionKey,
                 )
             }
         }
