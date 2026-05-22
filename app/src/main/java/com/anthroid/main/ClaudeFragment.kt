@@ -1386,7 +1386,7 @@ class ClaudeFragment : Fragment() {
             Toast.makeText(requireContext(), "Unsafe SSH or tmux session name", Toast.LENGTH_LONG).show()
             return
         }
-        val command = "ssh -t $hostname 'tmux a -t ${session.sessionKey}'"
+        val command = "exec ssh -t $hostname 'tmux a -t ${session.sessionKey}'"
         val intent = Intent(requireContext(), TermuxActivity::class.java).apply {
             putExtra(TermuxActivity.EXTRA_INITIAL_COMMAND, command)
             putExtra(TermuxActivity.EXTRA_INITIAL_SESSION_NAME, "ssh:${session.sessionKey}")
