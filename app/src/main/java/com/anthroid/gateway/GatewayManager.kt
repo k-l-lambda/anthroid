@@ -528,12 +528,14 @@ class GatewayManager(
     return observedSessions.values
       .sortedByDescending { it.lastActivity }
       .map { s ->
+        val agentId = Regex("^agent:([^:]+):.+$").find(s.sessionKey)?.groupValues?.get(1)
         RemoteSessionInfo(
           sessionKey = s.sessionKey,
-          displayName = s.sessionKey.substringAfterLast(":").takeIf { it != s.sessionKey },
+          displayName = s.label ?: agentId,
           lastActivity = s.lastActivity,
           status = "observed",
           source = RemoteSessionInfo.Source.OPENCLAW,
+          agentId = agentId,
         )
       }
   }
