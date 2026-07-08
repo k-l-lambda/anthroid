@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
     <!-- Allow cleartext (ws://) for gateway connections and localhost MCP -->
-    <base-config cleartextTrafficPermitted="true" />
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <!-- kelvin-tc self-signed cert for wss://124.221.209.247:443 (Anthroid gateway).
+                 OkHttpClient in GatewaySession uses the platform default TrustManager, so it
+                 honors this config. The pinned cert carries SAN IP:124.221.209.247 — OkHttp
+                 verifies an IP host only against SAN entries (not CN), so the SAN is required.
+                 If the cert is regenerated, replace res/raw/kelvin_gateway.pem to match. -->
+            <certificates src="@raw/kelvin_gateway" />
+        </trust-anchors>
+    </base-config>
 </network-security-config>
