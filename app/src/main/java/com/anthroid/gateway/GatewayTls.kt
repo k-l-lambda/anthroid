@@ -98,9 +98,15 @@ internal object GatewayTls {
     for (san in sans) {
       val type = san.getOrNull(0) as? Int ?: continue
       if (type == 7) { // GeneralName type 7 = iPAddress
-        val ip = san.getOrNull(1) as? ByteArray ?: continue
-        return InetAddress.getByAddress(ip).hostAddress
-          ?: throw IllegalStateException("could not render SAN IP to a host string")
+        // X509Certificate.getSubjectAlternativeNames() renders an IP entry's value either as
+        // a pre-formatted String ("124.221.209.247", e.g. the RI/JDK) or as a raw byte[]
+        // (some providers). Accept both — never crash on the form the running VM picks.
+        return when (val ip = san.getOrNull(1)) {
+          is String -> ip
+          is ByteArray -> InetAddress.getByAddress(ip).hostAddress
+            ?: throw IllegalStateException("could not render SAN IP bytes to a host string")
+          else -> continue
+        }
       }
     }
     throw IllegalStateException("kelvin_gateway.pem SAN has no IP entry")
