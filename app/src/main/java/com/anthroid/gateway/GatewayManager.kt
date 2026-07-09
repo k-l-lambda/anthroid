@@ -93,6 +93,7 @@ class GatewayManager(
     disconnect()
 
     val gatewaySession = GatewaySession(
+      context = context,
       scope = scope,
       identityStore = identityStore,
       deviceAuthStore = authStore,

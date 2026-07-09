@@ -1,5 +1,6 @@
 package com.anthroid.gateway
 
+import android.content.Context
 import android.util.Log
 import java.util.Locale
 import java.util.UUID
@@ -50,6 +51,7 @@ data class GatewayConnectOptions(
 )
 
 class GatewaySession(
+  private val context: Context,
   private val scope: CoroutineScope,
   private val identityStore: DeviceIdentityStore,
   private val deviceAuthStore: DeviceAuthStore,
@@ -68,13 +70,18 @@ class GatewaySession(
   private val disconnectNotified = AtomicBoolean(false)
 
   // Shared OkHttpClient — reused across reconnections to avoid thread pool leaks
-  // HTTP/1.1 only: WebSocket upgrade requires HTTP/1.1; h2 breaks it via TLS-ALPN proxies
-  private val httpClient: OkHttpClient = OkHttpClient.Builder()
-    .protocols(listOf(Protocol.HTTP_1_1))
-    .writeTimeout(60, TimeUnit.SECONDS)
-    .readTimeout(0, TimeUnit.SECONDS)
-    .pingInterval(30, TimeUnit.SECONDS)
-    .build()
+  // HTTP/1.1 only: WebSocket upgrade requires HTTP/1.1; h2 breaks it via TLS-ALPN proxies.
+  // TLS: trust ONLY the pinned kelvin-tc gateway cert + an SPKI pin (see GatewayTls) —
+  // scoped to this client so other app channels keep system-only trust. No-op for
+  // cleartext ws://:80 (tls=false), which only needs cleartextTrafficPermitted.
+  private val httpClient: OkHttpClient = GatewayTls.configure(
+    OkHttpClient.Builder()
+      .protocols(listOf(Protocol.HTTP_1_1))
+      .writeTimeout(60, TimeUnit.SECONDS)
+      .readTimeout(0, TimeUnit.SECONDS)
+      .pingInterval(30, TimeUnit.SECONDS),
+    context,
+  ).build()
 
   @Volatile private var mainSessionKey: String? = null
 
