@@ -187,11 +187,14 @@ class GatewayForegroundService : Service() {
             val viewingThisSession = ScreenAutomationOverlay.isAppInForeground
                 && canonicalSessionKey == GatewayManager.canonicalSessionKey(activeRemoteSessionKey ?: "")
             if (!viewingThisSession) {
+                val resolvedTitle = msg.title
+                    ?: manager.getSessionLabel(canonicalSessionKey)
+                    ?: "Agent"
                 notificationHelper?.showMessageNotification(
-                    sessionKey = msg.sessionKey,
-                    displayName = "Agent",
+                    sessionKey = canonicalSessionKey,
+                    displayName = resolvedTitle,
                     messageText = msg.content,
-                    sessionLabel = manager.getSessionLabel(canonicalSessionKey),
+                    sessionLabel = resolvedTitle,
                     deepLinkSessionKey = canonicalSessionKey,
                 )
             }
@@ -228,16 +231,20 @@ class GatewayForegroundService : Service() {
                 && canonicalSessionKey == GatewayManager.canonicalSessionKey(activeRemoteSessionKey ?: "")
             if (!viewingThisSession && !messageText.isNullOrBlank() && messageText.trim() !in NOISE_MESSAGES) {
                 // Use separate notification keys so streaming and final don't replace each other
-                val notifKey = if (isStreaming) "$sessionKey:streaming" else sessionKey
-                val notifName = displayName ?: if (isStreaming) "Agent Streaming" else "Agent"
+                val notifKey = if (isStreaming) "$canonicalSessionKey:streaming" else canonicalSessionKey
                 val sessionLabel = manager.getSessionLabel(canonicalSessionKey)
+                val resolvedTitle = displayName
+                    ?.takeUnless { isStreaming && it == "Agent Streaming" }
+                    ?: sessionLabel
+                    ?: displayName
+                    ?: if (isStreaming) "Agent Streaming" else "Agent"
                 notificationHelper?.showMessageNotification(
                     sessionKey = notifKey,
-                    displayName = notifName,
+                    displayName = resolvedTitle,
                     messageText = messageText,
                     channelId = if (isStreaming) GatewayNotificationHelper.CHANNEL_ID_STREAMING
                                 else GatewayNotificationHelper.CHANNEL_ID,
-                    sessionLabel = sessionLabel,
+                    sessionLabel = resolvedTitle,
                     deepLinkSessionKey = canonicalSessionKey,
                 )
             }

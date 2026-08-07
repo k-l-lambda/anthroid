@@ -49,6 +49,11 @@ class GatewayManager(
         sessionKey
       }
     }
+
+    internal fun messageTitle(message: JSONObject): String? {
+      return message.optString("title", "").trim().takeIf { it.isNotEmpty() }
+        ?: message.optString("jobName", "").trim().takeIf { it.isNotEmpty() }
+    }
   }
 
   private val identityStore = DeviceIdentityStore(context)
@@ -276,7 +281,12 @@ class GatewayManager(
    * Called by the polling service every ~60s to receive timed/scheduled messages.
    * Returns list of message strings (content), or empty list on failure.
    */
-  data class DrainedMessage(val sessionKey: String, val content: String, val messageId: String)
+  data class DrainedMessage(
+    val sessionKey: String,
+    val content: String,
+    val messageId: String,
+    val title: String? = null,
+  )
 
   /** Drain ALL pending messages across all sessions in one call. */
   suspend fun drainAllPendingMessages(): List<DrainedMessage> {
@@ -302,8 +312,10 @@ class GatewayManager(
         val content = msg.optString("content", "").trim()
         val key = msg.optString("sessionKey", "")
         val canonicalKey = canonicalSessionKey(key)
+        val title = messageTitle(msg)
         if (content.isNotEmpty() && canonicalKey.isNotEmpty()) {
-          result.add(DrainedMessage(canonicalKey, content, messageId))
+          if (title != null) setSessionLabel(canonicalKey, title)
+          result.add(DrainedMessage(canonicalKey, content, messageId, title))
         }
       }
       if (result.isNotEmpty() || skipped > 0) Log.i(TAG, "DrainAll: ${result.size} messages (skipped $skipped duplicates)")
@@ -332,7 +344,11 @@ class GatewayManager(
           continue
         }
         val content = msg.optString("content", "").trim()
-        if (content.isNotEmpty()) result.add(content)
+        val title = messageTitle(msg)
+        if (content.isNotEmpty()) {
+          if (title != null) setSessionLabel(sessionKey, title)
+          result.add(content)
+        }
       }
       if (result.isNotEmpty() || skipped > 0) Log.i(TAG, "Drained ${result.size} pending messages for $sessionKey (skipped $skipped duplicates)")
       result
@@ -509,18 +525,32 @@ class GatewayManager(
   /** Update the display label for a session (from sessions.preview or chat.history). */
   @Synchronized
   fun setSessionLabel(sessionKey: String, label: String) {
-    observedSessions[sessionKey]?.label = label
+    val canonicalKey = canonicalSessionKey(sessionKey)
+    if (canonicalKey.isEmpty()) return
+    val normalizedLabel = label.trim().takeIf { it.isNotEmpty() } ?: return
+    val existing = observedSessions[canonicalKey]
+    observedSessions[canonicalKey] = if (existing != null) {
+      existing.apply { this.label = normalizedLabel }
+    } else {
+      ObservedSession(canonicalKey, System.currentTimeMillis(), normalizedLabel)
+    }
   }
 
   /** Get the display label for a session if known. */
   @Synchronized
-  fun getSessionLabel(sessionKey: String): String? = observedSessions[sessionKey]?.label
+  fun getSessionLabel(sessionKey: String): String? =
+    observedSessions[canonicalSessionKey(sessionKey)]?.label
 
   @Synchronized
   private fun trackObservedSession(sessionKey: String) {
-    if (sessionKey.isNotEmpty() && sessionKey != "gateway") {
-      val existing = observedSessions[sessionKey]
-      observedSessions[sessionKey] = ObservedSession(sessionKey, System.currentTimeMillis(), existing?.label)
+    val canonicalKey = canonicalSessionKey(sessionKey)
+    if (canonicalKey.isNotEmpty() && canonicalKey != "gateway") {
+      val existing = observedSessions[canonicalKey]
+      observedSessions[canonicalKey] = ObservedSession(
+        canonicalKey,
+        System.currentTimeMillis(),
+        existing?.label,
+      )
     }
   }
 
