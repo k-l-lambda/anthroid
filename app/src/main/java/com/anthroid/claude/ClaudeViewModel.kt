@@ -1383,7 +1383,7 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
         editor.apply()
 
         // Restart gateway service (read TLS setting from prefs)
-        val useTls = defaultPrefs.getBoolean("gateway_use_tls", false)
+        val useTls = defaultPrefs.getBoolean("gateway_use_tls", true)
         val context = getApplication<Application>()
         com.anthroid.gateway.GatewayForegroundService.stop(context)
         com.anthroid.gateway.GatewayForegroundService.start(context, host, portInt, token, useTls = useTls)
