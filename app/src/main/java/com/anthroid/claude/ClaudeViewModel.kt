@@ -1375,15 +1375,18 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
 
         // Save to default SharedPreferences (not the memory_sync prefs)
         val defaultPrefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(getApplication())
+        // Manual gateway configuration is secure by default. Persist this explicitly so a
+        // previously stored cleartext override cannot leak into a new /set-gateway command.
         val editor = defaultPrefs.edit()
             .putBoolean("gateway_enabled", true)
             .putString("gateway_host", host)
             .putString("gateway_port", port)
+            .putBoolean("gateway_use_tls", true)
         if (token != null) editor.putString("gateway_token", token)
         editor.apply()
 
-        // Restart gateway service (read TLS setting from prefs)
-        val useTls = defaultPrefs.getBoolean("gateway_use_tls", true)
+        // Restart gateway service with the explicit TLS setting.
+        val useTls = true
         val context = getApplication<Application>()
         com.anthroid.gateway.GatewayForegroundService.stop(context)
         com.anthroid.gateway.GatewayForegroundService.start(context, host, portInt, token, useTls = useTls)
