@@ -206,10 +206,52 @@ class GatewayForegroundService : Service() {
         }
     }
 
+    /**
+     * Notification title for a question: the first question's header (a <=12 char
+     * chip in the gateway schema), qualified by the asking agent when known.
+     */
+    private fun questionHeadline(question: GatewayManager.PendingGatewayQuestion): String {
+        val header = firstQuestionField(question, "header")
+        val agent = question.agentId
+        return when {
+            !header.isNullOrBlank() && !agent.isNullOrBlank() -> "$agent asks: $header"
+            !header.isNullOrBlank() -> "Question: $header"
+            !agent.isNullOrBlank() -> "$agent has a question"
+            else -> "An agent has a question"
+        }
+    }
+
+    /** Notification body: the question text itself, plus a count when there are several. */
+    private fun questionBody(question: GatewayManager.PendingGatewayQuestion): String {
+        val text = firstQuestionField(question, "question") ?: "Tap to answer."
+        val count = questionCount(question)
+        return if (count > 1) "$text\n(+${count - 1} more)" else text
+    }
+
+    private fun firstQuestionField(
+        question: GatewayManager.PendingGatewayQuestion,
+        field: String,
+    ): String? = try {
+        org.json.JSONArray(question.questionsJson)
+            .optJSONObject(0)
+            ?.optString(field, "")
+            ?.takeIf { it.isNotEmpty() }
+    } catch (_: Throwable) {
+        null
+    }
+
+    private fun questionCount(question: GatewayManager.PendingGatewayQuestion): Int = try {
+        org.json.JSONArray(question.questionsJson).length()
+    } catch (_: Throwable) {
+        1
+    }
+
     private fun startGateway(host: String, port: Int, token: String?, useTls: Boolean = true) {
         // Null out callbacks before disconnect to prevent stale events from old session
         gatewayManager?.onNotification = null
         gatewayManager?.onChatMessage = null
+        gatewayManager?.onQuestionRequested = null
+        gatewayManager?.onQuestionResolved = null
         gatewayManager?.disconnect()
 
         val manager = GatewayManager(applicationContext, serviceScope)
@@ -226,6 +268,28 @@ class GatewayForegroundService : Service() {
                     messageText = body
                 )
             }
+        }
+
+        // Wire up agent questions. Unlike chat, a question notification is shown even
+        // when the app is in the foreground: the asking agent is blocked on it, and
+        // the user may be on an unrelated screen (terminal, settings).
+        manager.onQuestionRequested = { question ->
+            val headline = questionHeadline(question)
+            val body = questionBody(question)
+            notificationHelper?.showQuestionNotification(
+                questionId = question.questionId,
+                headline = headline,
+                body = body,
+                sessionKey = question.sessionKey,
+            )
+        }
+
+        // A question can be answered on another surface (Control UI, TUI), cancelled,
+        // or expire on the gateway's own timer. Dismiss our notification either way
+        // so the user is not invited to answer something already terminal.
+        manager.onQuestionResolved = { questionId, status ->
+            Log.i(TAG, "Question $questionId resolved elsewhere: $status")
+            notificationHelper?.clearQuestion(questionId)
         }
 
         // Wire up chat message events

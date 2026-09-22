@@ -17,11 +17,13 @@ import android.view.Menu
 import android.view.MenuItem
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.NotificationManagerCompat
+import androidx.lifecycle.lifecycleScope
 import com.anthroid.R
 import com.anthroid.app.TermuxActivity
 import com.anthroid.accessibility.ScreenAutomationOverlay
 import com.anthroid.app.TermuxService
 import com.anthroid.app.activities.SettingsActivity
+import com.anthroid.claude.AskUserQuestionActivity
 import com.anthroid.claude.CameraCaptureActivity
 import com.anthroid.claude.DebugReceiver
 import com.anthroid.claude.TerminalCommandBridge
@@ -29,6 +31,9 @@ import com.anthroid.gateway.GatewayForegroundService
 import com.anthroid.gateway.GatewayNotificationHelper
 import com.anthroid.gateway.GatewayManager
 import com.anthroid.terminal.TerminalSession
+import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * Main activity that hosts ClaudeFragment as the default screen.
@@ -227,12 +232,171 @@ class MainPagerActivity : AppCompatActivity() {
     }
 
     private fun handleNotificationDeepLink(intent: Intent) {
+        // A question tap takes priority: an agent is blocked on it. Consume the extra
+        // so a configuration change or a later onNewIntent cannot reopen the dialog.
+        val questionId = intent.getStringExtra(GatewayNotificationHelper.EXTRA_QUESTION_ID)
+        if (questionId != null) {
+            intent.removeExtra(GatewayNotificationHelper.EXTRA_QUESTION_ID)
+            openGatewayQuestion(questionId)
+            return
+        }
         val sessionKey = intent.getStringExtra(GatewayNotificationHelper.EXTRA_SESSION_KEY)
         if (sessionKey != null) {
             val canonicalSessionKey = GatewayManager.canonicalSessionKey(sessionKey)
             Log.d(TAG, "Notification deep-link to session: $sessionKey -> $canonicalSessionKey")
             GatewayForegroundService.instance?.notificationHelper?.clearSession(sessionKey)
             DebugReceiver.emitOpenRemoteSession(canonicalSessionKey)
+        }
+    }
+
+    // Question id currently shown in AskUserQuestionActivity, so the result can be
+    // routed back to the right gateway question.
+    private var activeGatewayQuestionId: String? = null
+
+    private val gatewayQuestionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val questionId = activeGatewayQuestionId
+        activeGatewayQuestionId = null
+        if (questionId == null) {
+            Log.w(TAG, "Question result with no active question id")
+            return@registerForActivityResult
+        }
+        val manager = GatewayForegroundService.instance?.gatewayManager
+        if (manager == null) {
+            Log.w(TAG, "Question result but gateway manager is gone; question $questionId left pending")
+            return@registerForActivityResult
+        }
+        val answersJson = result.data?.getStringExtra(AskUserQuestionActivity.EXTRA_ANSWERS_JSON)
+        if (result.resultCode == RESULT_OK && answersJson != null) {
+            val answers = parseGatewayAnswers(questionId, answersJson, manager)
+            if (answers == null) {
+                Log.w(TAG, "Could not map answers for question $questionId")
+                return@registerForActivityResult
+            }
+            lifecycleScope.launch {
+                val ok = manager.resolveQuestion(questionId, answers)
+                Log.i(TAG, "Answered gateway question $questionId: accepted=$ok")
+                GatewayForegroundService.instance?.notificationHelper?.clearQuestion(questionId)
+            }
+        } else {
+            // Dismissed without answering. Cancel explicitly so the asking agent is
+            // released now instead of waiting out its full timeout.
+            lifecycleScope.launch {
+                manager.cancelQuestion(questionId)
+                GatewayForegroundService.instance?.notificationHelper?.clearQuestion(questionId)
+            }
+        }
+    }
+
+    /**
+     * Map AskUserQuestionActivity's answer shape (question text -> comma-joined
+     * labels) onto the gateway's shape (questionId -> string[]).
+     */
+    private fun parseGatewayAnswers(
+        questionId: String,
+        answersJson: String,
+        manager: GatewayManager,
+    ): Map<String, List<String>>? {
+        val pending = manager.getPendingQuestion(questionId) ?: return null
+        return try {
+            val answered = JSONObject(answersJson)
+            val questions = JSONArray(pending.questionsJson)
+            val out = mutableMapOf<String, List<String>>()
+            for (i in 0 until questions.length()) {
+                val q = questions.optJSONObject(i) ?: continue
+                val qid = q.optString("questionId", "").takeIf { it.isNotEmpty() } ?: continue
+                val questionText = q.optString("question", "")
+                val raw = answered.optString(questionText, "")
+                if (raw.isEmpty()) continue
+                val multiSelect = q.optBoolean("multiSelect", false)
+                out[qid] = if (multiSelect) {
+                    splitMultiSelect(raw, q.optJSONArray("options"))
+                } else {
+                    listOf(raw)
+                }
+            }
+            out.takeIf { it.isNotEmpty() }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to map gateway answers for $questionId", e)
+            null
+        }
+    }
+
+    /**
+     * Recover the selected labels from AskUserQuestionActivity's ", "-joined string.
+     *
+     * A naive split on "," is lossy: an option label may itself contain a comma, and
+     * splitting would report two selections that were never offered. Prefer matching
+     * against the question's declared option labels, and fall back to a split only for
+     * the remainder (a free-text "Other" value).
+     */
+    private fun splitMultiSelect(raw: String, options: JSONArray?): List<String> {
+        val labels = mutableListOf<String>()
+        if (options != null) {
+            for (i in 0 until options.length()) {
+                options.optJSONObject(i)?.optString("label", "")
+                    ?.takeIf { it.isNotEmpty() }?.let { labels.add(it) }
+            }
+        }
+        // Longest first so "Ship it now" is matched before "Ship it".
+        labels.sortByDescending { it.length }
+        val selected = mutableListOf<String>()
+        var rest = raw
+        for (label in labels) {
+            val idx = rest.indexOf(label)
+            if (idx < 0) continue
+            selected.add(label)
+            rest = (rest.substring(0, idx) + rest.substring(idx + label.length))
+        }
+        // Whatever is left over is a free-text answer, minus the join separators.
+        rest.split(",").map { it.trim() }.filter { it.isNotEmpty() }.forEach { selected.add(it) }
+        return if (selected.isNotEmpty()) selected else listOf(raw)
+    }
+
+    /**
+     * Open the question dialog for one gateway question. Re-reads the question from
+     * the gateway when it is not in the local cache (cold start after a process
+     * death, or a tap on a notification older than this process).
+     */
+    private fun openGatewayQuestion(questionId: String) {
+        val manager = GatewayForegroundService.instance?.gatewayManager
+        if (manager == null) {
+            Log.w(TAG, "Cannot open question $questionId: gateway not running")
+            android.widget.Toast.makeText(
+                this, "Gateway not connected", android.widget.Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+        lifecycleScope.launch {
+            val cached = manager.getPendingQuestion(questionId)
+            val question = if (cached != null && !cached.isExpired()) {
+                cached
+            } else {
+                manager.fetchQuestion(questionId)
+            }
+            GatewayForegroundService.instance?.notificationHelper?.clearQuestion(questionId)
+            if (question == null) {
+                Log.i(TAG, "Question $questionId is no longer pending")
+                android.widget.Toast.makeText(
+                    this@MainPagerActivity,
+                    "That question is no longer waiting for an answer",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+                return@launch
+            }
+            activeGatewayQuestionId = questionId
+            val intent = Intent(this@MainPagerActivity, AskUserQuestionActivity::class.java).apply {
+                putExtra(AskUserQuestionActivity.EXTRA_QUESTIONS_JSON, question.questionsJson)
+                putExtra(AskUserQuestionActivity.EXTRA_TOOL_ID, questionId)
+                putExtra("IS_MCP_MODE", false)
+            }
+            try {
+                gatewayQuestionLauncher.launch(intent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to launch question dialog for $questionId", e)
+                activeGatewayQuestionId = null
+            }
         }
     }
 

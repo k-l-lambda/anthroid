@@ -43,8 +43,17 @@ class AskUserQuestionActivity : AppCompatActivity() {
         val question: String,
         val header: String,
         val options: List<OptionData>,
-        val multiSelect: Boolean
-    )
+        val multiSelect: Boolean,
+        /** Gateway schema: answer must be masked on screen and never logged. */
+        val isSecret: Boolean = false,
+    ) {
+        /**
+         * The gateway allows options: [] for a free-text question (0 options is valid;
+         * only exactly 1 is rejected). Such a question has no choices to render, so it
+         * must show a text field instead of an empty card.
+         */
+        val isFreeText: Boolean get() = options.isEmpty()
+    }
 
     data class OptionData(
         val label: String,
@@ -86,7 +95,7 @@ class AskUserQuestionActivity : AppCompatActivity() {
             val jsonArray = JSONArray(jsonString)
             for (i in 0 until jsonArray.length()) {
                 val qObj = jsonArray.getJSONObject(i)
-                val optionsArray = qObj.getJSONArray("options")
+                val optionsArray = qObj.optJSONArray("options") ?: JSONArray()
                 val options = mutableListOf<OptionData>()
                 for (j in 0 until optionsArray.length()) {
                     val optObj = optionsArray.getJSONObject(j)
@@ -99,7 +108,8 @@ class AskUserQuestionActivity : AppCompatActivity() {
                     question = qObj.getString("question"),
                     header = qObj.optString("header", ""),
                     options = options,
-                    multiSelect = qObj.optBoolean("multiSelect", false)
+                    multiSelect = qObj.optBoolean("multiSelect", false),
+                    isSecret = qObj.optBoolean("isSecret", false)
                 ))
             }
             Log.i(TAG, "Parsed ${questions.size} questions")
@@ -135,7 +145,45 @@ class AskUserQuestionActivity : AppCompatActivity() {
             val otherRadio = questionView.findViewById<RadioButton>(R.id.other_radio)
             val otherCheck = questionView.findViewById<CheckBox>(R.id.other_check)
 
-            if (question.multiSelect) {
+            if (question.isFreeText) {
+                // No options: a single text field IS the answer. Reuse other_input so
+                // the layout stays one file, but drive it directly instead of as an
+                // "Other" escape hatch.
+                otherRadio.visibility = View.GONE
+                otherCheck.visibility = View.GONE
+                otherInput.visibility = View.VISIBLE
+                if (question.isSecret) {
+                    otherInput.hint = "Enter value (hidden)"
+                    otherInput.inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                        android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+                    otherInput.transformationMethod =
+                        android.text.method.PasswordTransformationMethod.getInstance()
+                    // A secret must not survive in the view hierarchy's autofill or
+                    // restore state.
+                    otherInput.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
+                    otherInput.isSaveEnabled = false
+                } else {
+                    otherInput.hint = "Type your answer..."
+                }
+                otherInput.addTextChangedListener(object : android.text.TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                    override fun afterTextChanged(s: android.text.Editable?) {
+                        val value = otherInput.text.toString()
+                        if (value.isBlank()) {
+                            answers.remove(question.question)
+                        } else {
+                            answers[question.question] = value
+                        }
+                        // Never log a secret's value, only whether one is present.
+                        if (question.isSecret) {
+                            Log.d(TAG, "Secret answer updated: Q$index len=${value.length}")
+                        } else {
+                            Log.d(TAG, "Free-text answer updated: Q$index")
+                        }
+                    }
+                })
+            } else if (question.multiSelect) {
                 // Use checkboxes for multi-select
                 question.options.forEach { option ->
                     val checkBox = CheckBox(this).apply {
@@ -336,7 +384,9 @@ class AskUserQuestionActivity : AppCompatActivity() {
             answersJson.put(question, answer)
         }
 
-        Log.i(TAG, "Submitting answers: $answersJson")
+        // Do not log answer values: any question may be a secret.
+        val hasSecret = questions.any { it.isSecret }
+        Log.i(TAG, "Submitting ${answers.size} answers (secret=$hasSecret)")
 
         val resultIntent = Intent().apply {
             putExtra(EXTRA_ANSWERS_JSON, answersJson.toString())

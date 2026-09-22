@@ -23,11 +23,17 @@ class GatewayNotificationHelper(private val context: Context) {
         private const val TAG = "GatewayNotifHelper"
         const val CHANNEL_ID = "gateway_messages"
         const val CHANNEL_ID_STREAMING = "gateway_streaming"
+        const val CHANNEL_ID_QUESTION = "gateway_questions"
         private const val CHANNEL_PREFIX = "gateway_msg_"
         private const val GROUP_KEY = "com.anthroid.GATEWAY_MESSAGES"
         private const val SUMMARY_NOTIFICATION_ID = 50000
         private const val SESSION_ID_BASE = 50001
+        // Question notifications live in their own id range so clearAll() on the
+        // message range cannot silently dismiss a question an agent is blocked on.
+        private const val QUESTION_ID_BASE = 51000
+        private const val MAX_QUESTION_NOTIFICATIONS = 20
         const val EXTRA_SESSION_KEY = "gateway_session_key"
+        const val EXTRA_QUESTION_ID = "gateway_question_id"
 
         /**
          * Derive a notification channel tag from a sessionKey.
@@ -92,6 +98,13 @@ class GatewayNotificationHelper(private val context: Context) {
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "Streaming output from OpenClaw agent runs"
+            })
+            nm.createNotificationChannel(NotificationChannel(
+                CHANNEL_ID_QUESTION,
+                "Agent Questions",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "An agent is blocked waiting for your answer"
             })
         }
     }
@@ -211,6 +224,68 @@ class GatewayNotificationHelper(private val context: Context) {
         } catch (e: SecurityException) {
             Log.w(TAG, "Notification permission not granted: ${e.message}")
         }
+    }
+
+    private val questionNotifications = mutableMapOf<String, Int>()
+    private var nextQuestionNotificationId = QUESTION_ID_BASE
+
+    /**
+     * Show a notification for a pending agent question. Tapping it opens
+     * AskUserQuestionActivity via MainPagerActivity's deep-link handler.
+     *
+     * Deliberately NOT auto-cancel: the question stays visible until it is answered
+     * or reaches a terminal state, because dismissing the notification does not
+     * answer the question and the agent is still blocked.
+     */
+    fun showQuestionNotification(
+        questionId: String,
+        headline: String,
+        body: String,
+        sessionKey: String?,
+    ) {
+        val notificationId = questionNotifications.getOrPut(questionId) {
+            nextQuestionNotificationId++.also {
+                if (nextQuestionNotificationId >= QUESTION_ID_BASE + MAX_QUESTION_NOTIFICATIONS) {
+                    nextQuestionNotificationId = QUESTION_ID_BASE
+                }
+            }
+        }
+
+        val intent = Intent(context, MainPagerActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_QUESTION_ID, questionId)
+            if (sessionKey != null) putExtra(EXTRA_SESSION_KEY, sessionKey)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context, notificationId, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_QUESTION)
+            .setSmallIcon(R.drawable.ic_service_notification)
+            .setContentTitle(headline)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setAutoCancel(false)
+            .setOngoing(false)
+            .setContentIntent(pendingIntent)
+            .build()
+
+        try {
+            NotificationManagerCompat.from(context).notify(notificationId, notification)
+            Log.i(TAG, "Question notification shown: $questionId (id=$notificationId)")
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Notification permission not granted: ${e.message}")
+        }
+    }
+
+    /** Dismiss a question notification once the question reached a terminal state. */
+    fun clearQuestion(questionId: String) {
+        val notificationId = questionNotifications.remove(questionId) ?: return
+        NotificationManagerCompat.from(context).cancel(notificationId)
+        Log.d(TAG, "Question notification cleared: $questionId")
     }
 
     fun clearSession(sessionKey: String) {

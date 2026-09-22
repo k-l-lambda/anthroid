@@ -38,7 +38,12 @@ class GatewayManager(
     private const val DEFAULT_ROLE = "operator"
     // operator.admin is NOT included by default (least privilege).
     // sessions.list RPC falls back to observed sessions when admin scope is unavailable.
-    private val DEFAULT_SCOPES = listOf("operator.read", "operator.write")
+    // operator.questions is required for the ask-user bridge: question.requested and
+    // question.resolved are scope-guarded server-side (EVENT_SCOPE_GUARDS), and
+    // question.resolve carries the same scope, so without it the phone is filtered
+    // out of every question event and cannot submit an answer.
+    private val DEFAULT_SCOPES =
+      listOf("operator.read", "operator.write", "operator.questions")
 
     fun canonicalSessionKey(sessionKey: String): String {
       val runMarker = ":run:"
@@ -82,6 +87,10 @@ class GatewayManager(
   var onNotification: ((title: String, body: String) -> Unit)? = null
   /** isStreaming=true for agent run buffered output; false for chat final messages */
   var onChatMessage: ((sessionKey: String, displayName: String?, messageText: String, isStreaming: Boolean) -> Unit)? = null
+  /** An agent is asking the operator a question and is blocked on the answer. */
+  var onQuestionRequested: ((question: PendingGatewayQuestion) -> Unit)? = null
+  /** The question reached a terminal state elsewhere (answered on another surface, cancelled, or expired). */
+  var onQuestionResolved: ((questionId: String, status: String) -> Unit)? = null
 
   data class RemoteSessionEvent(val sessionKey: String, val role: String, val content: String)
   private val _remoteSessionEventFlow = MutableSharedFlow<RemoteSessionEvent>(
@@ -301,6 +310,138 @@ class GatewayManager(
     val messageId: String,
     val title: String? = null,
   )
+
+  /**
+   * One pending operator question, as published by the gateway's question.requested
+   * event. `questionsJson` is the raw questions array, shaped exactly as
+   * AskUserQuestionActivity already parses it.
+   */
+  data class PendingGatewayQuestion(
+    val questionId: String,
+    val questionsJson: String,
+    val sessionKey: String?,
+    val agentId: String?,
+    val expiresAtMs: Long,
+  ) {
+    /** Remaining time before the gateway expires this question on its own. */
+    fun remainingMs(nowMs: Long = System.currentTimeMillis()): Long = expiresAtMs - nowMs
+    fun isExpired(nowMs: Long = System.currentTimeMillis()): Boolean = remainingMs(nowMs) <= 0
+  }
+
+  // Pending questions by id, so a notification tap can recover the payload after
+  // the event itself is long gone. Access via the synchronized helpers below.
+  private val pendingQuestions = LinkedHashMap<String, PendingGatewayQuestion>()
+  private val MAX_PENDING_QUESTIONS = 16
+
+  @Synchronized
+  private fun rememberQuestion(question: PendingGatewayQuestion) {
+    pendingQuestions[question.questionId] = question
+    while (pendingQuestions.size > MAX_PENDING_QUESTIONS) {
+      pendingQuestions.iterator().let { it.next(); it.remove() }
+    }
+  }
+
+  @Synchronized
+  fun getPendingQuestion(questionId: String): PendingGatewayQuestion? = pendingQuestions[questionId]
+
+  @Synchronized
+  private fun forgetQuestion(questionId: String) {
+    pendingQuestions.remove(questionId)
+  }
+
+  @Synchronized
+  fun listPendingQuestions(): List<PendingGatewayQuestion> {
+    val now = System.currentTimeMillis()
+    return pendingQuestions.values.filter { !it.isExpired(now) }.toList()
+  }
+
+  /**
+   * Re-read one question from the gateway. Needed on a cold notification tap: the
+   * event may predate this process, or the question may already be terminal.
+   * Returns null when the question is gone or no longer pending.
+   */
+  suspend fun fetchQuestion(questionId: String): PendingGatewayQuestion? {
+    val gs = session ?: return null
+    return try {
+      val params = JSONObject().apply { put("id", questionId) }
+      val response = gs.request("question.get", params.toString(), timeoutMs = 10_000)
+      val record = JSONObject(response).optJSONObject("question") ?: return null
+      if (record.optString("status", "") != "pending") {
+        forgetQuestion(questionId)
+        return null
+      }
+      parseQuestionRecord(record)?.also { rememberQuestion(it) }
+    } catch (err: Throwable) {
+      Log.w(TAG, "question.get failed for $questionId: ${err.message}")
+      null
+    }
+  }
+
+  /**
+   * Submit answers for one question. `answers` maps each questionId to its selected
+   * values; the gateway's schema is Record<questionId, string[]>.
+   * Returns true when the gateway accepted this client as the resolver.
+   */
+  suspend fun resolveQuestion(questionId: String, answers: Map<String, List<String>>): Boolean {
+    val gs = session
+    if (gs == null) {
+      Log.w(TAG, "resolveQuestion: no gateway session")
+      return false
+    }
+    return try {
+      val answersObj = JSONObject()
+      answers.forEach { (key, values) -> answersObj.put(key, JSONArray(values)) }
+      val params = JSONObject().apply {
+        put("id", questionId)
+        put("answers", JSONObject().apply { put("answers", answersObj) })
+        put("resolvedBy", "anthroid")
+      }
+      val response = gs.request("question.resolve", params.toString(), timeoutMs = 15_000)
+      val status = JSONObject(response).optString("status", "")
+      Log.i(TAG, "question.resolve $questionId -> $status")
+      forgetQuestion(questionId)
+      status == "answered"
+    } catch (err: Throwable) {
+      // A terminal question means someone else answered first, or it expired.
+      Log.w(TAG, "question.resolve failed for $questionId: ${err.message}")
+      forgetQuestion(questionId)
+      false
+    }
+  }
+
+  /** Cancel one question without answering it (user dismissed the dialog). */
+  suspend fun cancelQuestion(questionId: String): Boolean {
+    val gs = session ?: return false
+    return try {
+      val params = JSONObject().apply {
+        put("id", questionId)
+        put("cancel", true)
+        put("resolvedBy", "anthroid")
+      }
+      gs.request("question.resolve", params.toString(), timeoutMs = 10_000)
+      Log.i(TAG, "question.resolve cancel $questionId")
+      forgetQuestion(questionId)
+      true
+    } catch (err: Throwable) {
+      Log.w(TAG, "question cancel failed for $questionId: ${err.message}")
+      forgetQuestion(questionId)
+      false
+    }
+  }
+
+  /** Map a gateway QuestionRecord onto the app's pending-question shape. */
+  private fun parseQuestionRecord(record: JSONObject): PendingGatewayQuestion? {
+    val id = record.optString("id", "").takeIf { it.isNotEmpty() } ?: return null
+    val questions = record.optJSONArray("questions") ?: return null
+    if (questions.length() == 0) return null
+    return PendingGatewayQuestion(
+      questionId = id,
+      questionsJson = questions.toString(),
+      sessionKey = record.optString("sessionKey", "").takeIf { it.isNotEmpty() },
+      agentId = record.optString("agentId", "").takeIf { it.isNotEmpty() },
+      expiresAtMs = record.optLong("expiresAtMs", 0L),
+    )
+  }
 
   /** Drain ALL pending messages across all sessions in one call. */
   suspend fun drainAllPendingMessages(): List<DrainedMessage> {
@@ -592,6 +733,31 @@ class GatewayManager(
 
   private fun handleGatewayEvent(event: String, payloadJson: String?) {
     when (event) {
+      "question.requested" -> {
+        try {
+          val obj = if (payloadJson != null) JSONObject(payloadJson) else return
+          if (obj.optString("status", "pending") != "pending") return
+          val question = parseQuestionRecord(obj) ?: return
+          question.sessionKey?.let { trackObservedSession(it) }
+          rememberQuestion(question)
+          Log.i(TAG, "question.requested ${question.questionId}, expires in ${question.remainingMs()}ms")
+          onQuestionRequested?.invoke(question)
+        } catch (err: Throwable) {
+          Log.w(TAG, "Failed to parse question.requested: ${err.message}")
+        }
+      }
+      "question.resolved" -> {
+        try {
+          val obj = if (payloadJson != null) JSONObject(payloadJson) else return
+          val id = obj.optString("id", "").takeIf { it.isNotEmpty() } ?: return
+          val status = obj.optString("status", "")
+          forgetQuestion(id)
+          Log.i(TAG, "question.resolved $id -> $status")
+          onQuestionResolved?.invoke(id, status)
+        } catch (err: Throwable) {
+          Log.w(TAG, "Failed to parse question.resolved: ${err.message}")
+        }
+      }
       "notification.push" -> {
         try {
           val obj = if (payloadJson != null) JSONObject(payloadJson) else null
