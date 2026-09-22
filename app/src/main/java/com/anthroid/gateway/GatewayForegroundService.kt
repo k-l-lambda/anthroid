@@ -260,13 +260,15 @@ class GatewayForegroundService : Service() {
 
         // Wire up notification.push events
         manager.onNotification = { title, body ->
-            // notification.push has no session — always show unless app is foreground.
+            // Shown unconditionally, foreground included — same rule as questions, and
+            // deliberately different from chat messages. A suppressed chat message is
+            // still readable later in its session; a push has no session, so suppressing
+            // it destroys the only copy. Its text lives solely in the notification.
+            //
             // Must use the standalone path: showMessageNotification deep-links to a
             // remote session, and a session key of "notification" does not exist on the
             // gateway, so the tap opened an empty session view with no body text.
-            if (!ScreenAutomationOverlay.isAppInForeground) {
-                notificationHelper?.showStandaloneNotification(title, body)
-            }
+            notificationHelper?.showStandaloneNotification(title, body)
         }
 
         // Wire up agent questions. Unlike chat, a question notification is shown even
