@@ -240,6 +240,18 @@ class MainPagerActivity : AppCompatActivity() {
             openGatewayQuestion(questionId)
             return
         }
+        // A session-less notification (notification.push) carries its own text, because
+        // there is no session to open. Show it rather than deep-linking nowhere.
+        val noticeBody = intent.getStringExtra(GatewayNotificationHelper.EXTRA_NOTIFICATION_BODY)
+        if (noticeBody != null) {
+            val noticeTitle =
+                intent.getStringExtra(GatewayNotificationHelper.EXTRA_NOTIFICATION_TITLE)
+                    ?: "OpenClaw"
+            intent.removeExtra(GatewayNotificationHelper.EXTRA_NOTIFICATION_BODY)
+            intent.removeExtra(GatewayNotificationHelper.EXTRA_NOTIFICATION_TITLE)
+            showGatewayNotice(noticeTitle, noticeBody)
+            return
+        }
         val sessionKey = intent.getStringExtra(GatewayNotificationHelper.EXTRA_SESSION_KEY)
         if (sessionKey != null) {
             val canonicalSessionKey = GatewayManager.canonicalSessionKey(sessionKey)
@@ -247,6 +259,18 @@ class MainPagerActivity : AppCompatActivity() {
             GatewayForegroundService.instance?.notificationHelper?.clearSession(sessionKey)
             DebugReceiver.emitOpenRemoteSession(canonicalSessionKey)
         }
+    }
+
+    /**
+     * Render a session-less gateway notification. The text arrived with the
+     * notification itself, so nothing is fetched and this works offline.
+     */
+    private fun showGatewayNotice(title: String, body: String) {
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(body)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
     }
 
     // Question id currently shown in AskUserQuestionActivity, so the result can be

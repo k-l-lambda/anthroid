@@ -260,13 +260,12 @@ class GatewayForegroundService : Service() {
 
         // Wire up notification.push events
         manager.onNotification = { title, body ->
-            // notification.push has no session — always show unless app is foreground
+            // notification.push has no session — always show unless app is foreground.
+            // Must use the standalone path: showMessageNotification deep-links to a
+            // remote session, and a session key of "notification" does not exist on the
+            // gateway, so the tap opened an empty session view with no body text.
             if (!ScreenAutomationOverlay.isAppInForeground) {
-                notificationHelper?.showMessageNotification(
-                    sessionKey = "notification",
-                    displayName = title,
-                    messageText = body
-                )
+                notificationHelper?.showStandaloneNotification(title, body)
             }
         }
 

@@ -24,6 +24,7 @@ class GatewayNotificationHelper(private val context: Context) {
         const val CHANNEL_ID = "gateway_messages"
         const val CHANNEL_ID_STREAMING = "gateway_streaming"
         const val CHANNEL_ID_QUESTION = "gateway_questions"
+        const val CHANNEL_ID_NOTICE = "gateway_notices"
         private const val CHANNEL_PREFIX = "gateway_msg_"
         private const val GROUP_KEY = "com.anthroid.GATEWAY_MESSAGES"
         private const val SUMMARY_NOTIFICATION_ID = 50000
@@ -32,8 +33,15 @@ class GatewayNotificationHelper(private val context: Context) {
         // message range cannot silently dismiss a question an agent is blocked on.
         private const val QUESTION_ID_BASE = 51000
         private const val MAX_QUESTION_NOTIFICATIONS = 20
+
+        // Session-less notifications (notification.push) get their own id and channel.
+        // They must NOT reuse the message range: those deep-link to a remote session,
+        // and a push has no session to open.
+        private const val STANDALONE_NOTIFICATION_ID = 50999
         const val EXTRA_SESSION_KEY = "gateway_session_key"
         const val EXTRA_QUESTION_ID = "gateway_question_id"
+        const val EXTRA_NOTIFICATION_TITLE = "gateway_notification_title"
+        const val EXTRA_NOTIFICATION_BODY = "gateway_notification_body"
 
         /**
          * Derive a notification channel tag from a sessionKey.
@@ -221,6 +229,56 @@ class GatewayNotificationHelper(private val context: Context) {
                     .build()
                 manager.notify(SUMMARY_NOTIFICATION_ID, summaryNotification)
             }
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Notification permission not granted: ${e.message}")
+        }
+    }
+
+    /**
+     * Show a notification that belongs to no session (gateway `notification.push`).
+     *
+     * Deliberately NOT routed through showMessageNotification: that one deep-links to
+     * a remote session, so a push landed on a session key of "notification" that does
+     * not exist on the gateway and the tap opened an empty session view. The body text
+     * travels in the intent instead, so the tap can show the text it already delivered.
+     */
+    fun showStandaloneNotification(title: String, body: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val nm = context.getSystemService(NotificationManager::class.java)
+            if (nm.getNotificationChannel(CHANNEL_ID_NOTICE) == null) {
+                nm.createNotificationChannel(
+                    NotificationChannel(
+                        CHANNEL_ID_NOTICE,
+                        "Gateway Notices",
+                        NotificationManager.IMPORTANCE_HIGH,
+                    ).apply { description = "Standalone notices from OpenClaw, not tied to a session" }
+                )
+            }
+        }
+
+        val intent = Intent(context, MainPagerActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_NOTIFICATION_TITLE, title)
+            putExtra(EXTRA_NOTIFICATION_BODY, body)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context, STANDALONE_NOTIFICATION_ID, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_NOTICE)
+            .setSmallIcon(R.drawable.ic_service_notification)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .build()
+
+        try {
+            NotificationManagerCompat.from(context).notify(STANDALONE_NOTIFICATION_ID, notification)
+            Log.i(TAG, "Standalone notification shown (${body.length} chars)")
         } catch (e: SecurityException) {
             Log.w(TAG, "Notification permission not granted: ${e.message}")
         }
