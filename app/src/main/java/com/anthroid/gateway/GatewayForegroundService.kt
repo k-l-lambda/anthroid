@@ -76,7 +76,10 @@ class GatewayForegroundService : Service() {
             val host = prefs.getString("gateway_host", null) ?: return
             val port = prefs.getString("gateway_port", "40445")?.toIntOrNull() ?: 40445
             val token = prefs.getString("gateway_token", null)?.takeIf { it.isNotEmpty() }
-            start(context, host, port, token, useTls = false)
+            // Reuse the persisted transport setting. Manual gateway connections default to TLS,
+            // and auto-restarts must not silently downgrade a saved wss:// connection to ws://.
+            val useTls = prefs.getBoolean("gateway_use_tls", true)
+            start(context, host, port, token, useTls)
         }
 
         fun stop(context: Context) {
@@ -172,33 +175,34 @@ class GatewayForegroundService : Service() {
         try { manager.listSessions() } catch (_: Exception) {}
         // Drain ALL pending messages in one call (no per-key iteration needed)
         val messages = manager.drainAllPendingMessages()
-        for (msg in messages) {
-            // Skip noise messages (heartbeat, monitoring pings, etc.)
-            val trimmed = msg.content.trim()
-            if (trimmed in NOISE_MESSAGES) {
-                Log.d(TAG, "Skipped noise message for ${msg.sessionKey}: $trimmed")
-                continue
-            }
-            val canonicalSessionKey = GatewayManager.canonicalSessionKey(msg.sessionKey)
-            manager.emitRemoteSessionEvent(
-                GatewayManager.RemoteSessionEvent(canonicalSessionKey, "assistant", msg.content)
-            )
-            // Only suppress notification if the user is viewing THIS session in remote agent view
-            val viewingThisSession = ScreenAutomationOverlay.isAppInForeground
-                && canonicalSessionKey == GatewayManager.canonicalSessionKey(activeRemoteSessionKey ?: "")
-            if (!viewingThisSession) {
-                val resolvedTitle = msg.title
-                    ?: manager.getSessionLabel(canonicalSessionKey)
-                    ?: "Agent"
-                notificationHelper?.showMessageNotification(
-                    sessionKey = canonicalSessionKey,
-                    displayName = resolvedTitle,
-                    messageText = msg.content,
-                    sessionLabel = resolvedTitle,
-                    deepLinkSessionKey = canonicalSessionKey,
+        val groupedMessages = messages
+            .filter { it.content.trim() !in NOISE_MESSAGES }
+            .groupBy { GatewayManager.agentScopeKey(it.sessionKey) }
+        for ((agentScopeKey, agentMessages) in groupedMessages) {
+            agentMessages.forEach { msg ->
+                val messageSessionKey = GatewayManager.canonicalSessionKey(msg.sessionKey)
+                manager.emitRemoteSessionEvent(
+                    GatewayManager.RemoteSessionEvent(messageSessionKey, "assistant", msg.content)
                 )
             }
-            Log.i(TAG, "Delivered pending message for ${msg.sessionKey} (${msg.content.length} chars)")
+            val viewingThisAgent = ScreenAutomationOverlay.isAppInForeground
+                && GatewayManager.agentScopeKey(activeRemoteSessionKey ?: "") == agentScopeKey
+            if (!viewingThisAgent) {
+                agentMessages.forEach { msg ->
+                    val messageSessionKey = GatewayManager.canonicalSessionKey(msg.sessionKey)
+                    val resolvedTitle = msg.title
+                        ?: manager.getSessionLabel(messageSessionKey)
+                        ?: agentScopeKey.removePrefix("agent:").ifBlank { "Agent" }
+                    notificationHelper?.showMessageNotification(
+                        sessionKey = agentScopeKey,
+                        displayName = resolvedTitle,
+                        messageText = msg.content,
+                        sessionLabel = resolvedTitle,
+                        deepLinkSessionKey = messageSessionKey,
+                    )
+                }
+            }
+            Log.i(TAG, "Delivered ${agentMessages.size} pending message(s) for $agentScopeKey")
         }
     }
 
@@ -227,17 +231,18 @@ class GatewayForegroundService : Service() {
         // Wire up chat message events
         manager.onChatMessage = { sessionKey, displayName, messageText, isStreaming ->
             val canonicalSessionKey = GatewayManager.canonicalSessionKey(sessionKey)
-            val viewingThisSession = ScreenAutomationOverlay.isAppInForeground
-                && canonicalSessionKey == GatewayManager.canonicalSessionKey(activeRemoteSessionKey ?: "")
-            if (!viewingThisSession && !messageText.isNullOrBlank() && messageText.trim() !in NOISE_MESSAGES) {
-                // Use separate notification keys so streaming and final don't replace each other
-                val notifKey = if (isStreaming) "$canonicalSessionKey:streaming" else canonicalSessionKey
+            val agentScopeKey = GatewayManager.agentScopeKey(canonicalSessionKey)
+            val viewingThisAgent = ScreenAutomationOverlay.isAppInForeground
+                && GatewayManager.agentScopeKey(activeRemoteSessionKey ?: "") == agentScopeKey
+            if (!viewingThisAgent && !messageText.isNullOrBlank() && messageText.trim() !in NOISE_MESSAGES) {
+                // Merge all cron outputs for one agent into one notification.
+                val notifKey = agentScopeKey
                 val sessionLabel = manager.getSessionLabel(canonicalSessionKey)
                 val resolvedTitle = displayName
                     ?.takeUnless { isStreaming && it == "Agent Streaming" }
                     ?: sessionLabel
                     ?: displayName
-                    ?: if (isStreaming) "Agent Streaming" else "Agent"
+                    ?: agentScopeKey.removePrefix("agent:").ifBlank { if (isStreaming) "Agent Streaming" else "Agent" }
                 notificationHelper?.showMessageNotification(
                     sessionKey = notifKey,
                     displayName = resolvedTitle,
@@ -246,6 +251,7 @@ class GatewayForegroundService : Service() {
                                 else GatewayNotificationHelper.CHANNEL_ID,
                     sessionLabel = resolvedTitle,
                     deepLinkSessionKey = canonicalSessionKey,
+                    isStreaming = isStreaming,
                 )
             }
         }

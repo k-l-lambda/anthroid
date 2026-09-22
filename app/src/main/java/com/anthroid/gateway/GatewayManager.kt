@@ -50,6 +50,20 @@ class GatewayManager(
       }
     }
 
+    /**
+     * Return the stable notification scope for an OpenClaw agent.
+     * Cron sessions and individual run sessions remain separate internally;
+     * only their Android notification identity is merged.
+     */
+    fun agentScopeKey(sessionKey: String): String {
+      val parts = sessionKey.split(":")
+      return if (parts.size >= 2 && parts[0] == "agent" && parts[1].isNotBlank()) {
+        "agent:${parts[1]}"
+      } else {
+        sessionKey
+      }
+    }
+
     internal fun messageTitle(message: JSONObject): String? {
       return message.optString("title", "").trim().takeIf { it.isNotEmpty() }
         ?: message.optString("jobName", "").trim().takeIf { it.isNotEmpty() }

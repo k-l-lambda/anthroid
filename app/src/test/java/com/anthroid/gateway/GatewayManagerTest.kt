@@ -45,6 +45,28 @@ class GatewayManagerTest {
   }
 
   @Test
+  fun agentScopeKey_mergesCronAndRunSessionsByAgent() {
+    assertEquals(
+      "agent:main",
+      GatewayManager.agentScopeKey("agent:main:cron:job-a"),
+    )
+    assertEquals(
+      "agent:main",
+      GatewayManager.agentScopeKey("agent:main:cron:job-b:run:123"),
+    )
+    assertEquals(
+      "agent:other",
+      GatewayManager.agentScopeKey("agent:other:main"),
+    )
+  }
+
+  @Test
+  fun agentScopeKey_preservesNonAgentSessionKeys() {
+    assertEquals("gateway", GatewayManager.agentScopeKey("gateway"))
+    assertEquals("other:session", GatewayManager.agentScopeKey("other:session"))
+    assertEquals("agent:", GatewayManager.agentScopeKey("agent:"))
+  }
+  @Test
   fun messageTitle_prefersTitleAndFallsBackToJobName() {
     assertEquals(
       "Explicit Title",

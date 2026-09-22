@@ -40,6 +40,12 @@ class GatewayNotificationHelper(private val context: Context) {
          * - Limit to 3 words
          */
         fun deriveChannelTag(sessionKey: String, sessionLabel: String? = null): String {
+            // Agent-scoped notification keys intentionally use the agent name so all
+            // cron jobs for that agent share one Android notification channel.
+            val parts = sessionKey.split(":")
+            if (parts.size == 2 && parts[0] == "agent" && parts[1].isNotBlank()) {
+                return parts[1]
+            }
             // Try label first (more descriptive)
             if (!sessionLabel.isNullOrBlank()) {
                 var tag = sessionLabel.removePrefix("Cron:").removePrefix("Cron: ").trim()
@@ -50,7 +56,6 @@ class GatewayNotificationHelper(private val context: Context) {
                 if (tag.isNotBlank()) return tag
             }
             // Fallback: extract agent name from sessionKey
-            val parts = sessionKey.split(":")
             return if (parts.size >= 2 && parts[0] == "agent") parts[1] else "gateway"
         }
     }
@@ -59,6 +64,9 @@ class GatewayNotificationHelper(private val context: Context) {
         val notificationId: Int,
         var lastMessage: String,
         var displayName: String,
+        val messages: ArrayDeque<String> = ArrayDeque(),
+        var deepLinkSessionKey: String,
+        var isStreaming: Boolean,
     )
 
     private val sessionNotifications = mutableMapOf<String, SessionState>()
@@ -123,6 +131,7 @@ class GatewayNotificationHelper(private val context: Context) {
         channelId: String = CHANNEL_ID,
         sessionLabel: String? = null,
         deepLinkSessionKey: String = sessionKey,
+        isStreaming: Boolean = false,
     ) {
         // Resolve dynamic channel for non-streaming messages
         val resolvedChannelId = if (channelId == CHANNEL_ID_STREAMING) {
@@ -137,32 +146,50 @@ class GatewayNotificationHelper(private val context: Context) {
                 notificationId = nextNotificationId++,
                 lastMessage = messageText,
                 displayName = displayName ?: sessionKey,
+                deepLinkSessionKey = deepLinkSessionKey,
+                isStreaming = isStreaming,
             )
         }
         state.lastMessage = messageText
+        state.deepLinkSessionKey = deepLinkSessionKey
+        if (state.isStreaming != isStreaming) {
+            state.messages.clear()
+            state.isStreaming = isStreaming
+        }
+        state.messages.addLast(messageText)
+        while (state.messages.size > 8) state.messages.removeFirst()
         if (displayName != null) {
             state.displayName = displayName
         }
 
         val intent = Intent(context, MainPagerActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra(EXTRA_SESSION_KEY, deepLinkSessionKey)
+            putExtra(EXTRA_SESSION_KEY, state.deepLinkSessionKey)
         }
         val pendingIntent = PendingIntent.getActivity(
             context, state.notificationId, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notification = NotificationCompat.Builder(context, resolvedChannelId)
+        val notificationBuilder = NotificationCompat.Builder(context, resolvedChannelId)
             .setSmallIcon(R.drawable.ic_service_notification)
             .setContentTitle(state.displayName)
             .setContentText(messageText)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(messageText))
             .setPriority(if (resolvedChannelId == CHANNEL_ID_STREAMING) NotificationCompat.PRIORITY_LOW else NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setGroup(GROUP_KEY)
             .setContentIntent(pendingIntent)
-            .build()
+        if (state.messages.size > 1) {
+            notificationBuilder.setStyle(
+                NotificationCompat.InboxStyle().also { style ->
+                    state.messages.forEach { style.addLine(it) }
+                    style.setSummaryText("${state.messages.size} recent messages")
+                }
+            )
+        } else {
+            notificationBuilder.setStyle(NotificationCompat.BigTextStyle().bigText(messageText))
+        }
+        val notification = notificationBuilder.build()
 
         try {
             val manager = NotificationManagerCompat.from(context)
