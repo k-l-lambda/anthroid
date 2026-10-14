@@ -161,12 +161,22 @@ Local [OpenClaw](https://github.com/k-l-lambda/openclaw) agent with full tool-us
 
 ### Gateway Integration (Optional)
 Connect to an OpenClaw gateway server for distributed agent features:
-- **Memory sync** — automatic pull/push of `memory/` files on session start/end (git-based incremental)
+- **Memory sync** — automatic pull/push of `memory/` files on session start/end
 - **Profile sync** — `/sync-profile` command pulls agent identity, skills, and config files
-- **Remote agent view** — view and interact with OpenClaw sessions and SSH+tmux sessions on remote servers
-- **Pending message delivery** — 60s polling for timed messages from gateway agents
-- **System notifications** — IM-like notifications for gateway messages when app is backgrounded
+- **Remote agent view** — view and interact with OpenClaw sessions and SSH+tmux sessions on remote servers (see below)
+- **Pending message delivery** — messages queued while the phone is offline are drained on connect and every 60s (`session.drainAllPending`), de-duplicated against live events
+- **System notifications** — IM-like notifications for gateway messages, merged per agent, with cron job labels preserved; tapping opens the canonical session
+- **Answer agent questions from the phone** — agents that ask the user (OpenClaw ask-user, or any client of the gateway question protocol) post a sticky notification; tap to answer in a dialog supporting options, multi-select, free text and masked secret input. Dismissing cancels the question so the agent is released immediately
+- **Standalone notices** — session-less `notification.push` messages show their full text in a dialog (works offline, always shown even in foreground)
+- **Status icon** — the persistent notification switches to an "error robot" icon whenever the gateway is not connected
+- **TLS** — `wss://` by default for manual connections; the gateway client trusts only the bundled gateway certificate plus an SPKI pin (scoped to the gateway connection, not app-wide). WebSocket is forced to HTTP/1.1 so upgrades work through HTTPS proxies
 - **Gateway Settings UI** — configure host/port/token in Settings, or use `/set-gateway` command / QR code
+
+### Remote Agent View
+Open with `/list-remotes` (OpenClaw sessions) or `/list-remotes <host>` (tmux sessions over SSH):
+- **OpenClaw sessions** — full history with tool bar, live updates, reply injection, voice input, and date-aware timestamps
+- **SSH + tmux sessions** — lightweight `capture-pane` preview (never resizes the remote window), send-keys input with sync indicators
+- **Native terminal attach** — terminal icon opens the tmux session in a real Termux terminal (`ssh -t … tmux attach`); back returns to chat and closes the connection
 
 ### Quick Send Candidates
 - Frequently used short messages appear as chips above the input bar
@@ -191,12 +201,22 @@ Get the latest release from [GitHub Releases](https://github.com/k-l-lambda/anth
 git clone https://github.com/k-l-lambda/anthroid.git
 cd anthroid
 
-# Build debug APK
+# Point the build at your Android SDK (git-ignored)
+echo "sdk.dir=/path/to/Android/Sdk" > local.properties
+
+# Build debug APK (JDK 17 required)
 ./gradlew assembleDebug
 
 # Install on device
-adb install app/build/outputs/apk/debug/anthroid-app_apt-android-7-debug_arm64-v8a.apk
+adb install -r app/build/outputs/apk/debug/anthroid-app_apt-android-7-debug_arm64-v8a.apk
 ```
+
+Build notes:
+- **JDK 17** is required by the Android Gradle Plugin; JDK 8/11 fail at configuration time.
+- SDK platform **android-33**, build-tools 33.x and the NDK must be installed.
+- First build takes ~5 minutes; incremental builds ~1 minute. After adding resources, run `./gradlew clean assembleDebug` (stale incremental `R` classes can crash on launch with `NoSuchFieldError`).
+- Two APKs are produced: `arm64-v8a` (~190MB) and `universal` (~200MB).
+- A debug build with the same signing key upgrades in place (`adb install -r`) and keeps app data.
 
 ### Requirements
 - Android 7.0+ (API 24)
@@ -206,18 +226,24 @@ adb install app/build/outputs/apk/debug/anthroid-app_apt-android-7-debug_arm64-v
 ## Setup
 
 ### API Configuration
-1. Get your Claude API key from [Anthropic Console](https://console.anthropic.com/)
-2. In Anthroid, go to **Settings** > **API Configuration**
-3. Enter your API key and base URL
+API credentials live in a single place: the `claude` wrapper script (`$PREFIX/bin/claude`). All agent modes (CLI, API, OpenClaw) read from it.
+
+1. Get an API key from [Anthropic Console](https://console.anthropic.com/) (or any compatible endpoint)
+2. In the Anthroid terminal, run:
+   ```bash
+   set_wrapper <base_url> <auth_token> <model>
+   # e.g. set_wrapper https://api.anthropic.com/ sk-ant-xxx claude-sonnet-4-5
+   ```
+   This also syncs the model into the OpenClaw agent's `config.json`.
 
 Or use QR code for quick setup:
-1. Generate QR code with API credentials
-2. Open Camera > QR scan mode
-3. Scan the QR code
+1. Generate a `set_wrapper` QR code with `tools/qr-generator.html`
+2. Open the QR scanner (terminal drawer or chat camera)
+3. Scan — the command is pasted into the terminal for you to review and run
 
 ### Voice Input Setup
-1. Go to **Settings** > **Components**
-2. Download ASR Model (239MB, one-time)
+1. Go to **Settings** > **Voice Input** > **Voice Recognition Model**
+2. Download the ASR model (one-time)
 3. Wait for model initialization
 4. Microphone button appears in chat
 
@@ -230,6 +256,15 @@ Connect to an OpenClaw gateway for memory sync and remote agent features:
 Or use the chat command: `/set-gateway <host:port> [token]`
 
 Or scan a QR code generated from `tools/qr-generator.html`.
+
+Notes:
+- Manual connections default to TLS (`wss://`). The gateway client trusts **only** the certificate bundled at `app/src/main/res/raw/kelvin_gateway.pem` (plus its SPKI pin). To use your own self-signed gateway, replace that PEM (its SAN must contain the host you connect to) and rebuild.
+- The app connects with gateway protocol 4 and requests the `operator.questions` scope. After an upgrade that adds a scope, approve the device once on the gateway host: `openclaw devices approve <requestId>`.
+- For debugging over adb:
+  ```bash
+  adb shell am broadcast -a com.anthroid.DEBUG_CONFIG_GATEWAY -p com.anthroid \
+    --es host '<host>' --es port '<port>' --ez tls true --es token '<token>'
+  ```
 
 ## Architecture
 

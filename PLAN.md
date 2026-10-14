@@ -373,7 +373,7 @@ Enable Anthroid to route specific app traffic through proxy while other apps con
 
 ---
 
-### Phase 10: Screen Automation Tools (In Progress)
+### Phase 10: Screen Automation Tools (Complete)
 
 Enable Claude to interact with phone screen - read content, take screenshots, click, type, and capture audio.
 
@@ -395,10 +395,10 @@ Enable Claude to interact with phone screen - read content, take screenshots, cl
 
 **Pending:**
 - [x] Add permission management UI in Settings (overlay permission, Jan 2026)
-- [ ] Create ScreenCaptureManager.kt for screenshots
-- [ ] Implement take_screenshot tool
-- [ ] Implement audio capture (API 29+)
-- [ ] Test cross-app automation thoroughly
+- [x] Screen capture via MediaProjection (`capture/ScreenCaptureService.kt`) for screenshots
+- [x] Implement take_screenshot tool
+- [x] Implement audio capture (API 29+, `start_audio_capture` / `stop_audio_capture`)
+- [x] Test cross-app automation (see README demo) thoroughly
 
 #### Available Tools (via MCP Server on localhost:8765)
 
@@ -535,11 +535,11 @@ User opens Anthroid Settings
 - [x] Strip MCP prefix from tool names in UI
 - [x] Make chat messages selectable/copyable
 - [x] Persistent overlay until agent session ends
-- [ ] Create ScreenCaptureManager.kt
-- [ ] Implement take_screenshot tool
+- [x] Screen capture via MediaProjection (`capture/ScreenCaptureService.kt`)
+- [x] Implement take_screenshot tool
 - [x] Add permission management UI in Settings (overlay permission, Jan 2026)
-- [ ] Implement audio capture (API 29+)
-- [ ] Test cross-app automation
+- [x] Implement audio capture (API 29+, `start_audio_capture` / `stop_audio_capture`)
+- [x] Test cross-app automation (see README demo)
 
 ---
 
@@ -594,7 +594,7 @@ assets/openclaw-agent-local/
 | M7 | ✅ Done | Voice I/O (sherpa-onnx STT) |
 | M8 | ⏳ | Production-ready release |
 | M9 | ✅ Done | Per-app VPN proxy tool |
-| M10 | 🚧 In Progress | Screen automation tools |
+| M10 | ✅ Done | Screen automation tools (accessibility + overlay + MediaProjection) |
 | M11 | ✅ Done | Custom WebSearch/WebFetch |
 | M12 | ✅ Done | AskUserQuestion tool |
 | M13 | ⏸️ Deferred | TodoWrite UI (low priority for mobile) |
@@ -606,6 +606,10 @@ assets/openclaw-agent-local/
 | M18 | ✅ Done | Gateway connection (session sync, memory, notifications) |
 | M19 | ✅ Done | OpenClaw auto-setup (auto mode, --ignore-scripts, stubs) |
 | M20 | ✅ Done | Gateway message notifications (ForegroundService, per-session grouping) |
+| M21 | ✅ Done | Remote agent view (OpenClaw + SSH/tmux, native Termux attach) |
+| M22 | ✅ Done | Stabilization releases v1.0.2–v1.0.15 (Phase 19) |
+| M23 | ✅ Done | Gateway TLS pinning, protocol 4, per-agent notifications (v1.0.16) |
+| M24 | ✅ Done | Answer agent questions from the phone (v1.0.16) |
 
 ---
 
@@ -1135,7 +1139,7 @@ Fix three issues preventing OpenClaw from working out-of-the-box on fresh instal
 - `TermuxInstaller.java` — `.install_deps.sh` adds `--ignore-scripts` and `node create-stubs.mjs`
 - `OpenClawLocalClient.kt` — `ensureDependencies()` checks stub marker, adds `runCreateStubs()` helper
 
-#### Sub-phase 16.9: Remote Agent View (In Progress)
+#### Sub-phase 16.9: Remote Agent View ✅ COMPLETE
 
 View and interact with remote AI agent sessions directly from Anthroid.
 
@@ -1161,8 +1165,10 @@ View and interact with remote AI agent sessions directly from Anthroid.
 - `GatewayManager.kt` — `listSessions()`, `injectMessage()`, `onRemoteSessionEvent` callback
 
 **Dependencies:**
-- Gateway API: `session.list` RPC (needs server-side verification)
+- Gateway API: `sessions.list` RPC requires `operator.admin`; without it the list falls back to sessions observed in memory since app start (labels/agentId shown, lost on restart)
 - SSH keys configured in Termux `~/.ssh/`
+
+**Later additions (v1.0.5–v1.0.16):** see Phase 19/20 — tmux scroll/sync fixes, native Termux attach, preview no longer resizes the remote window.
 
 ---
 
@@ -1421,3 +1427,64 @@ Root cause: "webchat" (internal WebSocket) has no persistent delivery mechanism.
 - Truncated to 20 chars + `...` if longer
 - Tap chip to restore full original message into input field
 - Hidden on first open; only appears after first send
+
+---
+
+### Phase 19: Stabilization Releases (v1.0.2 – v1.0.15) ✅
+
+Mar 10 – Apr 3, 2026. Mostly remote-agent and notification hardening.
+
+- **OpenClaw local agent**: dependency install fix (v1.0.2); session ID persisted across process restarts; local conversation history + bulk delete (v1.0.13); fresh UUID on reset/launch
+- **Credentials**: single source of truth is the `claude` wrapper (`set_wrapper`); SharedPrefs no longer stores api_key/base_url/model; `set_wrapper` syncs the model into `config.json`, which `run.mjs` reads as lowest-priority fallback (v1.0.15)
+- **Notifications**: separate channels for streaming vs final messages (v1.0.4); dynamic channels per session/cron job name; only suppress notifications for the session currently on screen
+- **Pending delivery**: `session.drainAllPending` keyless drain for all sessions, de-duplicated against live WS events, labels pre-warmed for correct channel names; noise filter for `HEARTBEAT_OK` / `PONG`
+- **Remote tmux**: scroll-pause sync, 20k history, auto-resize to phone width with save/restore of the original window size (v1.0.8–v1.0.11), later replaced by a grouped tmux session (v1.0.14)
+- **Robustness**: thread-safe session maps and agent buffers, one-shot SharedFlows without replay (no re-trigger on rotation), injection/lifecycle/race fixes from code review
+- Automation bar shown only while screen capture is active
+
+---
+
+### Phase 20: Gateway Hardening & Phone-side Questions (v1.0.16) ✅
+
+Apr 14 – Sep 22, 2026 (released Oct 14, 2026).
+
+#### 20.1: Remote Agent View
+- `capture-pane` piped through `tail -150`; `TerminalCommandBridge` returns the last 150 lines when the command echo scrolled out of the 2000-row transcript (fixed tmux black screen)
+- Date prefix (`M/d HH:mm`) on non-today messages; server timestamps propagated from `chat.history`
+- SSH tmux sessions can be opened in a native Termux terminal (terminal icon, `ssh -t`); back closes that connection
+- tmux preview no longer resizes the remote window
+- Observed-session fallback list shows label / agentId instead of raw ids
+
+#### 20.2: Gateway Connection
+- Gateway protocol 3 → 4 (required by upgraded OpenClaw server)
+- WebSocket forced to HTTP/1.1 (h2 ALPN broke the upgrade through HTTPS proxies)
+- TLS: `GatewayTls.kt` — gateway OkHttpClient trusts only bundled `res/raw/kelvin_gateway.pem` + SPKI pin; `network_security_config` base-config is system-only again. SAN IP entry handled as both `String` and `byte[]`
+- Manual connections default to TLS; `/set-gateway` writes `gateway_use_tls=true` explicitly, clearing a stale `false`
+- Persistent notification uses an "error robot" icon for every non-connected state
+
+#### 20.3: Notifications
+- Gateway notifications deep-link to canonical sessions (no synthetic sessions from streaming notifications; hash-only ids ignored)
+- Cron labels/titles preserved
+- Notifications merged per agent (`agentScopeKey`)
+- Session-less `notification.push` gets its own channel ("Gateway Notices", id 50999) and opens a text dialog instead of an empty session view; always shown, even in foreground
+
+#### 20.4: Answer Agent Questions from the Phone
+- Request `operator.questions` scope; track pending questions (cap 16); `fetchQuestion` / `resolveQuestion` / `cancelQuestion`
+- Sticky question notifications in their own id range (51000+), not auto-cancelled; resolved-elsewhere clears them
+- Reuses `AskUserQuestionActivity`: secret questions masked (only length logged), free-text questions get a text field, multi-select answers matched against declared labels (commas safe); dismiss = cancel
+- Requires one-time device re-approval on the gateway (`openclaw devices approve <requestId>`)
+
+---
+
+## Known Issues & Next Steps
+
+| Item | Status | Notes |
+|------|--------|-------|
+| Persistent pending queue (gateway side) | ⏳ | In-memory store, 100/key, 24h TTL; lost on gateway restart. Plan: SQLite store, push on handshake, `sendText` reports "queued" not "delivered", `pending.available` event |
+| `sessions.list` without `operator.admin` | ⏳ | Remote list falls back to in-memory observed sessions |
+| Doze / battery optimization dropping WS | ❓ | Hypothesis, not yet tested |
+| Unit tests | ⚠️ | `:app:generateDebugUnitTestConfig` fails with "Unable to find manifest output" |
+| App-wide cleartext allowed | ⏳ | `ws://` fallback no longer used by the default gateway; tighten `network_security_config` |
+| Real-CA domain for gateway | ⏳ | Would replace the custom TrustManager + pin with platform trust |
+| Version bump discipline | ✅ | Every fix build between v1.0.15 and v1.0.16 shared versionCode 101500 — bump on each installable build |
+| Phase 8 production release | ⏳ | Still pending (Play Store, privacy policy, crash reporting) |
