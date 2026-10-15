@@ -169,6 +169,8 @@ Connect to an OpenClaw gateway server for distributed agent features:
 - **Answer agent questions from the phone** — agents that ask the user (OpenClaw ask-user, or any client of the gateway question protocol) post a sticky notification; tap to answer in a dialog supporting options, multi-select, free text and masked secret input. Dismissing cancels the question so the agent is released immediately
 - **Standalone notices** — session-less `notification.push` messages show their full text in a dialog (works offline, always shown even in foreground)
 - **Status icon** — the persistent notification switches to an "error robot" icon whenever the gateway is not connected
+- **Live Update status (Android 16)** — the gateway status is posted as a promoted ongoing notification, so ColorOS/OxygenOS 16 shows a status bar capsule with the stateful robot icon and "Online"/"Offline" (those ROMs otherwise draw the launcher icon for every notification). Requires the per-app Live Updates switch, see Gateway Setup
+- **Freeze recovery** — requests wait for the handshake, a liveness watchdog (gateway tick × 2.5) replaces sockets that died while the app was frozen, and pending agent questions are re-fetched after every reconnect
 - **TLS** — `wss://` by default for manual connections; the gateway client trusts only the bundled gateway certificate plus an SPKI pin (scoped to the gateway connection, not app-wide). WebSocket is forced to HTTP/1.1 so upgrades work through HTTPS proxies
 - **Gateway Settings UI** — configure host/port/token in Settings, or use `/set-gateway` command / QR code
 
@@ -265,6 +267,11 @@ Notes:
   adb shell am broadcast -a com.anthroid.DEBUG_CONFIG_GATEWAY -p com.anthroid \
     --es host '<host>' --es port '<port>' --ez tls true --es token '<token>'
   ```
+
+#### OPPO / OnePlus / realme (ColorOS, OxygenOS)
+- **Keep the connection alive in the background:** App info > **Battery usage** > **Allow background activity**. The default "Smart mode" lets the system freeze Anthroid (and cut its network) even while the gateway foreground service runs, so the phone goes offline: messages arrive late and live agent questions are missed.
+- **Status bar capsule (Android 16):** App info > Notifications > enable **Show Live Updates on Live Alerts**. It is off by default; without it the status notification is a plain ongoing notification.
+- The launcher badge counts ongoing notifications regardless of channel badge settings, so a dot stays on the icon while the gateway is connected. Turning off "App icon badges" for Anthroid removes it, together with the badges of real messages.
 
 ## Architecture
 

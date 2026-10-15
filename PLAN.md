@@ -610,6 +610,7 @@ assets/openclaw-agent-local/
 | M22 | ✅ Done | Stabilization releases v1.0.2–v1.0.15 (Phase 19) |
 | M23 | ✅ Done | Gateway TLS pinning, protocol 4, per-agent notifications (v1.0.16) |
 | M24 | ✅ Done | Answer agent questions from the phone (v1.0.16) |
+| M25 | ✅ Done | Live Update status capsule + background-freeze recovery (v1.0.17) |
 
 ---
 
@@ -1476,13 +1477,29 @@ Apr 14 – Sep 22, 2026 (released Oct 14, 2026).
 
 ---
 
+### Phase 21: Live Updates & Freeze Recovery (v1.0.17) ✅
+
+Oct 15, 2026. Driven by the OnePlus 15T (ColorOS 16.1, Android 16).
+
+- **Live Update status**: `POST_PROMOTED_NOTIFICATIONS`, `android.requestPromotedOngoing` + `android.shortCriticalText` on the gateway status notification (literal keys, compileSdk 33). Android 16 has two promotion rule sets (request extra on `uiRichOngoing` builds, `EXTRA_COLORIZED` on 16.0_r1); pref `gateway_promoted_mode` + `DEBUG_GATEWAY_PROMOTED` switch them, logcat `promoted:` shows the system verdict
+- **Handshake gate**: `request()` / `isConnected` require a completed `connect`; fixes `invalid handshake: first request must be connect` from drains racing a reconnect
+- **Server close**: `onClosing` answers the close so the loop reconnects
+- **Liveness watchdog**: drop the socket after `policy.tickIntervalMs` × 2.5 without frames (elapsedRealtime, so the first check after a thaw replaces a dead socket)
+- **Question re-sync**: `question.list` after each connect; notify unseen pending questions, clear ended ones
+- Gateway client version string now follows the app version (was stuck at 1.0.15)
+
+---
+
 ## Known Issues & Next Steps
 
 | Item | Status | Notes |
 |------|--------|-------|
 | Persistent pending queue (gateway side) | ⏳ | In-memory store, 100/key, 24h TTL; lost on gateway restart. Plan: SQLite store, push on handshake, `sendText` reports "queued" not "delivered", `pending.available` event |
 | `sessions.list` without `operator.admin` | ⏳ | Remote list falls back to in-memory observed sessions |
-| Doze / battery optimization dropping WS | ❓ | Hypothesis, not yet tested |
+| OEM background freeze dropping WS | ✅ Diagnosed (v1.0.17) | ColorOS Hans freezes the uid despite FGS + Doze allowlist and cuts its network. Fix: "Allow background activity"; app recovers via handshake gate + liveness watchdog + question re-sync |
+| In-app prompt for "Allow background activity" | 🚧 | Evidence-based (watchdog stall that cost the connection), ColorOS only; built, awaiting device test |
+| Launcher badge from ongoing notifications | ⚠️ Won't fix in app | ColorOS launcher only honours `canShowBadge` for bubbles; per-app "App icon badges" is the only switch |
+| CLI `message send` to Anthroid lost | ⏳ (openclaw) | Plugin `deliveryMode: "direct"` enqueues in the CLI process; fix is `"gateway"` + gateway restart |
 | Unit tests | ⚠️ | `:app:generateDebugUnitTestConfig` fails with "Unable to find manifest output" |
 | App-wide cleartext allowed | ⏳ | `ws://` fallback no longer used by the default gateway; tighten `network_security_config` |
 | Real-CA domain for gateway | ⏳ | Would replace the custom TrustManager + pin with platform trust |
