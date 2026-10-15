@@ -45,6 +45,13 @@ class GatewayManager(
     private val DEFAULT_SCOPES =
       listOf("operator.read", "operator.write", "operator.questions")
 
+    /**
+     * Latest background stall (process frozen while connected, connection lost) in ms,
+     * or null. Process-wide so the UI can prompt for the OEM background-activity
+     * exemption the next time it is shown; the UI resets it after handling.
+     */
+    val backgroundStallMs = kotlinx.coroutines.flow.MutableStateFlow<Long?>(null)
+
     fun canonicalSessionKey(sessionKey: String): String {
       val runMarker = ":run:"
       val runIndex = sessionKey.indexOf(runMarker)
@@ -140,6 +147,10 @@ class GatewayManager(
       onEvent = { event, payloadJson ->
         Log.d(TAG, "Gateway event: $event")
         handleGatewayEvent(event, payloadJson)
+      },
+      onBackgroundStall = { gapMs ->
+        Log.w(TAG, "Background stall: process did not run for ${gapMs / 1000}s, connection lost")
+        backgroundStallMs.value = gapMs
       },
     )
 

@@ -18,6 +18,7 @@ import android.view.MenuItem
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.flow.collect
 import com.anthroid.R
 import com.anthroid.app.TermuxActivity
 import com.anthroid.accessibility.ScreenAutomationOverlay
@@ -44,6 +45,7 @@ class MainPagerActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "MainPagerActivity"
+        private const val PREF_BG_ACTIVITY_PROMPT_OFF = "bg_activity_prompt_off"
     }
 
     private var termuxService: TermuxService? = null
@@ -207,6 +209,17 @@ class MainPagerActivity : AppCompatActivity() {
 
         // Handle notification deep-link
         handleNotificationDeepLink(intent)
+
+        // Offer the OEM background-activity exemption once the gateway connection has
+        // been lost to a background freeze (see GatewaySession liveness watchdog).
+        lifecycleScope.launchWhenResumed {
+            GatewayManager.backgroundStallMs.collect { gapMs ->
+                if (gapMs != null) {
+                    GatewayManager.backgroundStallMs.value = null
+                    maybePromptBackgroundActivity(gapMs)
+                }
+            }
+        }
     }
 
     override fun onStart() {
@@ -259,6 +272,52 @@ class MainPagerActivity : AppCompatActivity() {
             GatewayForegroundService.instance?.notificationHelper?.clearSession(sessionKey)
             DebugReceiver.emitOpenRemoteSession(canonicalSessionKey)
         }
+    }
+
+    /**
+     * ColorOS / OxygenOS / realme UI (Hans) freeze background apps even when they run a
+     * foreground service, which cuts the gateway connection. The exemption is per app:
+     * App info > Battery usage > "Allow background activity". There is no API to read
+     * it, so prompt after an observed stall, at most until the user opts out.
+     */
+    private fun maybePromptBackgroundActivity(gapMs: Long) {
+        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+        if (prefs.getBoolean(PREF_BG_ACTIVITY_PROMPT_OFF, false)) return
+        if (!hasOplusBatteryManager()) {
+            Log.i(TAG, "Background stall of ${gapMs / 1000}s; no known OEM exemption page to offer")
+            return
+        }
+        val gap = if (gapMs < 120_000) "${gapMs / 1000} s" else "${gapMs / 60_000} min"
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Gateway was paused in the background")
+            .setMessage(
+                "The system stopped Anthroid for $gap while it was in the background, " +
+                    "so the gateway connection dropped and agent questions or messages " +
+                    "could be missed.\n\nTo keep it connected, open App info, tap " +
+                    "\"Battery usage\" and choose \"Allow background activity\"."
+            )
+            .setPositiveButton("Open App info") { _, _ ->
+                try {
+                    startActivity(
+                        Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                            .setData(Uri.fromParts("package", packageName, null))
+                    )
+                } catch (e: Exception) {
+                    Log.w(TAG, "Cannot open App info: ${e.message}")
+                }
+            }
+            .setNeutralButton("Don't ask again") { _, _ ->
+                prefs.edit().putBoolean(PREF_BG_ACTIVITY_PROMPT_OFF, true).apply()
+            }
+            .setNegativeButton("Later", null)
+            .show()
+    }
+
+    private fun hasOplusBatteryManager(): Boolean = try {
+        packageManager.getPackageInfo("com.oplus.battery", 0)
+        true
+    } catch (_: PackageManager.NameNotFoundException) {
+        false
     }
 
     /**

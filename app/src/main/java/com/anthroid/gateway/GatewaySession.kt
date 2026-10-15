@@ -60,6 +60,8 @@ class GatewaySession(
   private val onConnected: (serverName: String?, remoteAddress: String?, mainSessionKey: String?) -> Unit,
   private val onDisconnected: (message: String) -> Unit,
   private val onEvent: (event: String, payloadJson: String?) -> Unit,
+  /** The process stopped running for gapMs while connected and the socket died meanwhile. */
+  private val onBackgroundStall: (gapMs: Long) -> Unit = {},
 ) {
   private companion object {
     private const val TAG = "AnthroidGateway"
@@ -71,6 +73,9 @@ class GatewaySession(
     private const val DEFAULT_TICK_INTERVAL_MS = 30_000L
     private const val TICK_MISS_FACTOR = 2.5
     private const val LIVENESS_CHECK_MS = 15_000L
+    // A watchdog check that runs this late means the process was not running (frozen by
+    // the OEM, e.g. ColorOS Hans, or the device suspended) rather than just slow.
+    private const val STALL_GAP_MS = 45_000L
   }
 
   private val writeLock = Mutex()
@@ -524,19 +529,23 @@ class GatewaySession(
   private suspend fun awaitCloseOrSilence(conn: Connection) {
     var lastCheckAt = SystemClock.elapsedRealtime()
     while (true) {
-      if (withTimeoutOrNull(LIVENESS_CHECK_MS) { conn.awaitClose() } != null) return
+      val closed = withTimeoutOrNull(LIVENESS_CHECK_MS) { conn.awaitClose() } != null
       val now = SystemClock.elapsedRealtime()
       val gapMs = now - lastCheckAt
       lastCheckAt = now
-      if (gapMs > LIVENESS_CHECK_MS * 3) {
-        Log.i(TAG, "liveness: resumed after ${gapMs / 1000}s gap (process frozen or suspended)")
-      }
       val silentMs = conn.silentMs()
-      if (silentMs > conn.maxSilenceMs()) {
+      val dead = !closed && silentMs > conn.maxSilenceMs()
+      if (dead) {
         Log.w(TAG, "liveness: no frame for ${silentMs / 1000}s, dropping socket")
         conn.abort("Gateway silent for ${silentMs / 1000}s")
-        return
       }
+      if (gapMs > STALL_GAP_MS) {
+        Log.i(TAG, "liveness: resumed after ${gapMs / 1000}s gap (process frozen or suspended)")
+        // Only a stall that cost the connection is worth reporting: the socket died while
+        // the process could not run, so live events (e.g. questions) were missed.
+        if (closed || dead) onBackgroundStall(gapMs)
+      }
+      if (closed || dead) return
     }
   }
 
