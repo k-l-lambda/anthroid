@@ -25,6 +25,10 @@ import java.io.File
  *   # Read conversation (writes to /sdcard/anthroid_conversation.txt):
  *   adb shell am broadcast -a com.anthroid.DEBUG_READ_CONVERSATION -p com.anthroid
  *   adb shell cat /sdcard/anthroid_conversation.txt
+ *
+ *   # Gateway status notification Live Update mode (request | colorized | off):
+ *   adb shell am broadcast -a com.anthroid.DEBUG_GATEWAY_PROMOTED --es mode colorized -p com.anthroid
+ *   adb logcat -s GatewayFgService | grep promoted
  */
 class DebugReceiver : BroadcastReceiver() {
 
@@ -36,6 +40,8 @@ class DebugReceiver : BroadcastReceiver() {
         const val ACTION_READ_CONVERSATION = "com.anthroid.DEBUG_READ_CONVERSATION"
         const val ACTION_TOOL_CALL = "com.anthroid.TOOL_CALL"
         const val ACTION_OPEN_REMOTE_SESSION = "com.anthroid.DEBUG_OPEN_REMOTE_SESSION"
+        const val ACTION_GATEWAY_PROMOTED = "com.anthroid.DEBUG_GATEWAY_PROMOTED"
+        const val EXTRA_PROMOTED_MODE = "mode"
         const val EXTRA_SESSION_KEY = "session_key"
         const val EXTRA_MESSAGE = "message"
         const val EXTRA_TOOL = "tool"
@@ -142,7 +148,26 @@ class DebugReceiver : BroadcastReceiver() {
                     emitOpenRemoteSession(sessionKey)
                 }
             }
+            ACTION_GATEWAY_PROMOTED -> handleGatewayPromoted(context, intent)
         }
+    }
+
+    private fun handleGatewayPromoted(context: Context, intent: Intent) {
+        val mode = intent.getStringExtra(EXTRA_PROMOTED_MODE)
+        val valid = setOf(
+            com.anthroid.gateway.GatewayForegroundService.PROMOTED_MODE_REQUEST,
+            com.anthroid.gateway.GatewayForegroundService.PROMOTED_MODE_COLORIZED,
+            com.anthroid.gateway.GatewayForegroundService.PROMOTED_MODE_OFF,
+        )
+        if (mode !in valid) {
+            Log.w(TAG, "DEBUG_GATEWAY_PROMOTED: mode must be one of $valid, got $mode")
+            return
+        }
+        androidx.preference.PreferenceManager.getDefaultSharedPreferences(context).edit()
+            .putString(com.anthroid.gateway.GatewayForegroundService.PREF_PROMOTED_MODE, mode)
+            .apply()
+        Log.i(TAG, "Gateway promoted mode set to $mode")
+        com.anthroid.gateway.GatewayForegroundService.instance?.refreshServiceNotification()
     }
 
     private fun handleSendMessage(intent: Intent) {

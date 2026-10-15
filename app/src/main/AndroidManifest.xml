@@ -43,6 +43,8 @@
 
     <!-- Claude Agent Android Tools permissions -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Android 16 Live Updates (promoted ongoing gateway status); normal permission -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.READ_CALENDAR" />
@@ -307,6 +309,7 @@
                 <action android:name="com.anthroid.DEBUG_SEND_MESSAGE" />
                 <action android:name="com.anthroid.DEBUG_CONFIG_API" />
                 <action android:name="com.anthroid.DEBUG_CONFIG_GATEWAY" />
+                <action android:name="com.anthroid.DEBUG_GATEWAY_PROMOTED" />
                 <action android:name="com.anthroid.DEBUG_READ_CONVERSATION" />
                 <action android:name="com.anthroid.TOOL_CALL" />
                 <action android:name="com.anthroid.DEBUG_OPEN_REMOTE_SESSION" />

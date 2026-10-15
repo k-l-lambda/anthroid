@@ -54,6 +54,25 @@ class GatewayForegroundService : Service() {
 
         fun isRunning(): Boolean = instance != null
 
+        /**
+         * Android 16 Live Update (promoted ongoing) mode for the status notification, stored in
+         * default prefs. Android 16 has two promotion rule sets (AOSP Notification.java,
+         * hasPromotableCharacteristics):
+         *  - "request":   uiRichOngoing builds: EXTRA_REQUEST_PROMOTED_ONGOING, must NOT be colorized
+         *  - "colorized": original 16.0 builds: EXTRA_COLORIZED (no request extra)
+         *  - "off":       plain ongoing notification
+         * Both also need POST_PROMOTED_NOTIFICATIONS, ongoing, a title and no custom views.
+         */
+        const val PREF_PROMOTED_MODE = "gateway_promoted_mode"
+        const val PROMOTED_MODE_REQUEST = "request"
+        const val PROMOTED_MODE_COLORIZED = "colorized"
+        const val PROMOTED_MODE_OFF = "off"
+
+        // Notification extras / flag from API 36 (compileSdk is 33, so use the literal values)
+        private const val EXTRA_REQUEST_PROMOTED_ONGOING = "android.requestPromotedOngoing"
+        private const val EXTRA_SHORT_CRITICAL_TEXT = "android.shortCriticalText"
+        private const val FLAG_PROMOTED_ONGOING = 0x00040000
+
         /** Start with explicit connection params. */
         fun start(context: Context, host: String, port: Int, token: String?, useTls: Boolean = true) {
             val intent = Intent(context, GatewayForegroundService::class.java).apply {
@@ -365,7 +384,20 @@ class GatewayForegroundService : Service() {
         }
     }
 
+    @Volatile
+    private var lastStatusText = "Connecting..."
+
+    /** Re-post the status notification after the promoted mode pref changes (debug broadcast). */
+    fun refreshServiceNotification() {
+        updateServiceNotification(lastStatusText)
+    }
+
+    private fun promotedMode(): String =
+        androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+            .getString(PREF_PROMOTED_MODE, PROMOTED_MODE_REQUEST) ?: PROMOTED_MODE_REQUEST
+
     private fun createServiceNotification(statusText: String): Notification {
+        lastStatusText = statusText
         val intent = Intent(this, MainPagerActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
             this, 0, intent,
@@ -374,20 +406,66 @@ class GatewayForegroundService : Service() {
         val isConnected = statusText.startsWith("Connected")
         val iconRes = if (isConnected) R.drawable.ic_service_notification
                       else R.drawable.ic_gateway_error_notification
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Anthroid Gateway")
             .setContentText(statusText)
             .setSmallIcon(iconRes)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .setContentIntent(pendingIntent)
-            .build()
+        when (promotedMode()) {
+            PROMOTED_MODE_REQUEST -> builder.addExtras(android.os.Bundle().apply {
+                putBoolean(EXTRA_REQUEST_PROMOTED_ONGOING, true)
+            })
+            PROMOTED_MODE_COLORIZED -> builder
+                .setColorized(true)
+                .setColor(if (isConnected) 0xFF2E7D32.toInt() else 0xFFC62828.toInt())
+        }
+        if (promotedMode() != PROMOTED_MODE_OFF) {
+            // Status bar chip text of a promoted notification
+            builder.addExtras(android.os.Bundle().apply {
+                putString(EXTRA_SHORT_CRITICAL_TEXT, if (isConnected) "Online" else "Offline")
+            })
+        }
+        return builder.build()
+    }
+
+    /**
+     * Log whether the system promoted the posted status notification. Reads the posted copy back
+     * since FLAG_PROMOTED_ONGOING is set by the system, not the app.
+     *   adb logcat -s GatewayFgService | grep promoted
+     */
+    private fun logPromotionState() {
+        if (Build.VERSION.SDK_INT < 36) return
+        try {
+            val nm = getSystemService(NotificationManager::class.java)
+            val posted = nm.activeNotifications.firstOrNull { it.id == NOTIFICATION_ID }?.notification
+            if (posted == null) {
+                Log.i(TAG, "promoted: status notification not active")
+                return
+            }
+            val promotable = runCatching {
+                Notification::class.java.getMethod("hasPromotableCharacteristics").invoke(posted)
+            }.getOrElse { "n/a" }
+            val canPost = runCatching {
+                NotificationManager::class.java.getMethod("canPostPromotedNotifications").invoke(nm)
+            }.getOrElse { "n/a" }
+            Log.i(TAG, "promoted: mode=${promotedMode()} flagPromoted=" +
+                "${posted.flags and FLAG_PROMOTED_ONGOING != 0} promotable=$promotable " +
+                "canPostPromoted=$canPost flags=0x${Integer.toHexString(posted.flags)}")
+        } catch (e: Exception) {
+            Log.w(TAG, "promoted: check failed: ${e.message}")
+        }
     }
 
     private fun updateServiceNotification(statusText: String) {
         try {
             val manager = getSystemService(NotificationManager::class.java)
             manager.notify(NOTIFICATION_ID, createServiceNotification(statusText))
+            serviceScope.launch {
+                delay(500)
+                logPromotionState()
+            }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to update service notification: ${e.message}")
         }
