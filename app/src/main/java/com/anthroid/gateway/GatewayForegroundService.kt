@@ -353,6 +353,7 @@ class GatewayForegroundService : Service() {
                 if (connected) {
                     Log.d(TAG, "Gateway connected — draining pending messages immediately")
                     drainAndDeliverPending(manager)
+                    manager.syncPendingQuestions()
                 }
             }
         }

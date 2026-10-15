@@ -1,6 +1,7 @@
 package com.anthroid.gateway
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import java.util.Locale
 import java.util.UUID
@@ -20,6 +21,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Request
@@ -63,6 +65,12 @@ class GatewaySession(
     private const val TAG = "AnthroidGateway"
     private const val CONNECT_RPC_TIMEOUT_MS = 12_000L
     private const val GATEWAY_PROTOCOL_VERSION = 4
+    // Liveness: the gateway sends a `tick` event every policy.tickIntervalMs (30 s by
+    // default). A socket that stays silent for TICK_MISS_FACTOR intervals is treated as
+    // dead, e.g. after ColorOS froze the app and its network was cut meanwhile.
+    private const val DEFAULT_TICK_INTERVAL_MS = 30_000L
+    private const val TICK_MISS_FACTOR = 2.5
+    private const val LIVENESS_CHECK_MS = 15_000L
   }
 
   private val writeLock = Mutex()
@@ -97,7 +105,9 @@ class GatewaySession(
   private var job: Job? = null
   @Volatile private var currentConnection: Connection? = null
 
-  val isConnected: Boolean get() = currentConnection != null && desired != null
+  // Ready only after the `connect` handshake succeeded: the gateway rejects any other
+  // request sent first ("invalid handshake: first request must be connect").
+  val isConnected: Boolean get() = currentConnection?.isReady == true && desired != null
   fun currentMainSessionKey(): String? = mainSessionKey
 
   fun connect(
@@ -132,7 +142,7 @@ class GatewaySession(
   }
 
   suspend fun request(method: String, paramsJson: String?, timeoutMs: Long = 15_000): String {
-    val conn = currentConnection ?: throw IllegalStateException("not connected")
+    val conn = readyConnection()
     val params = if (paramsJson.isNullOrBlank()) null else JSONObject(paramsJson)
     val res = conn.request(method, params, timeoutMs)
     if (res.ok) return res.payloadJson ?: ""
@@ -141,7 +151,7 @@ class GatewaySession(
   }
 
   suspend fun sendNodeEvent(event: String, payloadJson: String?): Boolean {
-    val conn = currentConnection ?: return false
+    val conn = currentConnection?.takeIf { it.isReady } ?: return false
     val params = JSONObject().apply {
       put("event", event)
       if (payloadJson != null) {
@@ -157,6 +167,12 @@ class GatewaySession(
       Log.w(TAG, "node.event failed: ${err.message ?: err::class.java.simpleName}")
       false
     }
+  }
+
+  private fun readyConnection(): Connection {
+    val conn = currentConnection ?: throw IllegalStateException("not connected")
+    if (!conn.isReady) throw IllegalStateException("not connected (handshake in progress)")
+    return conn
   }
 
   private data class RpcResponse(
@@ -180,8 +196,15 @@ class GatewaySession(
     private val isClosed = AtomicBoolean(false)
     private val connectNonceDeferred = CompletableDeferred<String>()
     private var socket: WebSocket? = null
+    @Volatile private var handshakeComplete = false
+    @Volatile private var lastInboundAtMs = SystemClock.elapsedRealtime()
+    @Volatile private var tickIntervalMs = DEFAULT_TICK_INTERVAL_MS
 
     val remoteAddress: String = "$host:$port"
+    val isReady: Boolean get() = handshakeComplete && !isClosed.get()
+
+    fun silentMs(): Long = SystemClock.elapsedRealtime() - lastInboundAtMs
+    fun maxSilenceMs(): Long = (tickIntervalMs * TICK_MISS_FACTOR).toLong()
 
     suspend fun connect() {
       val scheme = if (useTls) "wss" else "ws"
@@ -223,7 +246,21 @@ class GatewaySession(
       if (isClosed.compareAndSet(false, true)) {
         socket?.close(1000, "bye")
         socket = null
+        failPending()
         closedDeferred.complete(Unit)
+      }
+    }
+
+    /** Drop a socket that stopped delivering frames; no close handshake with a dead peer. */
+    fun abort(reason: String) {
+      if (isClosed.compareAndSet(false, true)) {
+        socket?.cancel()
+        socket = null
+        failPending()
+        closedDeferred.complete(Unit)
+        if (disconnectNotified.compareAndSet(false, true)) {
+          onDisconnected(reason)
+        }
       }
     }
 
@@ -242,6 +279,7 @@ class GatewaySession(
 
       override fun onMessage(webSocket: WebSocket, text: String) {
         if (isClosed.get()) return  // drop messages arriving after closeQuietly()
+        lastInboundAtMs = SystemClock.elapsedRealtime()
         scope.launch { handleMessage(text) }
       }
 
@@ -256,6 +294,14 @@ class GatewaySession(
             onDisconnected("Gateway error: ${t.message ?: t::class.java.simpleName}")
           }
         }
+      }
+
+      // The gateway closed first (e.g. after rejecting a request). OkHttp only reports
+      // onClosed once we answer with our own close frame, so finish the close here;
+      // otherwise the session would sit half-closed until a ping failure.
+      override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+        webSocket.close(1000, null)
+        onClosed(webSocket, code, reason)
       }
 
       override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
@@ -300,6 +346,12 @@ class GatewaySession(
       val sessionDefaults = obj.optJSONObject("snapshot")
         ?.optJSONObject("sessionDefaults")
       mainSessionKey = sessionDefaults?.optString("mainSessionKey", "")?.takeIf { it.isNotEmpty() }
+      obj.optJSONObject("policy")?.optLong("tickIntervalMs", 0L)?.takeIf { it > 0 }?.let {
+        tickIntervalMs = it
+      }
+      lastInboundAtMs = SystemClock.elapsedRealtime()
+      // Mark ready before onConnected: its listeners immediately issue requests (drain).
+      handshakeComplete = true
       onConnected(serverName, remoteAddress, mainSessionKey)
     }
 
@@ -464,12 +516,36 @@ class GatewaySession(
     }
   }
 
+  /**
+   * Wait for the socket to close, dropping it if no frame arrived for maxSilenceMs.
+   * Timers use the monotonic clock, so after the process is thawed the next check runs
+   * at once and a socket that died while frozen is replaced instead of shown as live.
+   */
+  private suspend fun awaitCloseOrSilence(conn: Connection) {
+    var lastCheckAt = SystemClock.elapsedRealtime()
+    while (true) {
+      if (withTimeoutOrNull(LIVENESS_CHECK_MS) { conn.awaitClose() } != null) return
+      val now = SystemClock.elapsedRealtime()
+      val gapMs = now - lastCheckAt
+      lastCheckAt = now
+      if (gapMs > LIVENESS_CHECK_MS * 3) {
+        Log.i(TAG, "liveness: resumed after ${gapMs / 1000}s gap (process frozen or suspended)")
+      }
+      val silentMs = conn.silentMs()
+      if (silentMs > conn.maxSilenceMs()) {
+        Log.w(TAG, "liveness: no frame for ${silentMs / 1000}s, dropping socket")
+        conn.abort("Gateway silent for ${silentMs / 1000}s")
+        return
+      }
+    }
+  }
+
   private suspend fun connectOnce(target: DesiredConnection) = withContext(Dispatchers.IO) {
     val conn = Connection(target.host, target.port, target.token, target.options, target.useTls)
     currentConnection = conn
     try {
       conn.connect()
-      conn.awaitClose()
+      awaitCloseOrSilence(conn)
     } finally {
       currentConnection = null
       mainSessionKey = null

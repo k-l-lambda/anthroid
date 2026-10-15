@@ -378,6 +378,44 @@ class GatewayManager(
   }
 
   /**
+   * Reconcile pending questions with the gateway after a (re)connect.
+   * `question.requested` is a live broadcast, so a question asked while this client
+   * was offline (e.g. ColorOS froze the app) would never be shown. Notify the ones
+   * not seen yet, and clear the ones that ended while we were away.
+   */
+  suspend fun syncPendingQuestions() {
+    val gs = session ?: return
+    val live = try {
+      val response = gs.request("question.list", "{}", timeoutMs = 10_000)
+      val arr = JSONObject(response).optJSONArray("questions") ?: JSONArray()
+      (0 until arr.length()).mapNotNull { i ->
+        arr.optJSONObject(i)
+          ?.takeIf { it.optString("status", "pending") == "pending" }
+          ?.let { parseQuestionRecord(it) }
+      }
+    } catch (err: Throwable) {
+      Log.w(TAG, "question.list failed: ${err.message}")
+      return
+    }
+    val liveIds = live.map { it.questionId }.toSet()
+    val known = synchronized(this) { pendingQuestions.keys.toSet() }
+    val added = live.filter { it.questionId !in known && !it.isExpired() }
+    val gone = known - liveIds
+    gone.forEach { id ->
+      forgetQuestion(id)
+      onQuestionResolved?.invoke(id, "gone")
+    }
+    added.forEach { question ->
+      question.sessionKey?.let { trackObservedSession(it) }
+      rememberQuestion(question)
+      onQuestionRequested?.invoke(question)
+    }
+    if (added.isNotEmpty() || gone.isNotEmpty()) {
+      Log.i(TAG, "question.list sync: ${added.size} new, ${gone.size} gone, ${live.size} pending")
+    }
+  }
+
+  /**
    * Submit answers for one question. `answers` maps each questionId to its selected
    * values; the gateway's schema is Record<questionId, string[]>.
    * Returns true when the gateway accepted this client as the resolver.
@@ -471,6 +509,9 @@ class GatewayManager(
         if (content.isNotEmpty() && canonicalKey.isNotEmpty()) {
           if (title != null) setSessionLabel(canonicalKey, title)
           result.add(DrainedMessage(canonicalKey, content, messageId, title))
+        } else {
+          // The gateway already deleted it (drain is destructive), so say so.
+          Log.w(TAG, "DrainAll: dropped message $messageId (empty ${if (content.isEmpty()) "content" else "sessionKey"})")
         }
       }
       if (result.isNotEmpty() || skipped > 0) Log.i(TAG, "DrainAll: ${result.size} messages (skipped $skipped duplicates)")
