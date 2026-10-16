@@ -2,7 +2,6 @@ package com.anthroid.claude.ui
 
 import android.util.Log
 import android.content.Context
-import android.graphics.Color
 import android.text.method.LinkMovementMethod
 import android.view.LayoutInflater
 import android.view.View
@@ -14,6 +13,7 @@ import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import androidx.core.content.ContextCompat
 import com.anthroid.R
 import com.anthroid.claude.Message
 import com.anthroid.claude.MessageImage
@@ -197,7 +197,7 @@ class MessageAdapter(
                 contentText.visibility = View.VISIBLE
                 streamingIndicator?.visibility = View.VISIBLE
                 interruptedIndicator?.visibility = View.GONE
-                if (isAssistant) contentText.setTextColor(Color.parseColor("#333333"))
+                if (isAssistant) contentText.setTextColor(ContextCompat.getColor(itemView.context, R.color.assistant_message_text))
             } else {
                 // Use Markwon for assistant messages, plain text for user messages
                 if (isAssistant && !message.isError && message.content.isNotEmpty()) {
@@ -209,11 +209,11 @@ class MessageAdapter(
                 interruptedIndicator?.visibility = if (message.isInterrupted) View.VISIBLE else View.GONE
                 // Show error messages in red
                 if (message.isError) {
-                    contentText.setTextColor(Color.parseColor("#D32F2F"))
+                    contentText.setTextColor(ContextCompat.getColor(itemView.context, R.color.text_error))
                 } else if (message.isInterrupted) {
-                    contentText.setTextColor(Color.parseColor("#757575"))
+                    contentText.setTextColor(ContextCompat.getColor(itemView.context, R.color.text_secondary))
                 } else {
-                    if (isAssistant) contentText.setTextColor(Color.parseColor("#333333"))
+                    if (isAssistant) contentText.setTextColor(ContextCompat.getColor(itemView.context, R.color.assistant_message_text))
                 }
             }
             // Hide content text if empty and has images
@@ -243,7 +243,7 @@ class MessageAdapter(
                             marginEnd = imageMargin
                         }
                         scaleType = ImageView.ScaleType.CENTER_CROP
-                        setBackgroundColor(Color.parseColor("#E0E0E0"))
+                        setBackgroundColor(ContextCompat.getColor(context, R.color.image_placeholder))
                         try {
                             setImageURI(messageImage.uri)
                         } catch (e: Exception) {

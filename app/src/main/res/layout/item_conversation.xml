@@ -45,7 +45,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:textSize="12sp"
-                android:textColor="#666666"
+                android:textColor="@color/text_secondary"
                 android:maxLines="2"
                 android:ellipsize="end"
                 android:paddingTop="4dp" />
@@ -62,14 +62,14 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:textSize="11sp"
-                    android:textColor="#999999" />
+                    android:textColor="@color/text_tertiary" />
 
                 <TextView
                     android:id="@+id/conversation_stats"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:textSize="11sp"
-                    android:textColor="#999999" />
+                    android:textColor="@color/text_tertiary" />
             </LinearLayout>
         </LinearLayout>
 

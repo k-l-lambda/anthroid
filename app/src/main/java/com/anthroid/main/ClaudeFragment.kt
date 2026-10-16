@@ -1336,7 +1336,7 @@ class ClaudeFragment : Fragment() {
                     addView(TextView(context).apply {
                         id = android.R.id.text1
                         textSize = 14f
-                        setTextColor(ContextCompat.getColor(context, android.R.color.black))
+                        setTextColor(ContextCompat.getColor(context, R.color.text_primary))
                         layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                     })
                 }
@@ -1356,7 +1356,7 @@ class ClaudeFragment : Fragment() {
 
                 if (session.source == RemoteSessionInfo.Source.SSH_TMUX && hostname != null) {
                     icon.setImageResource(R.drawable.ic_termux_notification)
-                    icon.setColorFilter(ContextCompat.getColor(context, android.R.color.black))
+                    icon.setColorFilter(ContextCompat.getColor(context, R.color.text_primary))
                     icon.visibility = View.VISIBLE
                     icon.isClickable = true
                     icon.setOnClickListener {

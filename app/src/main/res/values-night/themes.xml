@@ -37,4 +37,30 @@
         <item name="extraKeysButtonActiveBackgroundColor">@color/grey_500</item>
     </style>
 
+    <!-- App DayNight DarkActionBar theme, night: the day header is a blue bar with white
+         content; invert it to a dark bar with light content. The library theme keeps the
+         blue status bar (colorPrimaryVariant) in night mode, which clashed with the dark
+         action bar. -->
+    <style name="Theme.TermuxApp.DayNight.DarkActionBar" parent="Theme.BaseActivity.DayNight.DarkActionBar">
+        <item name="android:statusBarColor">@color/header_bg</item>
+        <item name="actionBarStyle">@style/Widget.Anthroid.ActionBar.Night</item>
+        <item name="actionBarTheme">@style/ThemeOverlay.Anthroid.ActionBar.Night</item>
+    </style>
+
+    <style name="Widget.Anthroid.ActionBar.Night" parent="Widget.MaterialComponents.ActionBar.Surface">
+        <item name="background">@color/header_bg</item>
+        <item name="titleTextStyle">@style/TextAppearance.Anthroid.ActionBar.Title.Night</item>
+        <item name="elevation">0dp</item>
+    </style>
+
+    <style name="TextAppearance.Anthroid.ActionBar.Title.Night" parent="TextAppearance.AppCompat.Widget.ActionBar.Title">
+        <item name="android:textColor">@color/header_content</item>
+    </style>
+
+    <!-- Overflow / up / action-mode icons. Menu icons are tinted via app:iconTint. -->
+    <style name="ThemeOverlay.Anthroid.ActionBar.Night" parent="ThemeOverlay.MaterialComponents.Dark.ActionBar">
+        <item name="colorControlNormal">@color/header_content</item>
+        <item name="android:textColorPrimary">@color/header_content</item>
+    </style>
+
 </resources>

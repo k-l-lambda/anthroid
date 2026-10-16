@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dark-mode overrides for the chat UI colors in values/colors.xml.
+     Only colors that sit on a light surface in day mode need an entry here. -->
+<resources>
+    <color name="colorPrimary">#818CF8</color>
+
+    <color name="background_color">#121212</color>
+    <color name="background_dark">#262626</color>
+
+    <!-- Message colors -->
+    <color name="user_message_bg">#1E4F8F</color>
+    <color name="user_message_text">#F3F4F6</color>
+    <color name="assistant_message_bg">#262626</color>
+    <color name="assistant_message_text">#E5E7EB</color>
+
+    <!-- Text colors -->
+    <color name="text_primary">#E5E7EB</color>
+    <color name="text_secondary">#9CA3AF</color>
+    <color name="text_hint">#6B7280</color>
+
+    <!-- Status colors -->
+    <color name="status_warning_bg">#3D2F0B</color>
+    <color name="status_warning_text">#FCD34D</color>
+
+    <!-- Tool message colors -->
+    <color name="tool_message_bg">#0F2A1B</color>
+    <color name="tool_border_color">#166534</color>
+    <color name="tool_icon_color">#4ADE80</color>
+    <color name="tool_name_color">#86EFAC</color>
+    <color name="tool_input_color">#D1D5DB</color>
+    <color name="tool_running_bg">#0F1F3A</color>
+    <color name="tool_running_border">#1E40AF</color>
+    <color name="tool_running_icon">#60A5FA</color>
+    <color name="tool_running_name">#93C5FD</color>
+    <color name="tool_error_bg">#3A1212</color>
+    <color name="tool_error_border">#991B1B</color>
+    <color name="tool_error_icon">#F87171</color>
+    <color name="tool_error_name">#FCA5A5</color>
+
+    <!-- Input fields -->
+    <color name="input_text">#F3F4F6</color>
+    <color name="input_border">#3F3F46</color>
+
+    <!-- Misc chat surfaces -->
+    <color name="text_tertiary">#8B8B8B</color>
+    <color name="text_error">#F87171</color>
+    <color name="accent_text">#A78BFA</color>
+    <color name="thinking_bg">#221D33</color>
+    <color name="image_placeholder">#333333</color>
+    <color name="code_block_bg">#1E1E1E</color>
+    <color name="code_block_border">#3F3F46</color>
+    <color name="code_block_text">#E5E7EB</color>
+    <color name="quick_send_bg">#14301A</color>
+    <color name="quick_send_text">#A7F3D0</color>
+    <color name="icon_accent">#7AA2FF</color>
+    <color name="remote_header_bg">#1F1F1F</color>
+    <color name="remote_openclaw_bg">#1F1416</color>
+
+    <!-- Header (action bar + status bar): dark bar with light content -->
+    <color name="header_bg">#1F1F1F</color>
+    <color name="header_content">#E5E7EB</color>
+</resources>

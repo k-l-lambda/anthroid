@@ -199,8 +199,8 @@ class RemoteAgentFragment : Fragment() {
     }
 
     private fun setupOpenClawMode(sessionKey: String) {
-        // Light red background for content area; dark red banner
-        view?.setBackgroundColor(0xFFFFF0F0.toInt())
+        // Light red background for content area (dark tint in night mode); dark red banner
+        view?.setBackgroundColor(ContextCompat.getColor(requireContext(), R.color.remote_openclaw_bg))
         applyBannerStyle(0xFF7F1D1D.toInt()) // dark red
 
         // Show message list, hide terminal

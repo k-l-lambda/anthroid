@@ -42,7 +42,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Thinking..."
-                android:textColor="#8B5CF6"
+                android:textColor="@color/accent_text"
                 android:textSize="14sp"
                 android:textStyle="italic" />
 
@@ -51,7 +51,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="6dp"
-                android:textColor="#9CA3AF"
+                android:textColor="@color/text_hint"
                 android:textSize="12sp"
                 tools:text="5s" />
         </LinearLayout>
@@ -80,14 +80,14 @@
                     android:layout_height="wrap_content"
                     android:text="▶"
                     android:textSize="10sp"
-                    android:textColor="#8B5CF6" />
+                    android:textColor="@color/accent_text" />
 
                 <TextView
                     android:id="@+id/thinking_summary"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="6dp"
-                    android:textColor="#8B5CF6"
+                    android:textColor="@color/accent_text"
                     android:textSize="13sp"
                     android:textStyle="italic"
                     tools:text="Thinking (1,234 chars)" />
@@ -100,8 +100,8 @@
                 android:visibility="gone"
                 android:paddingHorizontal="8dp"
                 android:paddingVertical="6dp"
-                android:background="#F5F3FF"
-                android:textColor="#6B7280"
+                android:background="@color/thinking_bg"
+                android:textColor="@color/text_secondary"
                 android:textSize="12sp"
                 android:fontFamily="monospace"
                 android:maxLines="100"
@@ -129,7 +129,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="8dp"
                 android:text="⛔"
-                android:textColor="#757575"
+                android:textColor="@color/text_secondary"
                 android:textSize="14sp"
                 android:visibility="gone"
                 tools:visibility="visible" />

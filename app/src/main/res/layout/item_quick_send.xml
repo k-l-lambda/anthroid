@@ -14,13 +14,13 @@
         android:layout_marginBottom="4dp"
         android:clickable="true"
         android:focusable="true"
-        app:chipBackgroundColor="#E8F5E9"
+        app:chipBackgroundColor="@color/quick_send_bg"
         app:chipCornerRadius="16dp"
         app:chipMinHeight="32dp"
         app:chipMinTouchTargetSize="40dp"
         app:textEndPadding="12dp"
         app:textStartPadding="12dp"
         android:textSize="13sp"
-        android:textColor="#1B5E20" />
+        android:textColor="@color/quick_send_text" />
 
 </FrameLayout>

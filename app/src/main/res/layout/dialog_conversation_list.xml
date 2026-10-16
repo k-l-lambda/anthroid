@@ -30,7 +30,7 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="New Chat"
             android:src="@android:drawable/ic_menu_add"
-            app:tint="#4A7DFF" />
+            app:tint="@color/icon_accent" />
     </LinearLayout>
 
     <TextView
@@ -38,7 +38,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textSize="12sp"
-        android:textColor="#666666"
+        android:textColor="@color/text_secondary"
         android:paddingBottom="12dp" />
 
     <androidx.recyclerview.widget.RecyclerView
