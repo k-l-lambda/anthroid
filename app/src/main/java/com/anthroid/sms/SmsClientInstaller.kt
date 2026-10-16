@@ -12,6 +12,9 @@ import java.io.File
  *    python3.x site-packages so `import anthroid_sms` works without path setup
  *  - Node:   $PREFIX/lib/node/anthroid-sms.js, a global folder for `require('anthroid-sms')`
  *  - CLI:    $PREFIX/bin/anthroid-sms
+ *  - Skill:  SKILL.md for Claude Code (~/.claude/skills/anthroid-sms) and the OpenClaw
+ *            local agent (<agent workspace>/skills/anthroid-sms), so agents learn the
+ *            library without a tool that returns message bodies
  * Files are rewritten only when their content changed (app updates ship new versions).
  */
 object SmsClientInstaller {
@@ -26,6 +29,13 @@ object SmsClientInstaller {
             writeAsset(context, "sms/anthroid_sms.py", File(libDir, "anthroid_sms.py"), 0b110_000_000)
             writeAsset(context, "sms/anthroid-sms.js", File(prefix, "lib/node/anthroid-sms.js"), 0b110_000_000)
             writeAsset(context, "sms/anthroid-sms", File(prefix, "bin/anthroid-sms"), 0b111_000_000)
+            val home = File(TermuxConstants.TERMUX_HOME_DIR_PATH)
+            for (skillDir in listOf(
+                File(home, ".claude/skills/anthroid-sms"),
+                File(home, "openclaw-agent-local/workspace/skills/anthroid-sms"),
+            )) {
+                writeAsset(context, "sms/SKILL.md", File(skillDir, "SKILL.md"), 0b110_000_000)
+            }
             File(prefix, "lib").listFiles { f -> f.isDirectory && f.name.matches(Regex("python3\\.\\d+")) }
                 ?.forEach { py ->
                     val sitePackages = File(py, "site-packages")

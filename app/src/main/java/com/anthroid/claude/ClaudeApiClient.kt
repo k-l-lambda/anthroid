@@ -22,6 +22,13 @@ class ClaudeApiClient(private val context: Context) {
 
     companion object {
         private const val TAG = "ClaudeApiClient"
+
+        // API mode had no system prompt. Keep it short: the bash tool runs in Termux on the
+        // phone, and SMS goes through the anthroid_sms library so bodies stay out of context.
+        private val API_SYSTEM_PROMPT = """
+You are running on an Android phone; the bash tool runs in its Termux environment (Python 3 and Node available).
+To read the phone's SMS, write a Python/Node script with the anthroid_sms library (`from anthroid_sms import query` / `require('anthroid-sms')`, or the `anthroid-sms` CLI). Filter in the script and print only the needed result (e.g. a verification code), not message bodies.
+""".trim()
     }
 
     /**
@@ -140,6 +147,7 @@ class ClaudeApiClient(private val context: Context) {
                     put("model", model)
                     put("max_tokens", if (thinkingEnabled) 16000 else 4096)
                     put("stream", true)
+                    put("system", API_SYSTEM_PROMPT)
                     put("messages", messagesArray)
                     put("tools", getToolDefinitions())
                     if (thinkingEnabled) {

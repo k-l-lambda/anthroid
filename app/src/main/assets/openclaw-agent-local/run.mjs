@@ -268,6 +268,15 @@ async function discoverAndroidTools() {
 
 let memoryPrompt = null;
 
+// SMS is read through a script library, not an Android tool, so that message bodies stay
+// out of the context. Details: workspace skill anthroid-sms (installed by the app).
+const SMS_PROMPT =
+  `\n# SMS\n\n` +
+  "To read this phone's SMS, write a Python/Node script with the anthroid_sms library " +
+  "(`from anthroid_sms import query` / `require('anthroid-sms')`, or the `anthroid-sms` CLI; " +
+  "see the anthroid-sms skill). Filter in the script and print only the needed result " +
+  "(e.g. a verification code), not message bodies.\n";
+
 const MAX_MEMORY_TOTAL_BYTES = 50_000; // 50KB total limit for memory in system prompt
 const MAX_MEMORY_FILE_BYTES = 20_000;  // 20KB per file limit
 
@@ -471,7 +480,7 @@ async function runAgent(prompt, images) {
       timeoutMs: TIMEOUT_MS,
       runId,
       abortSignal: abortCtrl.signal,
-      extraSystemPrompt: [androidToolsPrompt, memoryPrompt].filter(Boolean).join("\n") || undefined,
+      extraSystemPrompt: [androidToolsPrompt, SMS_PROMPT, memoryPrompt].filter(Boolean).join("\n") || undefined,
 
       // Stream text to stdout as deltas.
       // onPartialReply sends cumulative text, so we diff against lastPartialText

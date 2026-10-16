@@ -867,6 +867,11 @@ Screen capture tools require MediaProjection permission (granted via Settings > 
 - stop_audio_capture: Stop recording and get the audio file path
 - get_capture_status: Check if screen capture service is running
 
+SMS:
+To read this phone's SMS, write a Python/Node script with the anthroid_sms library (see the anthroid-sms skill):
+`from anthroid_sms import query` / `require('anthroid-sms')`, or the `anthroid-sms` CLI. Filter in the script
+and print only the needed result (e.g. a verification code), not message bodies.
+
 When the user asks about files, use Bash commands.
 When the user asks about Android features (notifications, apps, screen automation, proxy), use the MCP tools.
 """.trimIndent()
