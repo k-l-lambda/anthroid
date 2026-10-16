@@ -70,6 +70,10 @@ public class TermuxApplication extends Application {
 
             // Setup termux-am-socket server
             TermuxAmSocketServer.setupTermuxAmSocketServer(context);
+
+            // SMS read socket for terminal scripts (Python / Node / anthroid-sms CLI)
+            com.anthroid.sms.SmsSocketServer.INSTANCE.start(context);
+            new Thread(() -> com.anthroid.sms.SmsClientInstaller.INSTANCE.install(context)).start();
         } else {
             Logger.logErrorExtended(LOG_TAG, "Termux files directory is not accessible\n" + error);
         }

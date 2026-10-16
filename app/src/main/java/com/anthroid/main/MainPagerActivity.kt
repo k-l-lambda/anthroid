@@ -98,6 +98,9 @@ class MainPagerActivity : AppCompatActivity() {
         permissions.add(Manifest.permission.READ_CALENDAR)
         permissions.add(Manifest.permission.WRITE_CALENDAR)
 
+        // SMS permission (read by terminal scripts via com.anthroid.sms)
+        permissions.add(Manifest.permission.READ_SMS)
+
         // Media permissions (Android 13+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.READ_MEDIA_IMAGES)

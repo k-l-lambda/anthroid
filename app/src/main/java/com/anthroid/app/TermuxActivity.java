@@ -425,6 +425,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         // Ensure set_wrapper script exists (for users updating from older versions)
         TermuxInstaller.ensureSetWrapperScript(this);
+        // SMS client library (first run: the bootstrap is only extracted by now)
+        final android.content.Context appContext = getApplicationContext();
+        new Thread(() -> com.anthroid.sms.SmsClientInstaller.INSTANCE.install(appContext)).start();
 
         setTermuxSessionsListView();
 

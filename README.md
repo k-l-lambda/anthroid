@@ -191,6 +191,31 @@ Built-in Linux terminal for advanced users:
 - Package manager (apt/pkg)
 - Node.js, Python, and more available
 
+### SMS Library for Scripts
+Scripts in the terminal can read the phone's SMS through the app (requires the SMS permission, requested at launch). It is a library rather than an agent tool: the agent filters messages in a script and prints only what it needs, so message bodies stay out of its context.
+
+```python
+from anthroid_sms import query
+msgs = query(since_minutes=10, address="95588")   # newest first, list of dicts
+# fields: id, thread_id, address, date, date_sent, type, read, body
+```
+
+```js
+const sms = require('anthroid-sms');
+const msgs = await sms.query({ sinceMinutes: 10, keyword: '验证码' });
+```
+
+```bash
+anthroid-sms --status                 # app reachable + permission granted?
+anthroid-sms --since-minutes 60       # count + metadata lines (no bodies)
+anthroid-sms --from 10086 --body      # include bodies
+anthroid-sms --keyword 验证码 --json   # full records
+```
+
+Filters: `since` / `until` (epoch ms), `since_minutes`, `address` (digits-only match, so `95588` matches `+86 955 88`), `keyword`, `box` (`inbox` | `sent` | `all`), `unread_only`, `limit` (1–200, default 20), `offset`.
+
+The app serves requests on a Unix socket in its private directory, and connections from other apps (other uids) are rejected. Message bodies are never logged. This keeps bodies out of the agent's context when it uses the library sensibly; the agent can still read them itself.
+
 ## Installation
 
 ### Download APK

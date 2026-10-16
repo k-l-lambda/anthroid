@@ -611,6 +611,7 @@ assets/openclaw-agent-local/
 | M23 | ✅ Done | Gateway TLS pinning, protocol 4, per-agent notifications (v1.0.16) |
 | M24 | ✅ Done | Answer agent questions from the phone (v1.0.16) |
 | M25 | ✅ Done | Live Update status capsule + background-freeze recovery (v1.0.17) |
+| M26 | ✅ Done | SMS read library for scripts (Python / Node / CLI over a uid-checked Unix socket) |
 
 ---
 
@@ -1487,6 +1488,60 @@ Oct 15, 2026. Driven by the OnePlus 15T (ColorOS 16.1, Android 16).
 - **Liveness watchdog**: drop the socket after `policy.tickIntervalMs` × 2.5 without frames (elapsedRealtime, so the first check after a thaw replaces a dead socket)
 - **Question re-sync**: `question.list` after each connect; notify unseen pending questions, clear ended ones
 - Gateway client version string now follows the app version (was stuck at 1.0.15)
+
+---
+
+### Phase 22: SMS Read Library for Scripts ✅
+
+Oct 16, 2026. Let Python / Node / shell scripts in the terminal read SMS, so an agent can
+process messages in a script and print only what it needs (e.g. a verification code),
+instead of a tool call that dumps message bodies into the model context.
+
+#### Goals and non-goals
+- **Goal**: SMS content stays out of the agent context when the agent uses the library
+  sensibly. No MCP tool, so `tools/list` never offers it.
+- **Non-goal**: an absolute barrier. The agent runs bash under the same uid and can
+  call the library itself. No redaction; bodies are returned as stored.
+- **Not** via `McpServer` (127.0.0.1:8765): it has no auth, any local app can call it,
+  and it logs full request/response bodies to logcat.
+
+#### Architecture
+```
+python / node / shell  ──unix socket──▶  SmsSocketServer (app, holds READ_SMS)
+   anthroid_sms lib        JSON request        └─ ContentResolver: Telephony.Sms
+        ◀──────────────── JSON response ──────────┘
+```
+- **Transport**: filesystem Unix socket via termux-shared `LocalSocketManager` (same
+  framework as `termux-am-socket`), at
+  `$APPS_DIR/com.anthroid/sms/sms.sock`. The framework rejects peers whose uid is not the
+  app's (or root), so other apps cannot connect.
+- **Protocol**: client writes one JSON object and shuts down its write side; server
+  replies with one JSON object and closes. Response:
+  `{"ok":true,"messages":[…]}` or `{"ok":false,"error":"CODE: detail"}`.
+- **Request** (all optional): `since` / `until` (epoch ms), `since_minutes`, `address`
+  (substring, digits normalized), `keyword` (body LIKE), `box` (`inbox` | `sent` | `all`,
+  default `inbox`), `unread_only`, `limit` (1–200, default 20), `offset`.
+- **Message fields**: `id`, `thread_id`, `address`, `date`, `date_sent`, `type`, `read`, `body`.
+- **Logging**: never log bodies; log only request shape + result count.
+- **Permission**: `READ_SMS` declared and requested with the other runtime permissions
+  at launch; without it the server returns `SMS_PERMISSION_REQUIRED`.
+
+#### Client side (installed into `$PREFIX` from assets)
+- `$PREFIX/lib/anthroid/anthroid_sms.py`: Python module, `query(**filters) -> list[dict]`.
+- `$PREFIX/lib/anthroid/anthroid-sms.js`: Node module, `query(filters) -> Promise<Message[]>`.
+- `$PREFIX/bin/anthroid-sms`: CLI (`--since-minutes`, `--from`, `--keyword`, `--limit`,
+  `--json`, `--count`); default output is a count + one-line metadata per message, with
+  bodies only when `--body` is given, so a careless `anthroid-sms` call doesn't print bodies.
+- Usage note for agents (README + script docstring): filter in the script and print
+  only the extracted result.
+
+#### Tasks
+- [x] `READ_SMS` in manifest + launch permission request
+- [x] `SmsQuery` (ContentResolver query + filters, no body logging)
+- [x] `SmsSocketServer` on `LocalSocketManager`, started in `TermuxApplication`
+- [x] Python module, Node module, `anthroid-sms` CLI as assets; installed/updated on start
+- [x] Device test on the 15T (counts / metadata only; don't print bodies): filters, limit cap, offset, errors, Python + Node + CLI, no bodies in logcat
+- [x] README section
 
 ---
 

@@ -1,0 +1,72 @@
+#!/data/data/com.anthroid/files/usr/bin/python3
+"""anthroid-sms: read SMS on this phone from the shell (via the Anthroid app).
+
+By default prints a count and one metadata line per message, without bodies, so a quick
+look does not put message text into an agent's context. Add --body to include bodies,
+or --json for the full records.
+
+Examples:
+  anthroid-sms --status
+  anthroid-sms --since-minutes 30 --count
+  anthroid-sms --from 95588 --limit 3
+  anthroid-sms --keyword 验证码 --since-minutes 10 --json
+
+For scripted use, import the library instead: `from anthroid_sms import query`.
+"""
+import argparse
+import json
+import os
+import sys
+import time
+
+sys.path.insert(0, os.path.join(os.environ.get("PREFIX", "/data/data/com.anthroid/files/usr"), "lib", "anthroid"))
+from anthroid_sms import SmsError, query, status  # noqa: E402
+
+
+def main():
+    p = argparse.ArgumentParser(prog="anthroid-sms", description=__doc__.split("\n\n")[0])
+    p.add_argument("--since-minutes", type=int)
+    p.add_argument("--from", dest="address", help="sender/recipient substring")
+    p.add_argument("--keyword", help="body substring")
+    p.add_argument("--box", choices=["inbox", "sent", "all"], default="inbox")
+    p.add_argument("--unread", action="store_true")
+    p.add_argument("--limit", type=int, default=20)
+    p.add_argument("--offset", type=int, default=0)
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--count", action="store_true", help="print only the number of matches")
+    g.add_argument("--body", action="store_true", help="include message bodies")
+    g.add_argument("--json", action="store_true", help="print full records as JSON")
+    g.add_argument("--status", action="store_true", help="check the app and the SMS permission")
+    a = p.parse_args()
+
+    try:
+        if a.status:
+            s = status()
+            print("app: reachable, SMS permission: %s" % ("granted" if s.get("permission") else "NOT granted"))
+            return 0 if s.get("permission") else 3
+        msgs = query(since_minutes=a.since_minutes, address=a.address, keyword=a.keyword,
+                     box=a.box, unread_only=a.unread, limit=a.limit, offset=a.offset)
+    except SmsError as e:
+        print("anthroid-sms: %s" % e, file=sys.stderr)
+        return 2
+
+    if a.json:
+        json.dump(msgs, sys.stdout, ensure_ascii=False, indent=1)
+        print()
+        return 0
+    if a.count:
+        print(len(msgs))
+        return 0
+    print("%d message(s)" % len(msgs))
+    for m in msgs:
+        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(m["date"] / 1000))
+        line = "%s  %-6s %s%s  (%d chars)" % (when, m["type"], m["address"],
+                                             "" if m["read"] else " [unread]", len(m["body"]))
+        print(line)
+        if a.body:
+            print("  " + m["body"].replace("\n", "\n  "))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

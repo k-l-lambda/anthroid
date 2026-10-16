@@ -1,6 +1,8 @@
 # Ensure shell scripts always use LF line endings
 *.sh text eol=lf
 *.bash text eol=lf
+# Scripts installed into the terminal prefix (shebang must not end in )
+app/src/main/assets/sms/* text eol=lf
 # Binary files
 *.zip binary
 *.apk binary
