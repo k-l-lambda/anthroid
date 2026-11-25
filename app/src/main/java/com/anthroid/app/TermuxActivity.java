@@ -504,6 +504,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         TerminalSession terminalSession = termuxSession.getTerminalSession();
         if (returnToChatOnBack) {
             mReturnToChatSession = terminalSession;
+            mTermuxService.markDedicatedCommandSession(terminalSession);
         }
         mTermuxTerminalSessionActivityClient.setCurrentSession(terminalSession);
         getDrawer().closeDrawers();
@@ -554,7 +555,17 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private void setTermuxTerminalViewAndClients() {
         // Set termux terminal view and session clients
-        mTermuxTerminalSessionActivityClient = new TermuxTerminalSessionActivityClient(this);
+        mTermuxTerminalSessionActivityClient = new TermuxTerminalSessionActivityClient(this) {
+            @Override
+            public void onSessionFinished(@NonNull TerminalSession session) {
+                if (mTermuxService != null && mTermuxService.isDedicatedCommandSession(session)) {
+                    if (mReturnToChatSession == session) mReturnToChatSession = null;
+                    removeFinishedSession(session);
+                    return;
+                }
+                super.onSessionFinished(session);
+            }
+        };
         mTermuxTerminalViewClient = new TermuxTerminalViewClient(this, mTermuxTerminalSessionActivityClient);
 
         // Set termux terminal view
@@ -692,8 +703,14 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (getDrawer().isDrawerOpen(Gravity.LEFT)) {
             getDrawer().closeDrawers();
         } else if (mReturnToChatSession != null && getCurrentSession() == mReturnToChatSession) {
-            mReturnToChatSession.finishIfRunning();
+            TerminalSession closingSession = mReturnToChatSession;
             mReturnToChatSession = null;
+            closingSession.finishIfRunning();
+            // finishIfRunning only sends SIGKILL. The service's dedicated-session callback
+            // removes the TermuxSession once the process is reaped, regardless of exit code.
+            if (!closingSession.isRunning() && mTermuxService != null) {
+                mTermuxTerminalSessionActivityClient.removeFinishedSession(closingSession);
+            }
             Intent intent = new Intent(this, MainPagerActivity.class);
             intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             startActivity(intent);

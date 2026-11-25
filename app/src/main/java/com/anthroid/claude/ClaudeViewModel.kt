@@ -1324,7 +1324,7 @@ class ClaudeViewModel(application: Application) : AndroidViewModel(application) 
                 compactConversation()
                 true
             }
-            "/list-remotes" -> {
+            "/list-remote", "/list-remotes" -> {
                 val hostname = parts.getOrNull(1)?.trim()?.takeIf { it.isNotEmpty() }
                 _slashCommandEvent.tryEmit(SlashCommandEvent.ListRemotes(hostname))
                 true

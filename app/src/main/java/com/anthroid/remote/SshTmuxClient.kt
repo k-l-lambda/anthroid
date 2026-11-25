@@ -35,6 +35,7 @@ class SshTmuxClient {
      * List tmux sessions on a remote host.
      */
     suspend fun listSessions(hostname: String): List<RemoteSessionInfo> = withContext(Dispatchers.IO) {
+        require(isSafeHostname(hostname)) { "Unsafe hostname" }
         if (!TerminalCommandBridge.isAvailable()) {
             throw IllegalStateException("Terminal bridge not available")
         }

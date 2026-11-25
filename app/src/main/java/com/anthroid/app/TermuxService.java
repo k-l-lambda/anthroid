@@ -86,7 +86,24 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
     /** The basic implementation of the {@link TerminalSessionClient} interface to be used by {@link TerminalSession}
      * that does not hold activity references and only a service reference.
      */
-    private final TermuxTerminalSessionServiceClient mTermuxTerminalSessionServiceClient = new TermuxTerminalSessionServiceClient(this);
+    private final TermuxTerminalSessionServiceClient mTermuxTerminalSessionServiceClient = new TermuxTerminalSessionServiceClient(this) {
+        @Override
+        public void onSessionFinished(@NonNull TerminalSession session) {
+            if (isDedicatedCommandSession(session)) removeTermuxSession(session);
+        }
+    };
+
+    // Identity, rather than a mutable display name, distinguishes interactive command windows.
+    private final java.util.Set<TerminalSession> mDedicatedCommandSessions =
+        java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+
+    public synchronized void markDedicatedCommandSession(TerminalSession session) {
+        mDedicatedCommandSessions.add(session);
+    }
+
+    public synchronized boolean isDedicatedCommandSession(TerminalSession session) {
+        return mDedicatedCommandSessions.contains(session);
+    }
 
     /**
      * Termux app shared properties manager, loaded from termux.properties
@@ -637,7 +654,7 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
 
     /** Callback received when a {@link TermuxSession} finishes. */
     @Override
-    public void onTermuxSessionExited(final TermuxSession termuxSession) {
+    public synchronized void onTermuxSessionExited(final TermuxSession termuxSession) {
         if (termuxSession != null) {
             ExecutionCommand executionCommand = termuxSession.getExecutionCommand();
 
@@ -648,6 +665,7 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
                 TermuxPluginUtils.processPluginExecutionCommandResult(this, LOG_TAG, executionCommand);
 
             mShellManager.mTermuxSessions.remove(termuxSession);
+            mDedicatedCommandSessions.remove(termuxSession.getTerminalSession());
 
             // Notify {@link TermuxSessionsListViewController} that sessions list has been updated if
             // activity in is foreground

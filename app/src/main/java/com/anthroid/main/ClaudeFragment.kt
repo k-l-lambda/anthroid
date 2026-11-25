@@ -1276,13 +1276,19 @@ class ClaudeFragment : Fragment() {
     private val sshTmuxClient = SshTmuxClient()
 
     private fun showRemoteSessionsDialog(hostname: String?) {
-        val progressDialog = AlertDialog.Builder(requireContext())
+        val cache = com.anthroid.remote.RemoteSessionCache(requireContext())
+        val cached = hostname?.let { cache.load(it) }
+        val cachedDialog = cached?.let { showSessionListDialog(it, hostname) }
+        cachedDialog?.first?.setTitle("tmux sessions on $hostname (cached, refreshing...)")
+        val progressDialog = if (cachedDialog == null) AlertDialog.Builder(requireContext())
             .setTitle("Discovering remote agents...")
             .setView(ProgressBar(requireContext()).apply {
                 setPadding(48, 48, 48, 48)
             })
             .setCancelable(true)
-            .show()
+            .show() else null
+        var dismissed = false
+        (cachedDialog?.first ?: progressDialog)?.setOnDismissListener { dismissed = true }
 
         viewLifecycleOwner.lifecycleScope.launch {
             try {
@@ -1298,7 +1304,17 @@ class ClaudeFragment : Fragment() {
                     manager.listSessions()
                 }
 
-                progressDialog.dismiss()
+                if (hostname != null) cache.save(hostname, sessions)
+                if (dismissed) return@launch
+                if (cachedDialog != null) {
+                    cachedDialog.second.setNotifyOnChange(false)
+                    cachedDialog.second.clear()
+                    cachedDialog.second.addAll(sessions)
+                    cachedDialog.second.notifyDataSetChanged()
+                    cachedDialog.first.setTitle("tmux sessions on $hostname${if (sessions.isEmpty()) " (no sessions)" else ""}")
+                    return@launch
+                }
+                progressDialog?.dismiss()
 
                 if (sessions.isEmpty()) {
                     Toast.makeText(requireContext(),
@@ -1309,17 +1325,24 @@ class ClaudeFragment : Fragment() {
                 }
 
                 showSessionListDialog(sessions, hostname)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
-                progressDialog.dismiss()
+                progressDialog?.dismiss()
+                cachedDialog?.first?.setTitle("tmux sessions on $hostname (cached, refresh failed)")
                 Log.w(TAG, "Failed to list remote sessions: ${e.message}")
-                Toast.makeText(requireContext(), "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                if (!dismissed || cachedDialog == null) {
+                    Toast.makeText(requireContext(), "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            } finally {
+                progressDialog?.dismiss()
             }
         }
     }
 
-    private fun showSessionListDialog(sessions: List<RemoteSessionInfo>, hostname: String?) {
+    private fun showSessionListDialog(sessions: List<RemoteSessionInfo>, hostname: String?): Pair<AlertDialog, ArrayAdapter<RemoteSessionInfo>> {
         val title = if (hostname != null) "tmux sessions on $hostname" else "Gateway sessions"
-        val adapter = object : ArrayAdapter<RemoteSessionInfo>(requireContext(), 0, sessions) {
+        val adapter = object : ArrayAdapter<RemoteSessionInfo>(requireContext(), 0, sessions.toMutableList()) {
             override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
                 val density = resources.displayMetrics.density
                 val row = (convertView as? LinearLayout) ?: LinearLayout(context).apply {
@@ -1372,13 +1395,14 @@ class ClaudeFragment : Fragment() {
             }
         }
 
-        AlertDialog.Builder(requireContext())
+        val dialog = AlertDialog.Builder(requireContext())
             .setTitle(title)
             .setAdapter(adapter) { _, which ->
-                openRemoteAgentView(sessions[which])
+                adapter.getItem(which)?.let { openRemoteAgentView(it) }
             }
             .setNegativeButton("Cancel", null)
             .show()
+        return dialog to adapter
     }
 
     private fun openSshTmuxTerminal(hostname: String, session: RemoteSessionInfo) {

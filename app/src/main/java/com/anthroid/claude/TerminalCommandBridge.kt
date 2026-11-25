@@ -88,11 +88,16 @@ object TerminalCommandBridge {
             if (sessionId != null) {
                 val termuxSession = findSessionByName(service, sessionId)
                 targetSessionId = sessionId
-                session = termuxSession?.terminalSession
+                session = termuxSession?.terminalSession?.takeIf { isCommandSession(service, it) }
             } else {
                 val currentSession = currentSessionGetter?.invoke()
-                targetSessionId = currentSession?.mSessionName ?: getDefaultSessionId(service)
-                session = currentSession
+                session = currentSession?.takeIf { isCommandSession(service, it) }
+                    ?: synchronized(service) {
+                        service.termuxSessions.firstNotNullOfOrNull { ts ->
+                            ts.terminalSession?.takeIf { isCommandSession(service, it) }
+                        }
+                    }
+                targetSessionId = session?.mSessionName ?: "none"
             }
 
             if (session != null && session.isRunning) break
@@ -141,6 +146,9 @@ object TerminalCommandBridge {
         // Use write() to send command directly to terminal
         val fullCommand = "$command; echo '$marker'\n"
         Log.d(TAG, "Sending command via write()")
+        if (!isCommandSession(service, session)) {
+            return CommandResult.error("Terminal session is no longer available for commands", targetSessionId)
+        }
         session.write(fullCommand)
 
         // Wait for marker to appear in transcript
@@ -153,6 +161,9 @@ object TerminalCommandBridge {
 
         while (System.currentTimeMillis() - startTime < timeout) {
             delay(100) // Check every 100ms
+            if (!isCommandSession(service, session)) {
+                return CommandResult.error("Terminal session exited while executing command", targetSessionId)
+            }
 
             // Use non-joined transcript (linesJoined=false) so each terminal row is a
             // separate line. The joined version merges full-width rows, which can fuse
@@ -314,6 +325,17 @@ object TerminalCommandBridge {
             )
         }
     }
+
+    // Never inject bridge commands into a dead, detached, or interactive SSH window.
+    private fun isCommandSession(service: TermuxService, session: TerminalSession): Boolean =
+        synchronized(service) {
+            if (!session.isRunning || service.isDedicatedCommandSession(session)) return@synchronized false
+            val owner = service.getTermuxSessionForTerminalSession(session) ?: return@synchronized false
+            val command = owner.executionCommand
+            val executable = command.executable?.substringAfterLast('/')
+            executable in setOf("sh", "bash", "zsh", "fish", "dash", "ksh") &&
+                command.arguments?.none { it == "-c" || it == "-lc" || it == "-cl" } != false
+        }
 
     private fun findSessionByName(service: TermuxService, name: String): TermuxSession? {
         return service.termuxSessions.find { ts ->
