@@ -80,33 +80,28 @@ object TerminalCommandBridge {
         timeout: Long
     ): CommandResult {
 
-        // Get target session (with retry for sessions still being created)
-        var targetSessionId: String = ""
-        var session: TerminalSession? = null
-
-        for (attempt in 1..20) { // Wait up to 2 seconds for session
-            if (sessionId != null) {
-                val termuxSession = findSessionByName(service, sessionId)
-                targetSessionId = sessionId
-                session = termuxSession?.terminalSession?.takeIf { isCommandSession(service, it) }
-            } else {
-                val currentSession = currentSessionGetter?.invoke()
-                session = currentSession?.takeIf { isCommandSession(service, it) }
-                    ?: synchronized(service) {
-                        service.termuxSessions.firstNotNullOfOrNull { ts ->
+        // TerminalSession construction and updateSize must run on the main thread: its
+        // Handler belongs there, and updateSize starts the subprocess in headless mode.
+        // Do not wait for a TerminalView to initialize the selected shell.
+        val session = withContext(Dispatchers.Main.immediate) {
+            synchronized(service) {
+                val selected = if (sessionId != null) {
+                    findSessionByName(service, sessionId)?.terminalSession
+                        ?.takeIf { isCommandSession(service, it) }
+                } else {
+                    currentSessionGetter?.invoke()?.takeIf { isCommandSession(service, it) }
+                        ?: service.termuxSessions.firstNotNullOfOrNull { ts ->
                             ts.terminalSession?.takeIf { isCommandSession(service, it) }
                         }
-                    }
-                targetSessionId = session?.mSessionName ?: "none"
+                        ?: service.createTermuxSession(null, null, null, null, false, "claude-session")
+                            ?.terminalSession?.takeIf { isCommandSession(service, it) }
+                }
+                selected?.also {
+                    if (it.emulator == null) it.updateSize(80, 24, 0, 0)
+                }
             }
-
-            if (session != null && session.isRunning) break
-
-            if (attempt == 1) {
-                Log.d(TAG, "No active session yet (sessions=${service.termuxSessions.size}), waiting...")
-            }
-            delay(100)
         }
+        val targetSessionId = sessionId ?: session?.mSessionName ?: "none"
 
         if (session == null || !session.isRunning) {
             return CommandResult.error(
@@ -333,8 +328,22 @@ object TerminalCommandBridge {
             val owner = service.getTermuxSessionForTerminalSession(session) ?: return@synchronized false
             val command = owner.executionCommand
             val executable = command.executable?.substringAfterLast('/')
-            executable in setOf("sh", "bash", "zsh", "fish", "dash", "ksh") &&
-                command.arguments?.none { it == "-c" || it == "-lc" || it == "-cl" } != false
+            // Termux's default shell is usually $PREFIX/bin/login, which execs the
+            // configured interactive shell. TermuxSession also prepends argv[0]
+            // (e.g. "-login" or "-bash") to executionCommand.arguments.
+            if (executable !in setOf("login", "sh", "bash", "zsh", "fish", "dash", "ksh", "mksh")) {
+                return@synchronized false
+            }
+            val arguments = command.arguments?.drop(1).orEmpty()
+            // Exclude one-shot shell commands (including combined flags such as
+            // -ic), scripts, and login invocations with explicit arguments. Such
+            // sessions are not safe shared command shells even if still running.
+            if (executable == "login") return@synchronized arguments.isEmpty()
+            arguments.all { argument ->
+                argument.startsWith("-") && argument != "--" &&
+                    argument.substringBefore('=') !in setOf("--command", "--init-command") &&
+                    (argument.startsWith("--") || !argument.drop(1).contains('c'))
+            }
         }
 
     private fun findSessionByName(service: TermuxService, name: String): TermuxSession? {
