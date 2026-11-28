@@ -278,7 +278,7 @@ class GatewayForegroundService : Service() {
         _gatewayManagerFlow.value = manager
 
         // Wire up notification.push events
-        manager.onNotification = { title, body ->
+        manager.onNotification = { notice ->
             // Shown unconditionally, foreground included — same rule as questions, and
             // deliberately different from chat messages. A suppressed chat message is
             // still readable later in its session; a push has no session, so suppressing
@@ -287,7 +287,7 @@ class GatewayForegroundService : Service() {
             // Must use the standalone path: showMessageNotification deep-links to a
             // remote session, and a session key of "notification" does not exist on the
             // gateway, so the tap opened an empty session view with no body text.
-            notificationHelper?.showStandaloneNotification(title, body)
+            notificationHelper?.showStandaloneNotification(notice)
         }
 
         // Wire up agent questions. Unlike chat, a question notification is shown even

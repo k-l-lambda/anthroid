@@ -42,6 +42,33 @@ class GatewayNotificationHelper(private val context: Context) {
         const val EXTRA_QUESTION_ID = "gateway_question_id"
         const val EXTRA_NOTIFICATION_TITLE = "gateway_notification_title"
         const val EXTRA_NOTIFICATION_BODY = "gateway_notification_body"
+        const val EXTRA_NOTIFICATION_SENDER = "gateway_notification_sender"
+        const val EXTRA_NOTIFICATION_SENT_AT_MS = "gateway_notification_sent_at_ms"
+
+        internal fun standaloneNoticeIntent(context: Context, notice: GatewayNotice): Intent =
+            Intent(context, MainPagerActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra(EXTRA_NOTIFICATION_TITLE, notice.title)
+                putExtra(EXTRA_NOTIFICATION_BODY, notice.body)
+                notice.sender?.let { putExtra(EXTRA_NOTIFICATION_SENDER, it) }
+                notice.sentAtMs?.let { putExtra(EXTRA_NOTIFICATION_SENT_AT_MS, it) }
+            }
+
+        /** Consume all notice extras together, including legacy title/body-only intents. */
+        internal fun consumeStandaloneNotice(intent: Intent): GatewayNotice? {
+            val body = intent.getStringExtra(EXTRA_NOTIFICATION_BODY) ?: return null
+            val notice = GatewayNotice(
+                title = intent.getStringExtra(EXTRA_NOTIFICATION_TITLE) ?: "OpenClaw",
+                body = body,
+                sender = intent.getStringExtra(EXTRA_NOTIFICATION_SENDER),
+                sentAtMs = intent.extras?.get(EXTRA_NOTIFICATION_SENT_AT_MS) as? Long,
+            )
+            intent.removeExtra(EXTRA_NOTIFICATION_TITLE)
+            intent.removeExtra(EXTRA_NOTIFICATION_BODY)
+            intent.removeExtra(EXTRA_NOTIFICATION_SENDER)
+            intent.removeExtra(EXTRA_NOTIFICATION_SENT_AT_MS)
+            return notice
+        }
 
         /**
          * Derive a notification channel tag from a sessionKey.
@@ -242,7 +269,7 @@ class GatewayNotificationHelper(private val context: Context) {
      * not exist on the gateway and the tap opened an empty session view. The body text
      * travels in the intent instead, so the tap can show the text it already delivered.
      */
-    fun showStandaloneNotification(title: String, body: String) {
+    fun showStandaloneNotification(notice: GatewayNotice) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val nm = context.getSystemService(NotificationManager::class.java)
             if (nm.getNotificationChannel(CHANNEL_ID_NOTICE) == null) {
@@ -256,11 +283,7 @@ class GatewayNotificationHelper(private val context: Context) {
             }
         }
 
-        val intent = Intent(context, MainPagerActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra(EXTRA_NOTIFICATION_TITLE, title)
-            putExtra(EXTRA_NOTIFICATION_BODY, body)
-        }
+        val intent = standaloneNoticeIntent(context, notice)
         val pendingIntent = PendingIntent.getActivity(
             context, STANDALONE_NOTIFICATION_ID, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -268,9 +291,14 @@ class GatewayNotificationHelper(private val context: Context) {
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_NOTICE)
             .setSmallIcon(R.drawable.ic_service_notification)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentTitle(notice.title)
+            .setContentText(notice.body)
+            .setSubText(notice.metadataText().replace("\n", " · "))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(notice.detailText()))
+            // The explicit absolute send time above is authoritative. Do not present
+            // Android's default received-at clock as a send time for legacy events.
+            .setShowWhen(false)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
@@ -278,7 +306,7 @@ class GatewayNotificationHelper(private val context: Context) {
 
         try {
             NotificationManagerCompat.from(context).notify(STANDALONE_NOTIFICATION_ID, notification)
-            Log.i(TAG, "Standalone notification shown (${body.length} chars)")
+            Log.i(TAG, "Standalone notification shown (${notice.body.length} chars)")
         } catch (e: SecurityException) {
             Log.w(TAG, "Notification permission not granted: ${e.message}")
         }

@@ -91,7 +91,7 @@ class GatewayManager(
   private val _isConnected = MutableStateFlow(false)
   val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
 
-  var onNotification: ((title: String, body: String) -> Unit)? = null
+  var onNotification: ((notice: GatewayNotice) -> Unit)? = null
   /** isStreaming=true for agent run buffered output; false for chat final messages */
   var onChatMessage: ((sessionKey: String, displayName: String?, messageText: String, isStreaming: Boolean) -> Unit)? = null
   /** An agent is asking the operator a question and is blocked on the answer. */
@@ -813,11 +813,10 @@ class GatewayManager(
       "notification.push" -> {
         try {
           val obj = if (payloadJson != null) JSONObject(payloadJson) else null
-          val title = obj?.optString("title", "Anthroid") ?: "Anthroid"
-          val body = obj?.optString("body", "") ?: ""
-          onNotification?.invoke(title, body)
+          onNotification?.invoke(GatewayNotice.fromJson(obj))
         } catch (err: Throwable) {
-          Log.w(TAG, "Failed to parse notification: ${err.message}")
+          // JSON exceptions can contain the payload; do not log notice contents.
+          Log.w(TAG, "Failed to parse notification")
         }
       }
       "chat" -> {

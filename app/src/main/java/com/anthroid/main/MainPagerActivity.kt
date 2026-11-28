@@ -29,6 +29,7 @@ import com.anthroid.claude.CameraCaptureActivity
 import com.anthroid.claude.DebugReceiver
 import com.anthroid.claude.TerminalCommandBridge
 import com.anthroid.gateway.GatewayForegroundService
+import com.anthroid.gateway.GatewayNotice
 import com.anthroid.gateway.GatewayNotificationHelper
 import com.anthroid.gateway.GatewayManager
 import com.anthroid.terminal.TerminalSession
@@ -258,14 +259,9 @@ class MainPagerActivity : AppCompatActivity() {
         }
         // A session-less notification (notification.push) carries its own text, because
         // there is no session to open. Show it rather than deep-linking nowhere.
-        val noticeBody = intent.getStringExtra(GatewayNotificationHelper.EXTRA_NOTIFICATION_BODY)
-        if (noticeBody != null) {
-            val noticeTitle =
-                intent.getStringExtra(GatewayNotificationHelper.EXTRA_NOTIFICATION_TITLE)
-                    ?: "OpenClaw"
-            intent.removeExtra(GatewayNotificationHelper.EXTRA_NOTIFICATION_BODY)
-            intent.removeExtra(GatewayNotificationHelper.EXTRA_NOTIFICATION_TITLE)
-            showGatewayNotice(noticeTitle, noticeBody)
+        val notice = GatewayNotificationHelper.consumeStandaloneNotice(intent)
+        if (notice != null) {
+            showGatewayNotice(notice)
             return
         }
         val sessionKey = intent.getStringExtra(GatewayNotificationHelper.EXTRA_SESSION_KEY)
@@ -327,10 +323,10 @@ class MainPagerActivity : AppCompatActivity() {
      * Render a session-less gateway notification. The text arrived with the
      * notification itself, so nothing is fetched and this works offline.
      */
-    private fun showGatewayNotice(title: String, body: String) {
+    private fun showGatewayNotice(notice: GatewayNotice) {
         androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle(title)
-            .setMessage(body)
+            .setTitle(notice.title)
+            .setMessage(notice.detailText())
             .setPositiveButton(android.R.string.ok, null)
             .show()
     }
