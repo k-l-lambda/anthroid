@@ -2,6 +2,7 @@ package com.anthroid.gateway
 
 import org.json.JSONObject
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
@@ -16,19 +17,32 @@ data class GatewayNotice(
     val displaySender: String
         get() = sender?.trim()?.takeIf { it.isNotEmpty() } ?: "Unknown sender"
 
-    fun metadataText(
+    /** Compose presentation only: keep the original title/body and wire metadata intact. */
+    fun displayTitle(
         locale: Locale = Locale.getDefault(),
         timeZone: TimeZone = TimeZone.getDefault(),
+        nowMs: Long = System.currentTimeMillis(),
     ): String {
-        val sentTime = sentAtMs?.let {
-            SimpleDateFormat("yyyy-MM-dd HH:mm:ss z (Z)", locale).apply {
+        val source = displaySender
+        var text = title.trim()
+        // Old producers signed their own titles. Strip only a prefix matching the
+        // structured sender; an unrelated bracketed title is meaningful content.
+        if (!sender.isNullOrBlank()) {
+            val legacyPrefix = listOf("[$source]", "［$source］").firstOrNull { text.startsWith(it) }
+            if (legacyPrefix != null) text = text.removePrefix(legacyPrefix).trimStart()
+        }
+        val sentTime = sentAtMs?.let { timestamp ->
+            val sent = Calendar.getInstance(timeZone, locale).apply { timeInMillis = timestamp }
+            val now = Calendar.getInstance(timeZone, locale).apply { timeInMillis = nowMs }
+            val sameDay = sent.get(Calendar.ERA) == now.get(Calendar.ERA) &&
+                sent.get(Calendar.YEAR) == now.get(Calendar.YEAR) &&
+                sent.get(Calendar.DAY_OF_YEAR) == now.get(Calendar.DAY_OF_YEAR)
+            SimpleDateFormat(if (sameDay) "HH:mm:ss" else "yyyy-MM-dd HH:mm:ss", locale).apply {
                 this.timeZone = timeZone
-            }.format(Date(it))
+            }.format(Date(timestamp))
         } ?: "Unknown send time"
-        return "From: $displaySender\nSent: $sentTime"
+        return "［$source］$text ($sentTime)"
     }
-
-    fun detailText(): String = "${metadataText()}\n\n$body"
 
     companion object {
         fun fromJson(payload: JSONObject?): GatewayNotice = GatewayNotice(

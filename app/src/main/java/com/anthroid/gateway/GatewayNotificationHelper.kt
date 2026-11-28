@@ -291,12 +291,11 @@ class GatewayNotificationHelper(private val context: Context) {
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_NOTICE)
             .setSmallIcon(R.drawable.ic_service_notification)
-            .setContentTitle(notice.title)
+            .setContentTitle(notice.displayTitle())
             .setContentText(notice.body)
-            .setSubText(notice.metadataText().replace("\n", " · "))
-            .setStyle(NotificationCompat.BigTextStyle().bigText(notice.detailText()))
-            // The explicit absolute send time above is authoritative. Do not present
-            // Android's default received-at clock as a send time for legacy events.
+            .setStyle(NotificationCompat.BigTextStyle().bigText(notice.body))
+            // Source and send time are composed into the title, not separate meta text.
+            // Do not add Android's received-at clock alongside the Gateway send time.
             .setShowWhen(false)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setPriority(NotificationCompat.PRIORITY_HIGH)

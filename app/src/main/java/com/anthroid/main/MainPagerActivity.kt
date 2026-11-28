@@ -325,8 +325,8 @@ class MainPagerActivity : AppCompatActivity() {
      */
     private fun showGatewayNotice(notice: GatewayNotice) {
         androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle(notice.title)
-            .setMessage(notice.detailText())
+            .setTitle(notice.displayTitle())
+            .setMessage(notice.body)
             .setPositiveButton(android.R.string.ok, null)
             .show()
     }

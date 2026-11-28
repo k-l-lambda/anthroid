@@ -30,13 +30,10 @@ class GatewayNoticeNotificationTest {
         GatewayNotificationHelper(context).showStandaloneNotification(notice)
 
         val posted = postedNotice()
-        assertEquals(notice.title, posted.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
+        assertEquals(notice.displayTitle(), posted.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
         assertEquals(notice.body, posted.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
-        assertEquals(notice.detailText(), posted.extras.getCharSequence(Notification.EXTRA_BIG_TEXT).toString())
-        assertEquals(
-            notice.metadataText().replace("\n", " · "),
-            posted.extras.getCharSequence(Notification.EXTRA_SUB_TEXT).toString(),
-        )
+        assertEquals(notice.body, posted.extras.getCharSequence(Notification.EXTRA_BIG_TEXT).toString())
+        assertNull(posted.extras.getCharSequence(Notification.EXTRA_SUB_TEXT))
         assertFalse(posted.extras.getBoolean(Notification.EXTRA_SHOW_WHEN))
         assertEquals(Notification.VISIBILITY_PRIVATE, posted.visibility)
 
@@ -55,9 +52,9 @@ class GatewayNoticeNotificationTest {
         helper.showStandaloneNotification(GatewayNotice("Legacy", "Legacy body"))
 
         val posted = postedNotice()
-        val expanded = posted.extras.getCharSequence(Notification.EXTRA_BIG_TEXT).toString()
-        assertTrue(expanded.contains("Unknown sender"))
-        assertTrue(expanded.contains("Unknown send time"))
+        assertEquals("Legacy body", posted.extras.getCharSequence(Notification.EXTRA_BIG_TEXT).toString())
+        assertEquals("［Unknown sender］Legacy (Unknown send time)", posted.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
+        assertNull(posted.extras.getCharSequence(Notification.EXTRA_SUB_TEXT))
         assertFalse(posted.extras.getBoolean(Notification.EXTRA_SHOW_WHEN))
         val tapIntent = shadowOf(posted.contentIntent).savedIntent
         assertEquals(GatewayNotice("Legacy", "Legacy body"), GatewayNotificationHelper.consumeStandaloneNotice(tapIntent))
@@ -73,7 +70,8 @@ class GatewayNoticeNotificationTest {
         assertEquals("OpenClaw", notice.title)
         assertNull(notice.sender)
         assertNull(notice.sentAtMs)
-        assertTrue(notice.detailText().contains("Unknown send time"))
+        assertTrue(notice.displayTitle().contains("Unknown send time"))
+        assertEquals("Legacy body", notice.body)
         assertEquals("preserved", intent.getStringExtra("unrelated"))
         assertFalse(intent.hasExtra(GatewayNotificationHelper.EXTRA_NOTIFICATION_SENT_AT_MS))
     }
